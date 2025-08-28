@@ -29,7 +29,7 @@ db.serialize(() => {
     created_at TEXT DEFAULT (datetime('now')),
     release_date TEXT
   )`);
-  // Intentamos añadir release_date si la tabla ya existía
+  // Si la tabla ya existía, intentamos añadir release_date (ignora si ya está)
   db.run(`ALTER TABLE movies ADD COLUMN release_date TEXT`, (err) => {
     if (err && !String(err).includes('duplicate column')) {
       console.warn('ALTER TABLE release_date error:', err.message);
@@ -37,26 +37,26 @@ db.serialize(() => {
   });
 });
 
-// --- Backfill simple para release_date (hasta 50 filas por arranque) ---
+// Backfill simple en arranque para rellenar release_date en lotes pequeños
 (async function backfillReleaseDates(){
   try{
-    const need = await new Promise((resolve,reject)=>{
-      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows)=>{
-        if(err) return reject(err);
-        resolve(rows||[]);
+    const toFill = await new Promise((resolve, reject) => {
+      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
       });
     });
-    for(const r of need){
+    for (const r of toFill){
       try{
         const d = await tmdbGetMovieDetails(r.tmdb_id);
         if (d && d.release_date){
-          await new Promise((res,rej)=>{
-            db.run('UPDATE movies SET release_date=? WHERE tmdb_id=?', [d.release_date, r.tmdb_id], (e)=> e?rej(e):res());
+          await new Promise((res, rej) => {
+            db.run('UPDATE movies SET release_date = ? WHERE tmdb_id = ?', [d.release_date, r.tmdb_id], (e) => e ? rej(e) : res());
           });
         }
-      }catch(e){ /* ignore individual errors */ }
+      }catch(e){ /* continuar */ }
     }
-    if (need.length) console.log('Backfill release_date completado para', need.length, 'películas');
+    if (toFill.length) console.log('Backfill release_date:', toFill.length);
   }catch(e){
     console.warn('Backfill release_date error:', e.message);
   }
@@ -127,6 +127,7 @@ app.get('/api/genres', async (req, res) => {
   catch (e) { console.error(e); res.status(500).json({ error: 'No se pudieron obtener los géneros' }); }
 });
 
+// Listado con orden por fecha de estreno (más reciente primero)
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
@@ -135,7 +136,7 @@ app.get('/api/movies', async (req, res) => {
     const params = [];
 
     if (q) { where.push('LOWER(title) LIKE ?'); params.push(`%${String(q).toLowerCase()}%`); }
-    if (year && /^\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
+    if (year && /^\\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -147,15 +148,20 @@ app.get('/api/movies', async (req, res) => {
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
 
     const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link, release_date FROM movies SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows);
-      });
+      db.all(`SELECT tmdb_id, title, year, link, release_date
+              FROM movies ${whereSql}
+              ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC
+              LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
+        (err, rows) => err ? reject(err) : resolve(rows)
+      );
     });
 
+    // Enriquecemos para obtener poster y géneros (para filtros)
     const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
     let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
 
+    // Filtro por actor en client-data (cruce con créditos de la persona)
     if (actor) {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
@@ -184,7 +190,7 @@ app.get('/api/movie/:id', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.id);
     const row = await new Promise((resolve, reject) => {
-      db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => err ? reject(err) : resolve(row));
+      db.get('SELECT tmdb_id, title, year, link, release_date FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => err ? reject(err) : resolve(row));
     });
     const d = await tmdbGetMovieDetails(tmdbId);
     res.json({ ...d, link: row ? row.link : null });
@@ -198,7 +204,9 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
     const { title, year, link, tmdbId } = req.body;
     if (!link) return res.status(400).json({ error: 'Falta link' });
+
     let tmdb_id = tmdbId, realTitle = title, realYear = year, realRelease = null;
+
     if (tmdb_id && (!realTitle || !realYear)) {
       const d = await tmdbGetMovieDetails(tmdb_id);
       realTitle = realTitle || d.title;
@@ -207,13 +215,21 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
     } else if (!tmdb_id && title) {
       const m = await tmdbSearchMovie(title, year ? parseInt(year) : undefined);
       if (!m) return res.status(404).json({ error: 'No se encontró la película en TMDB' });
-      tmdb_id = m.id; realTitle = m.title; realYear = m.release_date ? parseInt(m.release_date.slice(0,4)) : year || null;
+      tmdb_id = m.id;
+      realTitle = m.title;
+      realYear = m.release_date ? parseInt(m.release_date.slice(0,4)) : year || null;
       realRelease = m.release_date || null;
     }
+
     if (!tmdb_id) return res.status(400).json({ error: 'Falta tmdbId o title' });
+
     await new Promise((resolve, reject) => {
-      db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)', [tmdb_id, realTitle || '', realYear || null, link, realRelease || null], function(err){ return err ? reject(err) : resolve(); });
+      db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
+        [tmdb_id, realTitle || '', realYear || null, link, realRelease || null],
+        function(err){ return err ? reject(err) : resolve(); }
+      );
     });
+
     res.json({ ok: true, tmdb_id, title: realTitle, year: realYear });
   } catch (e) {
     console.error(e);
@@ -225,7 +241,8 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Falta text' });
-    const re = /\[(.+?)\s*\((\d{4})\)\]\((https?:[^\)]+)\)/g;
+
+    const re = /\\[(.+?)\\s*\\((\\d{4})\\)\\]\\((https?:[^\\)]+)\\)/g;
     const out = [], errors = [];
     let match;
     const tasks = [];
@@ -235,18 +252,23 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
       const link = match[3].trim();
       tasks.push({ title, year, link });
     }
+
     for (const t of tasks) {
       try {
         const m = await tmdbSearchMovie(t.title, t.year);
         if (!m) { errors.push({ ...t, error: 'No TMDB match' }); continue; }
         await new Promise((resolve, reject) => {
-          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)', [m.id, m.title, t.year, t.link, m.release_date || null], function(err){ return err ? reject(err) : resolve(); });
+          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
+            [m.id, m.title, t.year, t.link, m.release_date || null],
+            function(err){ return err ? reject(err) : resolve(); }
+          );
         });
         out.push({ tmdb_id: m.id, title: m.title, year: t.year });
       } catch (e) {
         errors.push({ ...t, error: e.message });
       }
     }
+
     res.json({ ok: true, imported: out.length, items: out, errors });
   } catch (e) {
     console.error(e);
@@ -257,7 +279,7 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
     const rows = await new Promise((resolve, reject) => {
-      db.all('SELECT tmdb_id, title, year, link, created_at, release_date FROM movies ORDER BY COALESCE(release_date, printf(\'%04d-01-01\',year), created_at) DESC', (err, rows) => err ? reject(err) : resolve(rows));
+      db.all(\"SELECT tmdb_id, title, year, link, created_at, release_date FROM movies ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC\", (err, rows) => err ? reject(err) : resolve(rows));
     });
     res.json({ count: rows.length, items: rows });
   } catch (e) {
