@@ -1,7 +1,7 @@
 {
   "name": "cine-castellano-hd",
-  "version": "1.0.1",
-  "description": "Mini App de Telegram – Catálogo tipo Netflix con TMDB y enlaces Pixeldrain",
+  "version": "1.1.1",
+  "description": "Mini App de Telegram – Catálogo tipo Netflix con TMDB y enlaces Pixeldrain (desplegable de años)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

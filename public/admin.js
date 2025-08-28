@@ -1,10 +1,8 @@
 function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
 function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
-
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
-
 async function post(url, body){
   const res = await fetch(url, {
     method: 'POST',
@@ -20,7 +18,6 @@ async function post(url, body){
   }
   return res.json();
 }
-
 document.getElementById('addOne').onclick = async ()=>{
   const title = document.getElementById('title').value.trim();
   const year = document.getElementById('year').value.trim();
@@ -32,7 +29,6 @@ document.getElementById('addOne').onclick = async ()=>{
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
-
 document.getElementById('addById').onclick = async ()=>{
   const tmdbId = parseInt(document.getElementById('tmdbId').value.trim());
   const link = document.getElementById('link').value.trim();
@@ -45,7 +41,6 @@ document.getElementById('addById').onclick = async ()=>{
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
-
 document.getElementById('doBulk').onclick = async ()=>{
   const text = document.getElementById('bulk').value;
   const out = document.getElementById('bulkOut');
@@ -56,7 +51,6 @@ document.getElementById('doBulk').onclick = async ()=>{
     console.log(r);
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
-
 document.getElementById('exportBtn').onclick = async ()=>{
   const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
   if(!res.ok) return alert('Error exportando');
