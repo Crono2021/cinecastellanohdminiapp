@@ -98,7 +98,7 @@ app.get('/api/movies', async (req, res) => {
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const orderByColumn = orderBy; // Use orderBy parameter from query
-    const orderDirection = ['ASC', 'DESC'].includes(orderDirection.toUpperCase()) ? orderDirection : 'ASC'; // Default to ASC
+    const validOrderDirection = ['ASC', 'DESC'].includes(orderDirection.toUpperCase()) ? orderDirection : 'ASC'; // Default to ASC if invalid
 
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => err ? reject(err) : resolve(row.c));
@@ -109,7 +109,7 @@ app.get('/api/movies', async (req, res) => {
 
     const rows = await new Promise((resolve, reject) => {
       db.all(
-        `SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY ${orderByColumn} ${orderDirection} LIMIT ? OFFSET ?`,
+        `SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY ${orderByColumn} ${validOrderDirection} LIMIT ? OFFSET ?`,
         [...params, limit, offset],
         (err, rows) => {
           if (err) return reject(err);
