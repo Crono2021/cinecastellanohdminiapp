@@ -58,7 +58,7 @@ app.get('/api/movies', async (req, res) => {
     if (genre) { where.push('year = ?'); params.push(genre); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const validOrderDirection = ['ASC', 'DESC'].includes(orderDirection.toUpperCase()) ? orderDirection : 'ASC'; // Default to ASC if invalid
+    const validOrderDirection = ['ASC', 'DESC'].includes(orderDirection.toUpperCase()) ? orderDirection : 'ASC'; // Ensure valid direction
 
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => err ? reject(err) : resolve(row.c));
