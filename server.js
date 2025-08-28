@@ -20,6 +20,11 @@ const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
 
+// Serve the catalog page (index.html or catalog_updated.html) when the user visits the root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'catalog_updated.html'));
+});
+
 // Create indices for faster searches on 'title' and 'year'
 db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_movies_title ON movies (title)`);
