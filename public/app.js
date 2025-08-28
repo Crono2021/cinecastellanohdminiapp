@@ -19,7 +19,10 @@ async function load(){
   const grid = document.getElementById('grid');
   grid.innerHTML = data.items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
-      <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+      <div class="card-media">
+        <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+        ${item.link ? `<a class="play" href="${item.link}" target="_blank" onclick="event.stopPropagation()" title="Reproducir">▶</a>` : ""}
+      </div>
       <div class="meta">
         <div class="title">${item.title}</div>
         <div class="year">${item.year || ''}</div>
@@ -31,8 +34,7 @@ async function load(){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  const pageInfo = document.getElementById('pageInfo');
-  pageInfo.textContent = `Página ${data.page}`;
+  document.getElementById('pageInfo').textContent = `Página ${data.page}`;
 }
 
 async function openDetails(id){
