@@ -13,10 +13,16 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// --- Config ---
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
 const PORT = process.env.PORT || 3000;
 
+if (!TMDB_API_KEY) {
+  console.warn('[AVISO] TMDB_API_KEY no está definido. Ponlo en Variables de entorno.');
+}
+
+// --- DB (persistencia opcional via DB_PATH) ---
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
 
@@ -29,7 +35,7 @@ db.serialize(() => {
     created_at TEXT DEFAULT (datetime('now')),
     release_date TEXT
   )`);
-  // Si la tabla ya existía, intentamos añadir release_date (ignora si ya está)
+  // Si la tabla existía sin release_date, intentamos añadirla
   db.run(`ALTER TABLE movies ADD COLUMN release_date TEXT`, (err) => {
     if (err && !String(err).includes('duplicate column')) {
       console.warn('ALTER TABLE release_date error:', err.message);
@@ -37,31 +43,7 @@ db.serialize(() => {
   });
 });
 
-// Backfill simple en arranque para rellenar release_date en lotes pequeños
-(async function backfillReleaseDates(){
-  try{
-    const toFill = await new Promise((resolve, reject) => {
-      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
-      });
-    });
-    for (const r of toFill){
-      try{
-        const d = await tmdbGetMovieDetails(r.tmdb_id);
-        if (d && d.release_date){
-          await new Promise((res, rej) => {
-            db.run('UPDATE movies SET release_date = ? WHERE tmdb_id = ?', [d.release_date, r.tmdb_id], (e) => e ? rej(e) : res());
-          });
-        }
-      }catch(e){ /* continuar */ }
-    }
-    if (toFill.length) console.log('Backfill release_date:', toFill.length);
-  }catch(e){
-    console.warn('Backfill release_date error:', e.message);
-  }
-})();
-
+// --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -72,7 +54,13 @@ function adminGuard(req, res, next) {
 async function tmdbSearchMovie(title, year) {
   const url = 'https://api.themoviedb.org/3/search/movie';
   const { data } = await axios.get(url, {
-    params: { api_key: TMDB_API_KEY, query: title, include_adult: true, year: year || undefined, language: 'es-ES' }
+    params: {
+      api_key: TMDB_API_KEY,
+      query: title,
+      include_adult: true,
+      year: year || undefined,
+      language: 'es-ES'
+    }
   });
   if (!data.results || data.results.length === 0) return null;
   if (year) {
@@ -120,14 +108,18 @@ async function tmdbSearchPersonByName(name) {
   return data.results[0];
 }
 
+// --- Static ---
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- API ---
+
+// GET /api/genres
 app.get('/api/genres', async (req, res) => {
   try { res.json(await tmdbGetGenres()); }
   catch (e) { console.error(e); res.status(500).json({ error: 'No se pudieron obtener los géneros' }); }
 });
 
-// Listado con orden por fecha de estreno (más reciente primero)
+// GET /api/movies – filtros: q (título), actor, genre (id TMDB), year (yyyy). Orden: fecha de estreno desc.
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
@@ -136,7 +128,7 @@ app.get('/api/movies', async (req, res) => {
     const params = [];
 
     if (q) { where.push('LOWER(title) LIKE ?'); params.push(`%${String(q).toLowerCase()}%`); }
-    if (year && /^\\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
+    if (year && /^\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -148,20 +140,25 @@ app.get('/api/movies', async (req, res) => {
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
 
     const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link, release_date
-              FROM movies ${whereSql}
-              ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC
-              LIMIT ? OFFSET ?`,
+      db.all(
+        `SELECT tmdb_id, title, year, link, release_date
+         FROM movies ${whereSql}
+         ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC
+         LIMIT ? OFFSET ?`,
         [...params, limit, offset],
         (err, rows) => err ? reject(err) : resolve(rows)
       );
     });
 
-    // Enriquecemos para obtener poster y géneros (para filtros)
+    // Enriquecer con detalles (para póster y filtros por género/actor)
     const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
+    let items = rows.map((r, i) => ({
+      ...r,
+      poster_path: details[i]?.poster_path || null,
+      _details: details[i] || null
+    }));
 
-    // Filtro por actor en client-data (cruce con créditos de la persona)
+    // Filtro por actor (si aplica)
     if (actor) {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
@@ -173,10 +170,12 @@ app.get('/api/movies', async (req, res) => {
       }
     }
 
+    // Filtro por género (si aplica)
     if (genre) {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) === String(genre)));
     }
 
+    // Limpiar _details del payload
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total: count, page: Number(page), pageSize: limit, items });
@@ -186,11 +185,12 @@ app.get('/api/movies', async (req, res) => {
   }
 });
 
+// GET /api/movie/:id – detalle + link
 app.get('/api/movie/:id', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.id);
     const row = await new Promise((resolve, reject) => {
-      db.get('SELECT tmdb_id, title, year, link, release_date FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => err ? reject(err) : resolve(row));
+      db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => err ? reject(err) : resolve(row));
     });
     const d = await tmdbGetMovieDetails(tmdbId);
     res.json({ ...d, link: row ? row.link : null });
@@ -200,6 +200,7 @@ app.get('/api/movie/:id', async (req, res) => {
   }
 });
 
+// POST /api/admin/add – alta 1 a 1 (por título/año o por tmdbId)
 app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
     const { title, year, link, tmdbId } = req.body;
@@ -210,23 +211,24 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
     if (tmdb_id && (!realTitle || !realYear)) {
       const d = await tmdbGetMovieDetails(tmdb_id);
       realTitle = realTitle || d.title;
-      realYear = realYear || (d.release_date ? parseInt(d.release_date.slice(0,4)) : null);
+      realYear = realYear || (d.release_date ? parseInt(d.release_date.slice(0, 4)) : null);
       realRelease = d.release_date || null;
     } else if (!tmdb_id && title) {
       const m = await tmdbSearchMovie(title, year ? parseInt(year) : undefined);
       if (!m) return res.status(404).json({ error: 'No se encontró la película en TMDB' });
       tmdb_id = m.id;
       realTitle = m.title;
-      realYear = m.release_date ? parseInt(m.release_date.slice(0,4)) : year || null;
+      realYear = m.release_date ? parseInt(m.release_date.slice(0, 4)) : year || null;
       realRelease = m.release_date || null;
     }
 
     if (!tmdb_id) return res.status(400).json({ error: 'Falta tmdbId o title' });
 
     await new Promise((resolve, reject) => {
-      db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
+      db.run(
+        'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
         [tmdb_id, realTitle || '', realYear || null, link, realRelease || null],
-        function(err){ return err ? reject(err) : resolve(); }
+        function (err) { return err ? reject(err) : resolve(); }
       );
     });
 
@@ -237,14 +239,16 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
   }
 });
 
+// POST /api/admin/bulkImport – importar por TXT
 app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Falta text' });
 
-    const re = /\\[(.+?)\\s*\\((\\d{4})\\)\\]\\((https?:[^\\)]+)\\)/g;
+    const re = /\[(.+?)\s*\((\d{4})\)\]\((https?:[^\)]+)\)/g;
     const out = [], errors = [];
     let match;
+
     const tasks = [];
     while ((match = re.exec(text)) !== null) {
       const title = match[1].trim();
@@ -258,9 +262,10 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
         const m = await tmdbSearchMovie(t.title, t.year);
         if (!m) { errors.push({ ...t, error: 'No TMDB match' }); continue; }
         await new Promise((resolve, reject) => {
-          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
+          db.run(
+            'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
             [m.id, m.title, t.year, t.link, m.release_date || null],
-            function(err){ return err ? reject(err) : resolve(); }
+            function (err) { return err ? reject(err) : resolve(); }
           );
         });
         out.push({ tmdb_id: m.id, title: m.title, year: t.year });
@@ -276,10 +281,16 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   }
 });
 
+// GET /api/admin/export – exportar catálogo (ordenado por estreno desc)
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
     const rows = await new Promise((resolve, reject) => {
-      db.all(\"SELECT tmdb_id, title, year, link, created_at, release_date FROM movies ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC\", (err, rows) => err ? reject(err) : resolve(rows));
+      db.all(
+        `SELECT tmdb_id, title, year, link, created_at, release_date
+         FROM movies
+         ORDER BY COALESCE(release_date, printf('%04d-01-01',year), created_at) DESC`,
+        (err, rows) => err ? reject(err) : resolve(rows)
+      );
     });
     res.json({ count: rows.length, items: rows });
   } catch (e) {
@@ -287,4 +298,31 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`Cine Castellano HD listo en http://localhost:${PORT}`));
+// --- Backfill de release_date en arranque (hasta 50 filas) ---
+(async function backfillReleaseDates(){
+  try{
+    const need = await new Promise((resolve,reject)=>{
+      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows)=>{
+        if(err) return reject(err);
+        resolve(rows||[]);
+      });
+    });
+    for(const r of need){
+      try{
+        const d = await tmdbGetMovieDetails(r.tmdb_id);
+        if (d && d.release_date){
+          await new Promise((res,rej)=>{
+            db.run('UPDATE movies SET release_date=? WHERE tmdb_id=?', [d.release_date, r.tmdb_id], (e)=> e?rej(e):res());
+          });
+        }
+      }catch(_){ /* ignore */ }
+    }
+    if (need.length) console.log('Backfill release_date completado para', need.length, 'películas');
+  }catch(e){
+    console.warn('Backfill release_date error:', e.message);
+  }
+})();
+
+app.listen(PORT, () => {
+  console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
+});
