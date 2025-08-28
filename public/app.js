@@ -1,7 +1,16 @@
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
-// Estado UI (frontend-only). No tocamos backend.
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', year: '' };
+let state = {
+  page: 1,
+  pageSize: 24,
+  q: '',
+  actor: '',
+  genre: '',
+  year: '',
+  allItems: [],
+  totalPages: 1,
+  totalFiltered: 0
+};
 
 function populateYears(){
   const sel = document.getElementById('yearSelect');
@@ -32,7 +41,6 @@ async function fetchGenres(){
 }
 
 function sortItems(items){
-  // Orden por año desc (si no hay, al final). Si empatan, por título asc.
   return items.slice().sort((a, b) => {
     const ay = a.year ?? 0;
     const by = b.year ?? 0;
@@ -41,17 +49,7 @@ function sortItems(items){
   });
 }
 
-function render(data){
-  // 1) Filtrar por año (cliente)
-  let items = data.items || [];
-  if (state.year && /^\d{4}$/.test(state.year)) {
-    items = items.filter(it => String(it.year || '') === state.year);
-  }
-
-  // 2) Ordenar (cliente) por año desc
-  items = sortItems(items);
-
-  // 3) Pintar
+function renderSlice(items){
   const grid = document.getElementById('grid');
   grid.innerHTML = items.map(item => `
     <div class=\"card\" data-id=\"${item.tmdb_id}\">
@@ -72,25 +70,64 @@ function render(data){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  document.getElementById('pageInfo').textContent = `Página ${data.page}`;
+  document.getElementById('pageInfo').textContent =
+    `Página ${state.page} de ${state.totalPages} · ${state.totalFiltered} películas`;
 }
 
-async function load(){
-  const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
-  if (state.q) params.set('q', state.q);
-  if (state.actor) params.set('actor', state.actor);
-  if (state.genre) params.set('genre', state.genre);
-  // ⚠️ No enviamos "year" al backend para no tocar servidor ni SQL.
+function applyClientFiltersAndRender(){
+  let items = state.allItems || [];
+  if (state.year && /^\\d{4}$/.test(state.year)) {
+    items = items.filter(it => String(it.year || '') === state.year);
+  }
+  items = sortItems(items);
+  state.totalFiltered = items.length;
+  state.totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
+  if (state.page > state.totalPages) state.page = state.totalPages;
+  const start = (state.page - 1) * state.pageSize;
+  const slice = items.slice(start, start + state.pageSize);
+  renderSlice(slice);
+}
 
-  try{
-    const res = await fetch('/api/movies?' + params.toString());
-    if (!res.ok) {
-      document.getElementById('grid').innerHTML = '<div class=\"mute\">Error cargando catálogo.</div>';
-      return;
-    }
-    const data = await res.json();
-    render(data);
-  }catch(_){
+async function fetchAllPages(){
+  const base = new URLSearchParams();
+  if (state.q) base.set('q', state.q);
+  if (state.actor) base.set('actor', state.actor);
+  if (state.genre) base.set('genre', state.genre);
+
+  let page = 1;
+  const pageSize = state.pageSize;
+  let total = 0, pages = 1;
+  const all = [];
+
+  const p1 = new URLSearchParams(base);
+  p1.set('page', String(page));
+  p1.set('pageSize', String(pageSize));
+  const res1 = await fetch('/api/movies?' + p1.toString());
+  if (!res1.ok) throw new Error('No se pudo cargar el catálogo');
+  const d1 = await res1.json();
+  total = d1.total || (d1.items?.length || 0);
+  all.push(...(d1.items || []));
+  pages = Math.max(1, Math.ceil(total / pageSize));
+
+  while (page < pages) {
+    page += 1;
+    const p = new URLSearchParams(base);
+    p.set('page', String(page));
+    p.set('pageSize', String(pageSize));
+    const res = await fetch('/api/movies?' + p.toString());
+    if (!res.ok) break;
+    const dat = await res.json();
+    all.push(...(dat.items || []));
+  }
+
+  state.allItems = all;
+}
+
+async function loadGlobal(){
+  try {
+    await fetchAllPages();
+    applyClientFiltersAndRender();
+  } catch (e) {
     document.getElementById('grid').innerHTML = '<div class=\"mute\">Error cargando catálogo.</div>';
   }
 }
@@ -121,37 +158,36 @@ document.getElementById('modal').addEventListener('click', (e)=>{
   if (e.target.id === 'modal') closeModal();
 });
 
-// Controles
 const q = document.getElementById('q');
 const actor = document.getElementById('actor');
 const genre = document.getElementById('genre');
 const yearSelect = document.getElementById('yearSelect');
 
-document.getElementById('searchBtn').addEventListener('click', ()=>{
+document.getElementById('searchBtn').addEventListener('click', async ()=>{
   state.page = 1;
   state.q = q.value.trim();
   state.actor = actor.value.trim();
   state.genre = genre.value;
+  await loadGlobal();          // recargar todo según q/actor/genre
   state.year = yearSelect.value;
-  load();
+  applyClientFiltersAndRender();
 });
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  state = { page:1, pageSize:24, q:'', actor:'', genre:'', year:'' };
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  state = { page:1, pageSize:24, q:'', actor:'', genre:'', year:'', allItems:[], totalPages:1, totalFiltered:0 };
   q.value=''; actor.value=''; genre.value=''; yearSelect.value='';
-  load();
+  await loadGlobal();
 });
 yearSelect.addEventListener('change', ()=>{
-  state.page = 1; // al cambiar año, volvemos a página 1
+  state.page = 1;
   state.year = yearSelect.value;
-  load();
+  applyClientFiltersAndRender(); // no recarga del server, solo re-filtrar orden global
 });
 document.getElementById('prev').addEventListener('click', ()=>{
-  if (state.page > 1) { state.page--; load(); }
+  if (state.page > 1) { state.page--; applyClientFiltersAndRender(); }
 });
 document.getElementById('next').addEventListener('click', ()=>{
-  state.page++; load();
+  if (state.page < state.totalPages) { state.page++; applyClientFiltersAndRender(); }
 });
 
-// init
 populateYears();
-fetchGenres().then(load);
+fetchGenres().then(loadGlobal);
