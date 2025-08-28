@@ -13,16 +13,12 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// --- Config ---
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
 const PORT = process.env.PORT || 3000;
 
-if (!TMDB_API_KEY) {
-  console.warn('[AVISO] TMDB_API_KEY no está definido. Ponlo en Variables de entorno.');
-}
+if (!TMDB_API_KEY) console.warn('[AVISO] TMDB_API_KEY no está definido.');
 
-// --- DB (persistencia opcional via DB_PATH) ---
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
 
@@ -35,7 +31,6 @@ db.serialize(() => {
     created_at TEXT DEFAULT (datetime('now')),
     release_date TEXT
   )`);
-  // Si la tabla existía sin release_date, intentamos añadirla
   db.run(`ALTER TABLE movies ADD COLUMN release_date TEXT`, (err) => {
     if (err && !String(err).includes('duplicate column')) {
       console.warn('ALTER TABLE release_date error:', err.message);
@@ -43,7 +38,6 @@ db.serialize(() => {
   });
 });
 
-// --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -52,87 +46,89 @@ function adminGuard(req, res, next) {
 }
 
 async function tmdbSearchMovie(title, year) {
-  const url = 'https://api.themoviedb.org/3/search/movie';
-  const { data } = await axios.get(url, {
-    params: {
-      api_key: TMDB_API_KEY,
-      query: title,
-      include_adult: true,
-      year: year || undefined,
-      language: 'es-ES'
+  try {
+    const { data } = await axios.get('https://api.themoviedb.org/3/search/movie', {
+      params: { api_key: TMDB_API_KEY, query: title, include_adult: true, year: year || undefined, language: 'es-ES' }
+    });
+    if (!data.results || data.results.length === 0) return null;
+    if (year) {
+      const exact = data.results.find(r => (r.release_date || '').startsWith(String(year)));
+      if (exact) return exact;
     }
-  });
-  if (!data.results || data.results.length === 0) return null;
-  if (year) {
-    const exact = data.results.find(r => (r.release_date || '').startsWith(String(year)));
-    if (exact) return exact;
+    return data.results[0];
+  } catch (e) {
+    console.warn('TMDB search error:', e?.response?.status || e?.message);
+    return null;
   }
-  return data.results[0];
 }
 
 async function tmdbGetMovieDetails(tmdbId) {
-  const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
-  const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
-  const [detailsResp, creditsResp] = await Promise.all([
-    axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } }),
-    axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } })
-  ]);
-  const d = detailsResp.data;
-  const c = creditsResp.data;
-  return {
-    id: d.id,
-    title: d.title,
-    original_title: d.original_title,
-    overview: d.overview,
-    poster_path: d.poster_path,
-    backdrop_path: d.backdrop_path,
-    release_date: d.release_date,
-    genres: d.genres,
-    runtime: d.runtime,
-    vote_average: d.vote_average,
-    cast: (c.cast || []).slice(0, 10),
-    crew: (c.crew || []).slice(0, 10)
-  };
+  try {
+    const [d, c] = await Promise.all([
+      axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}`, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } }),
+      axios.get(`https://api.themoviedb.org/3/movie/${tmdbId}/credits`, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } })
+    ]);
+    const D = d.data, C = c.data;
+    return {
+      id: D.id,
+      title: D.title,
+      original_title: D.original_title,
+      overview: D.overview,
+      poster_path: D.poster_path,
+      backdrop_path: D.backdrop_path,
+      release_date: D.release_date,
+      genres: D.genres,
+      runtime: D.runtime,
+      vote_average: D.vote_average,
+      cast: (C.cast || []).slice(0, 10),
+      crew: (C.crew || []).slice(0, 10)
+    };
+  } catch (e) {
+    console.warn('TMDB details error:', tmdbId, e?.response?.status || e?.message);
+    return null;
+  }
 }
 
 async function tmdbGetGenres() {
-  const url = `https://api.themoviedb.org/3/genre/movie/list`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-  return data.genres || [];
+  try {
+    const { data } = await axios.get(`https://api.themoviedb.org/3/genre/movie/list`, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+    return data.genres || [];
+  } catch (e) {
+    console.warn('TMDB genres error:', e?.response?.status || e?.message);
+    return [];
+  }
 }
 
 async function tmdbSearchPersonByName(name) {
-  const url = `https://api.themoviedb.org/3/search/person`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES' } });
-  if (!data.results || data.results.length === 0) return null;
-  return data.results[0];
+  try {
+    const { data } = await axios.get(`https://api.themoviedb.org/3/search/person`, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES' } });
+    if (!data.results || data.results.length === 0) return null;
+    return data.results[0];
+  } catch (e) {
+    console.warn('TMDB search person error:', e?.response?.status || e?.message);
+    return null;
+  }
 }
 
-// --- Static ---
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- API ---
-
-// GET /api/genres
 app.get('/api/genres', async (req, res) => {
   try { res.json(await tmdbGetGenres()); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'No se pudieron obtener los géneros' }); }
+  catch (e) { res.status(500).json({ error: 'No se pudieron obtener los géneros' }); }
 });
 
-// GET /api/movies – filtros: q (título), actor, genre (id TMDB), year (yyyy). Orden: fecha de estreno desc.
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
 
     const where = [];
     const params = [];
-
     if (q) { where.push('LOWER(title) LIKE ?'); params.push(`%${String(q).toLowerCase()}%`); }
     if (year && /^\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const count = await new Promise((resolve, reject) => {
+    const total = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => err ? reject(err) : resolve(row.c));
     });
 
@@ -150,42 +146,40 @@ app.get('/api/movies', async (req, res) => {
       );
     });
 
-    // Enriquecer con detalles (para póster y filtros por género/actor)
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r, i) => ({
-      ...r,
-      poster_path: details[i]?.poster_path || null,
-      _details: details[i] || null
-    }));
+    const settled = await Promise.allSettled(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+    const details = settled.map(x => x.status === 'fulfilled' ? x.value : null);
 
-    // Filtro por actor (si aplica)
+    let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
+
     if (actor) {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
-        const { data } = await axios.get(`https://api.themoviedb.org/3/person/${person.id}/movie_credits`, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
-        items = items.filter(it => ids.has(it.tmdb_id));
+        try {
+          const { data } = await axios.get(`https://api.themoviedb.org/3/person/${person.id}/movie_credits`, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+          const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
+          items = items.filter(it => ids.has(it.tmdb_id));
+        } catch (e) {
+          console.warn('TMDB credits error:', e?.response?.status || e?.message);
+          items = [];
+        }
       } else {
         items = [];
       }
     }
 
-    // Filtro por género (si aplica)
     if (genre) {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) === String(genre)));
     }
 
-    // Limpiar _details del payload
     items = items.map(({ _details, ...rest }) => rest);
 
-    res.json({ total: count, page: Number(page), pageSize: limit, items });
+    res.json({ total, page: Number(page), pageSize: limit, items });
   } catch (e) {
-    console.error(e);
+    console.error('List error:', e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
   }
 });
 
-// GET /api/movie/:id – detalle + link
 app.get('/api/movie/:id', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.id);
@@ -195,12 +189,10 @@ app.get('/api/movie/:id', async (req, res) => {
     const d = await tmdbGetMovieDetails(tmdbId);
     res.json({ ...d, link: row ? row.link : null });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
   }
 });
 
-// POST /api/admin/add – alta 1 a 1 (por título/año o por tmdbId)
 app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
     const { title, year, link, tmdbId } = req.body;
@@ -210,9 +202,11 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
     if (tmdb_id && (!realTitle || !realYear)) {
       const d = await tmdbGetMovieDetails(tmdb_id);
-      realTitle = realTitle || d.title;
-      realYear = realYear || (d.release_date ? parseInt(d.release_date.slice(0, 4)) : null);
-      realRelease = d.release_date || null;
+      if (d) {
+        realTitle = realTitle || d.title;
+        realYear = realYear || (d.release_date ? parseInt(d.release_date.slice(0, 4)) : null);
+        realRelease = d.release_date || null;
+      }
     } else if (!tmdb_id && title) {
       const m = await tmdbSearchMovie(title, year ? parseInt(year) : undefined);
       if (!m) return res.status(404).json({ error: 'No se encontró la película en TMDB' });
@@ -228,27 +222,23 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
       db.run(
         'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
         [tmdb_id, realTitle || '', realYear || null, link, realRelease || null],
-        function (err) { return err ? reject(err) : resolve(); }
+        (err) => err ? reject(err) : resolve()
       );
     });
 
     res.json({ ok: true, tmdb_id, title: realTitle, year: realYear });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: 'No se pudo añadir' });
   }
 });
 
-// POST /api/admin/bulkImport – importar por TXT
 app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Falta text' });
-
     const re = /\[(.+?)\s*\((\d{4})\)\]\((https?:[^\)]+)\)/g;
     const out = [], errors = [];
     let match;
-
     const tasks = [];
     while ((match = re.exec(text)) !== null) {
       const title = match[1].trim();
@@ -256,7 +246,6 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
       const link = match[3].trim();
       tasks.push({ title, year, link });
     }
-
     for (const t of tasks) {
       try {
         const m = await tmdbSearchMovie(t.title, t.year);
@@ -265,7 +254,7 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
           db.run(
             'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, release_date) VALUES (?, ?, ?, ?, ?)',
             [m.id, m.title, t.year, t.link, m.release_date || null],
-            function (err) { return err ? reject(err) : resolve(); }
+            (err) => err ? reject(err) : resolve()
           );
         });
         out.push({ tmdb_id: m.id, title: m.title, year: t.year });
@@ -273,15 +262,12 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
         errors.push({ ...t, error: e.message });
       }
     }
-
     res.json({ ok: true, imported: out.length, items: out, errors });
   } catch (e) {
-    console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
   }
 });
 
-// GET /api/admin/export – exportar catálogo (ordenado por estreno desc)
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
     const rows = await new Promise((resolve, reject) => {
@@ -298,24 +284,37 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
   }
 });
 
-// --- Backfill de release_date en arranque (hasta 50 filas) ---
-(async function backfillReleaseDates(){
+// Debug
+app.get('/api/debug/dbcount', async (req, res) => {
+  try {
+    const c = await new Promise((resolve,reject)=>{
+      db.get('SELECT COUNT(*) as c FROM movies', [], (err, row)=> err?reject(err):resolve(row.c));
+    });
+    res.json({ count: c, db: DB_PATH });
+  } catch (e) { res.status(500).json({ error: 'dbg' }); }
+});
+app.get('/api/debug/raw', async (req, res) => {
+  try {
+    const rows = await new Promise((resolve,reject)=>{
+      db.all('SELECT tmdb_id,title,year,link,created_at,release_date FROM movies ORDER BY created_at DESC LIMIT 50', [], (err, rows)=> err?reject(err):resolve(rows));
+    });
+    res.json({ items: rows });
+  } catch (e) { res.status(500).json({ error: 'dbg' }); }
+});
+
+// Backfill
+;(async function backfillReleaseDates(){
   try{
     const need = await new Promise((resolve,reject)=>{
-      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows)=>{
-        if(err) return reject(err);
-        resolve(rows||[]);
-      });
+      db.all('SELECT tmdb_id FROM movies WHERE release_date IS NULL OR release_date = "" LIMIT 50', (err, rows)=> err?reject(err):resolve(rows||[]));
     });
-    for(const r of need){
-      try{
-        const d = await tmdbGetMovieDetails(r.tmdb_id);
-        if (d && d.release_date){
-          await new Promise((res,rej)=>{
-            db.run('UPDATE movies SET release_date=? WHERE tmdb_id=?', [d.release_date, r.tmdb_id], (e)=> e?rej(e):res());
-          });
-        }
-      }catch(_){ /* ignore */ }
+    for (const r of need){
+      const d = await tmdbGetMovieDetails(r.tmdb_id);
+      if (d && d.release_date){
+        await new Promise((res,rej)=>{
+          db.run('UPDATE movies SET release_date=? WHERE tmdb_id=?', [d.release_date, r.tmdb_id], (e)=> e?rej(e):res());
+        });
+      }
     }
     if (need.length) console.log('Backfill release_date completado para', need.length, 'películas');
   }catch(e){
@@ -323,6 +322,4 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
   }
 })();
 
-app.listen(PORT, () => {
-  console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Cine Castellano HD listo en http://localhost:${PORT}`));
