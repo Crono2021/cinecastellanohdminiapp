@@ -1,5 +1,5 @@
 const imgBase = 'https://image.tmdb.org/t/p/w342';
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
+let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', year: '' };
 
 async function fetchGenres(){
   const res = await fetch('/api/genres');
@@ -13,6 +13,7 @@ async function load(){
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
+  if (state.year && /^\d{4}$/.test(state.year)) params.set('year', state.year);
   const res = await fetch('/api/movies?' + params.toString());
   const data = await res.json();
 
@@ -61,11 +62,13 @@ document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id
 const q = document.getElementById('q');
 const actor = document.getElementById('actor');
 const genre = document.getElementById('genre');
+const yearSelect = document.getElementById('yearSelect');
 
-document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); });
-document.getElementById('resetBtn').addEventListener('click', ()=>{ state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; load(); });
+document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; state.year=yearSelect ? yearSelect.value : ''; load(); });
+document.getElementById('resetBtn').addEventListener('click', ()=>{ state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; if(yearSelect) yearSelect.value=''; state.year=''; load(); });
 
 document.getElementById('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; load(); }});
 document.getElementById('next').addEventListener('click', ()=>{ state.page++; load(); });
 
+populateYears();
 fetchGenres().then(load);
