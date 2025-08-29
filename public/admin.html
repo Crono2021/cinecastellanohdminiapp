@@ -1,45 +1,102 @@
-<html>
-  <head>
-    <title>Panel de Administración - Cine Castellano HD</title>
-  </head>
-  <body>
-    <h1>Panel de Administración</h1>
-    <h2>Añadir películas en bloque</h2>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CCHD · Admin</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style> .box{background:#14151c;border:1px solid #282a36;border-radius:12px;padding:16px;margin:16px 0} </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🔐 Admin – Cine Castellano HD</h2>
+    <div class="box">
+      <label>Token de administrador</label>
+      <input id="token" placeholder="ADMIN_TOKEN" />
+      <button id="saveToken">Guardar</button>
+      <small class="mute">Se guarda en este navegador.</small>
+    </div>
+    <div class="box">
+      <h3>Alta rápida (1 a 1)</h3>
+      <div class="hstack">
+        <input id="title" placeholder="Título" style="flex:1" />
+        <input id="year" placeholder="Año (yyyy)" style="width:120px" />
+        <input id="link" placeholder="Enlace Pixeldrain" style="flex:1" />
+        <button id="addOne">Añadir</button>
+      </div>
+      <small class="mute">TIP: si conoces el TMDB ID, deja Título/Año vacíos y usa el botón avanzado.</small>
+      <div class="hstack" style="margin-top:8px">
+        <input id="tmdbId" placeholder="TMDB ID (opcional)" style="width:160px" />
+        <button id="addById">Añadir por TMDB ID</button>
+      </div>
+      <div id="oneOut" class="mute"></div>
+    </div>
+    <div class="box">
+      <h3>Importar pegando tu TXT</h3>
+      <textarea id="bulk" rows="8" placeholder="Pega aquí líneas tipo: [Título (1999)](https://pixeldrain.net/...)&#10;Puedes pegar todo tu fichero."></textarea>
+      <div class="hstack"><button id="doBulk">Importar</button><div id="bulkOut" class="mute"></div></div>
+    </div>
+    <div class="box">
+      <h3>Eliminar película</h3>
+      <div class="hstack">
+        <input id="deleteTmdbId" placeholder="TMDB ID a eliminar" style="width:160px" />
+        <button id="deleteMovie">Eliminar</button>
+      </div>
+      <div id="deleteOut" class="mute"></div>
+    </div>
+    <div class="box">
+      <h3>Exportar catálogo</h3>
+      <button id="exportBtn">Descargar JSON</button>
+    </div>
+  </div>
+  <script>
+    // Handle the bulk import
+    document.getElementById('doBulk').addEventListener('click', async function() {
+      const bulkText = document.getElementById('bulk').value.trim();
+      if (!bulkText) {
+        alert('Por favor, ingresa el texto con las películas');
+        return;
+      }
 
-    <form id="bulkImportForm">
-      <textarea id="moviesText" rows="20" cols="50" placeholder="Pega las películas aquí, una por línea. Ejemplo: [Título (Año)](Enlace)..."></textarea><br><br>
-      <button type="submit">Importar Películas</button>
-    </form>
+      const lines = bulkText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+      const movies = [];
 
-    <div id="result"></div>
+      for (const line of lines) {
+        const regex = /\[(.*?)\]\((https:\/\/pixeldrain\.net\/[^\)]+)\)/;
+        const match = line.match(regex);
+        if (match) {
+          const title = match[1];
+          const link = match[2];
+          const yearMatch = title.match(/\((\d{4})\)/);
+          const year = yearMatch ? yearMatch[1] : null;
 
-    <script>
-      document.getElementById('bulkImportForm').addEventListener('submit', async function (event) {
-        event.preventDefault();
-
-        const text = document.getElementById('moviesText').value.trim();
-        if (!text) {
-          alert('Por favor, pega el texto con las películas');
-          return;
+          movies.push({ title, year, link });
         }
+      }
 
-        // Send the text to the backend
-        const response = await fetch('/api/admin/bulkImport', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer YOUR_ADMIN_TOKEN', // Replace with the actual token
-          },
-          body: JSON.stringify({ text })
-        });
+      if (movies.length === 0) {
+        alert('No se encontró ninguna película válida en el texto.');
+        return;
+      }
 
-        const data = await response.json();
-        let result = 'Películas importadas: ' + data.imported + '<br>';
-        if (data.errors.length > 0) {
-          result += 'Errores: <br>' + data.errors.join('<br>');
-        }
-        document.getElementById('result').innerHTML = result;
+      // Send the movies to the backend
+      const response = await fetch('/api/admin/bulkImport', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + document.getElementById('token').value, // Token from input
+        },
+        body: JSON.stringify({ text: bulkText })
       });
-    </script>
-  </body>
+
+      const data = await response.json();
+      let result = 'Películas importadas: ' + data.imported + '<br>';
+      if (data.errors.length > 0) {
+        result += 'Errores: <br>' + data.errors.join('<br>');
+      }
+      document.getElementById('bulkOut').innerHTML = result;
+    });
+  </script>
+  <script src="/admin.js"></script>
+</body>
 </html>
