@@ -1,69 +1,86 @@
-function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
-function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
 
-const tokenInput = document.getElementById('token');
-tokenInput.value = getToken();
-document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
+// Get token and assign it to request headers
+document.getElementById('saveToken').addEventListener('click', function () {
+  localStorage.setItem('adminToken', document.getElementById('token').value);
+});
 
-async function post(url, body){
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + getToken()
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok){
-    const e = await res.json().catch(()=>({error:'Error desconocido'}));
-    throw new Error(e.error||('HTTP '+res.status));
-  }
-  return res.json();
-}
-
-document.getElementById('addOne').onclick = async ()=>{
+// Handle adding a single movie by TMDB ID or by title and year
+document.getElementById('addOne').addEventListener('click', async function () {
   const title = document.getElementById('title').value.trim();
   const year = document.getElementById('year').value.trim();
   const link = document.getElementById('link').value.trim();
-  const out = document.getElementById('oneOut');
-  out.textContent = 'Añadiendo...';
-  try{
-    const r = await post('/api/admin/add', { title, year: year?parseInt(year):undefined, link });
-    out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
-};
+  const tmdbId = document.getElementById('tmdbId').value.trim();
 
-document.getElementById('addById').onclick = async ()=>{
-  const tmdbId = parseInt(document.getElementById('tmdbId').value.trim());
-  const link = document.getElementById('link').value.trim();
-  const out = document.getElementById('oneOut');
-  if (!tmdbId) return alert('TMDB ID requerido');
-  if (!link) return alert('Link requerido');
-  out.textContent = 'Añadiendo por ID...';
-  try{
-    const r = await post('/api/admin/add', { tmdbId, link });
-    out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
-};
+  if (tmdbId) {
+    const response = await fetch('/api/admin/add', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('adminToken'),
+      },
+      body: JSON.stringify({ tmdbId }),
+    });
+    const data = await response.json();
+    document.getElementById('oneOut').innerText = data.message || 'Película añadida exitosamente';
+  } else if (title && year && link) {
+    const response = await fetch('/api/admin/add', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + localStorage.getItem('adminToken'),
+      },
+      body: JSON.stringify({ title, year, link }),
+    });
+    const data = await response.json();
+    document.getElementById('oneOut').innerText = data.message || 'Película añadida exitosamente';
+  } else {
+    alert('Por favor, complete los campos necesarios');
+  }
+});
 
-document.getElementById('doBulk').onclick = async ()=>{
-  const text = document.getElementById('bulk').value;
-  const out = document.getElementById('bulkOut');
-  out.textContent = 'Importando...';
-  try{
-    const r = await post('/api/admin/bulkImport', { text });
-    out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
-    console.log(r);
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
-};
+// Handle bulk movie import
+document.getElementById('doBulk').addEventListener('click', async function () {
+  const bulkText = document.getElementById('bulk').value.trim();
+  if (!bulkText) {
+    alert('Por favor, ingresa el texto con las películas');
+    return;
+  }
 
-document.getElementById('exportBtn').onclick = async ()=>{
-  const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
-  if(!res.ok) return alert('Error exportando');
-  const data = await res.json();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'cchd_export.json'; a.click();
-  URL.revokeObjectURL(url);
-};
+  const lines = bulkText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  const movies = [];
+
+  for (const line of lines) {
+    const regex = /\[(.*?)\]\((https:\/\/pixeldrain\.net\/[^\)]+)\)/;
+    const match = line.match(regex);
+    if (match) {
+      const title = match[1];
+      const link = match[2];
+      const yearMatch = title.match(/\((\d{4})\)/);
+      const year = yearMatch ? yearMatch[1] : null;
+
+      movies.push({ title, year, link });
+    }
+  }
+
+  if (movies.length === 0) {
+    alert('No se encontró ninguna película válida en el texto.');
+    return;
+  }
+
+  // Send the movies to the backend
+  const response = await fetch('/api/admin/bulkImport', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + localStorage.getItem('adminToken'), // Token from localStorage
+    },
+    body: JSON.stringify({ text: bulkText })
+  });
+
+  const data = await response.json();
+  let result = 'Películas importadas: ' + data.imported + '<br>';
+  if (data.errors.length > 0) {
+    result += 'Errores: <br>' + data.errors.join('<br>');
+  }
+  document.getElementById('bulkOut').innerHTML = result;
+});
