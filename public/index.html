@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cine Castellano HD</title>
   <link rel="stylesheet" href="/styles.css" />
-  <style>.pagination{display:none}</style>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -14,16 +13,21 @@
       <h2 style="margin:0">🎬 Cine Castellano HD</h2>
       <input id="q" placeholder="Buscar por título..." style="flex:1" />
       <input id="actor" placeholder="...o por actor/actriz" />
-      <select id="yearSelect" style="width:120px"></select>
       <select id="genre"></select>
       <button id="searchBtn">Buscar</button>
       <button id="resetBtn">Vista global</button>
     </div>
   </header>
+
   <div class="container">
-    <div id="info" class="mute" style="margin-top:8px;font-size:.9rem;"></div>
     <div id="grid" class="grid"></div>
+    <div class="pagination">
+      <button id="prev">◀︎</button>
+      <small id="pageInfo"></small>
+      <button id="next">▶︎</button>
+    </div>
   </div>
+
   <div id="modal" class="modal">
     <div class="modal-card">
       <div class="modal-header">
@@ -39,17 +43,21 @@
             <div id="modalGenres"></div>
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
-            <p><a id="watchLink" class="link" target="_blank">▶ Ver en Pixeldrain</a></p>
+            <p>
+              <a id="watchLink" class="link" target="_blank">▶ Ver en Pixeldrain</a>
+            </p>
           </div>
         </div>
       </div>
     </div>
   </div>
+
   <footer>
     <div class="container">
       <small class="mute">® Cine Castellano HD — datos de TMDB. Esta mini app no está afiliada ni respaldada por TMDB.</small>
     </div>
   </footer>
+
   <script src="/app.js"></script>
 </body>
 </html>
