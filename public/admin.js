@@ -1,8 +1,10 @@
 function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
 function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
+
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
+
 async function post(url, body){
   const res = await fetch(url, {
     method: 'POST',
@@ -11,20 +13,6 @@ async function post(url, body){
       'Authorization': 'Bearer ' + getToken()
     },
     body: JSON.stringify(body)
-  });
-  if (!res.ok){
-    const e = await res.json().catch(()=>({error:'Error desconocido'}));
-    throw new Error(e.error||('HTTP '+res.status));
-  }
-  return res.json();
-}
-
-async function deleteRequest(url){
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': 'Bearer ' + getToken()
-    }
   });
   if (!res.ok){
     const e = await res.json().catch(()=>({error:'Error desconocido'}));
@@ -78,15 +66,4 @@ document.getElementById('exportBtn').onclick = async ()=>{
   const a = document.createElement('a');
   a.href = url; a.download = 'cchd_export.json'; a.click();
   URL.revokeObjectURL(url);
-};
-
-document.getElementById('deleteMovie').onclick = async ()=>{
-  const tmdbId = document.getElementById('deleteTmdbId').value.trim();
-  const out = document.getElementById('deleteOut');
-  if (!tmdbId) return alert('Por favor ingresa el TMDB ID de la película que deseas eliminar.');
-  out.textContent = 'Eliminando...';
-  try{
-    const r = await deleteRequest(`/api/admin/delete/${tmdbId}`);
-    out.textContent = `OK · Película con TMDB ID ${tmdbId} eliminada.`;
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
