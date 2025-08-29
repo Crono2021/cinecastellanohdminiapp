@@ -49,54 +49,6 @@
       <button id="exportBtn">Descargar JSON</button>
     </div>
   </div>
-  <script>
-    // Handle the bulk import
-    document.getElementById('doBulk').addEventListener('click', async function() {
-      const bulkText = document.getElementById('bulk').value.trim();
-      if (!bulkText) {
-        alert('Por favor, ingresa el texto con las películas');
-        return;
-      }
-
-      const lines = bulkText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-      const movies = [];
-
-      for (const line of lines) {
-        const regex = /\[(.*?)\]\((https:\/\/pixeldrain\.net\/[^\)]+)\)/;
-        const match = line.match(regex);
-        if (match) {
-          const title = match[1];
-          const link = match[2];
-          const yearMatch = title.match(/\((\d{4})\)/);
-          const year = yearMatch ? yearMatch[1] : null;
-
-          movies.push({ title, year, link });
-        }
-      }
-
-      if (movies.length === 0) {
-        alert('No se encontró ninguna película válida en el texto.');
-        return;
-      }
-
-      // Send the movies to the backend
-      const response = await fetch('/api/admin/bulkImport', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + document.getElementById('token').value, // Token from input
-        },
-        body: JSON.stringify({ text: bulkText })
-      });
-
-      const data = await response.json();
-      let result = 'Películas importadas: ' + data.imported + '<br>';
-      if (data.errors.length > 0) {
-        result += 'Errores: <br>' + data.errors.join('<br>');
-      }
-      document.getElementById('bulkOut').innerHTML = result;
-    });
-  </script>
   <script src="/admin.js"></script>
 </body>
 </html>
