@@ -26,15 +26,8 @@ button{cursor:pointer;box-shadow:var(--shadow);}
 .link{display:inline-flex;align-items:center;gap:8px;background:#1b5e20;border:1px solid #2d7b30}
 small.mute{opacity:.6}
 footer{border-top:1px solid #222;color:#aaa}
+
 @media (max-width:760px){
   .detail{grid-template-columns:1fr}
   .poster-lg{width:100%}
 }
-/* Play button overlay on cards */ .card-media{position:relative} .play{position:absolute;right:8px;bottom:8px;border-radius:9999px;padding:10px 12px;border:1px solid #2d7b30;background:#1b5e20;color:#fff;text-decoration:none;font-weight:700} .play:hover{transform:scale(1.05)}
-
-/* ---- Modal scroll fix ---- */
-.modal-card{max-height:92vh;display:flex;flex-direction:column}
-.modal-header{position:sticky;top:0;background:#12131a;z-index:2}
-.modal-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
-/* Optional: prevent background overscroll while modal open */
-.modal.open{overscroll-behavior:contain}
