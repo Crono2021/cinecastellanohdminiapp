@@ -127,8 +127,7 @@ app.get('/api/movies', async (req, res) => {
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
-      params.push(`%${String(q).toLowerCase()}
-    // Apply actor filter BEFORE pagination using TMDB person movie credits
+      params.push(`%${String(q).toLowerCase()}%`);// Apply actor filter BEFORE pagination using TMDB person movie credits
     if (genre) {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
