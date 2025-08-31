@@ -396,6 +396,38 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
   }
 });
 
+
+
+// POST /api/admin/deleteById
+app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
+  try {
+    const { tmdb_id } = req.body;
+    const id = Number(tmdb_id);
+    if (!id || Number.isNaN(id)) return res.status(400).json({ error: 'tmdb_id inválido' });
+
+    // Fetch movie info (optional, for UI feedback)
+    const movie = await new Promise((resolve, reject) => {
+      db.get('SELECT tmdb_id, title, year FROM movies WHERE tmdb_id = ?', [id], (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      });
+    });
+
+    // Delete
+    const deleted = await new Promise((resolve, reject) => {
+      db.run('DELETE FROM movies WHERE tmdb_id = ?', [id], function(err){
+        if (err) return reject(err);
+        resolve(this.changes || 0);
+      });
+    });
+
+    res.json({ deleted, match: movie });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo eliminar por ID' });
+  }
+});
+
 // GET /api/admin/export
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {

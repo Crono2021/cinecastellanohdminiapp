@@ -86,3 +86,29 @@ document.getElementById('deleteBtn').onclick = async ()=>{
     out.textContent = 'Error: ' + e.message;
   }
 };
+
+
+/* Delete by TMDB ID */
+(function(){
+  const btn = document.getElementById('deleteByIdBtn');
+  if (!btn) return;
+  btn.onclick = async ()=>{
+    const out = document.getElementById('deleteByIdOut');
+    const input = document.getElementById('delIdInput');
+    const raw = input ? input.value.trim() : '';
+    const id = Number(raw);
+    if (!raw || Number.isNaN(id)){ out.textContent = 'Introduce un TMDB ID válido'; return; }
+    out.textContent = 'Eliminando...';
+    try{
+      const r = await post('/api/admin/deleteById', { tmdb_id: id });
+      if (r.deleted > 0){
+        const label = r.match ? (r.match.title + (r.match.year ? ' ('+r.match.year+')' : '')) : ('ID ' + id);
+        out.textContent = `Eliminado: ${label}`;
+      }else{
+        out.textContent = 'No se encontró ninguna película con ese ID';
+      }
+    }catch(e){
+      out.textContent = 'Error: ' + (e?.message || e);
+    }
+  };
+})();

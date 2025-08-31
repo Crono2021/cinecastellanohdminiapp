@@ -54,7 +54,17 @@
     <div class="box">
       <h3>Exportar catálogo</h3>
       <button id="exportBtn">Descargar JSON</button>
+    
+    <div class="box">
+      <h3>🗑️ Eliminar por TMDB ID</h3>
+      <div class="hstack">
+        <input id="delIdInput" placeholder="TMDB ID (número)" inputmode="numeric" style="flex:1" />
+        <button id="deleteByIdBtn">Eliminar</button>
+      </div>
+      <small class="mute">Elimina directamente por <b>tmdb_id</b>. Requiere token admin.</small>
+      <div id="deleteByIdOut" class="mute" style="margin-top:8px"></div>
     </div>
+    
   </div>
   <script src="/admin.js"></script>
 </body>
