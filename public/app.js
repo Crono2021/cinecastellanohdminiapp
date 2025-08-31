@@ -81,7 +81,8 @@ async function load(){
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
-  const res = await fetch('/api/movies?' + params.toString());
+    const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/movies?' + params.toString();
+  const res = await fetch(endpoint);
   const data = await res.json();
 
   grid.innerHTML = data.items.map(item => `
@@ -149,3 +150,13 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 fetchGenres().then(load);
+
+
+/* Enter on actor triggers search */
+(function(){
+  const actor = document.getElementById('actor');
+  const btn = document.getElementById('searchBtn');
+  if (actor && btn){
+    actor.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ btn.click(); } });
+  }
+})();
