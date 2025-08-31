@@ -149,24 +149,3 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 fetchGenres().then(load);
-
-
-// Ensure search includes actor input reliably
-(function(){
-  const q = document.getElementById('q');
-  const actor = document.getElementById('actor');
-  const btn = document.getElementById('searchBtn');
-  if (btn) {
-    btn.addEventListener('click', ()=>{ 
-      state.page = 1; 
-      state.q = q ? q.value.trim() : ''; 
-      state.actor = actor ? actor.value.trim() : ''; 
-      state.clientGenreItems = null; // fall back to server pagination when searching
-      load(); 
-    });
-  }
-  // Allow pressing Enter in actor field to trigger search
-  if (actor) {
-    actor.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { btn?.click(); } });
-  }
-})();
