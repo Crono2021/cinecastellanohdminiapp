@@ -1,0 +1,21 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Importar Películas en Bloque</title>
+    <script src="bulk.js" defer></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; }
+        textarea { width: 100%; height: 300px; }
+        input, button { margin: 10px 0; padding: 10px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h1>Importar Películas en Bloque</h1>
+    <input type="password" id="token" placeholder="Token de administrador">
+    <textarea id="bulkInput" placeholder="Pega aquí las películas en formato: Título, año, enlace"></textarea>
+    <button onclick="submitBulk()">Importar</button>
+    <div id="response"></div>
+</body>
+</html>
