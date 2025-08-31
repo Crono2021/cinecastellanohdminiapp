@@ -149,3 +149,13 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 fetchGenres().then(load);
+
+
+/* Enter on actor triggers search */
+(function(){
+  const actor = document.getElementById('actor');
+  const btn = document.getElementById('searchBtn');
+  if (actor && btn){
+    actor.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ btn.click(); } });
+  }
+})();
