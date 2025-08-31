@@ -4,24 +4,41 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
 
-async function fetchAllPagesForGenre(genreId, maxPages=200){
+async function fetchAllPagesForGenre(genreId){
   const collected = [];
   const seen = new Set();
-  let consecutiveEmpty = 0;
 
-  for (let p=1; p<=maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
+  // Probe to discover total and effective server pageSize cap
+  let effPageSize = state.pageSize || 24;
+  let total = 0;
+  try {
+    const probe = await fetch('/api/movies?page=1&pageSize=1');
+    if (probe.ok){
+      const meta = await probe.json();
+      effPageSize = Number(meta.pageSize) || effPageSize;
+      total = Number(meta.total) || 0;
+    }
+  } catch (_) {}
+
+  const totalPages = Math.max(1, Math.ceil(total / effPageSize)) || 1;
+
+  for (let p=1; p<=totalPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize: effPageSize, genre: genreId });
     const res = await fetch('/api/movies?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
-    const before = collected.length;
-
-    (data.items || []).forEach(it => {
+    const items = Array.isArray(data.items) ? data.items : [];
+    for (const it of items){
       const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
       if (!seen.has(id)){
         seen.add(id);
         collected.push(it);
       }
+    }
+  }
+  return collected;
+}
+
     });
 
     if ((data.items||[]).length === 0){
