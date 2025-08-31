@@ -67,3 +67,22 @@ document.getElementById('exportBtn').onclick = async ()=>{
   a.href = url; a.download = 'cchd_export.json'; a.click();
   URL.revokeObjectURL(url);
 };
+
+
+document.getElementById('deleteBtn').onclick = async ()=>{
+  const title = document.getElementById('delTitle').value.trim();
+  const year = document.getElementById('delYear').value.trim();
+  const out = document.getElementById('deleteOut');
+  if (!title) { out.textContent = 'Escribe un título'; return; }
+  out.textContent = 'Eliminando...';
+  try{
+    const r = await post('/api/admin/delete', { title, year: year || null });
+    if (r.deleted > 0){
+      out.textContent = `Eliminadas: ${r.deleted}. (${r.matches.map(m=>m.title + (m.year? ' ('+m.year+')':'' )).join(' · ')})`;
+    }else{
+      out.textContent = 'No se encontraron coincidencias';
+    }
+  }catch(e){
+    out.textContent = 'Error: ' + e.message;
+  }
+};
