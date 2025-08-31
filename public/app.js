@@ -40,6 +40,58 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
 }
 
 
+// Fallback: if server-side filtered sweep returns 0, sweep full catalog and filter by TMDB details client-side
+async function fallbackCollectByDetails(genreId){
+  const collected = [];
+  const seen = new Set();
+
+  // Discover catalog size & pageSize real del servidor
+  const probeRes = await fetch('/api/movies?page=1&pageSize=1');
+  if (!probeRes.ok) return collected;
+  const probe = await probeRes.json();
+  const total = Number(probe.total) || 0;
+  const effPageSize = Number(probe.pageSize) || 24;
+  const pages = Math.max(1, Math.ceil(total / effPageSize));
+
+  // 1) Recolecta todos los items (solo id básicos) sin filtrar por género
+  const allItems = [];
+  for (let p=1; p<=pages; p++){
+    const res = await fetch(`/api/movies?page=${p}&pageSize=${effPageSize}`);
+    if (!res.ok) break;
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    for (const it of items){
+      const id = it.tmdb_id ?? it.id ?? null;
+      if (id && !seen.has(id)){ seen.add(id); allItems.push({ id, base: it }); }
+    }
+  }
+
+  // 2) Trae detalles por lotes y filtra por genreId (TMDB)
+  const batchSize = 8; // requests en paralelo
+  for (let i=0; i<allItems.length; i+=batchSize){
+    const batch = allItems.slice(i, i+batchSize);
+    const promises = batch.map(({id}) => fetch(`/api/movie/${id}`).then(r=>r.ok?r.json():null).catch(()=>null));
+    const detailsList = await Promise.all(promises);
+    detailsList.forEach((d, idx) => {
+      if (!d) return;
+      const has = (d.genres||[]).some(g => String(g.id) === String(genreId));
+      if (has){
+        // reconstruir item mínimo para el grid
+        collected.push({
+          tmdb_id: d.id,
+          title: d.title,
+          year: d.release_date ? Number(String(d.release_date).slice(0,4)) : (d.year||''),
+          poster_path: d.poster_path || '',
+        });
+      }
+    });
+  }
+
+  return collected;
+}
+
+
+
 async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
@@ -140,9 +192,14 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   state.genre = e.target.value || '';
   if (state.genre){
-    // Build the aggregated list across all pages
     document.getElementById('pageInfo').textContent = 'Cargando…';
-    state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+    // 1º intento: barrido con filtro del servidor (rápido)
+    let items = await fetchAllPagesForGenre(state.genre);
+    // Fallback si no hay resultados: barrido total + filtro por detalles TMDB en cliente
+    if (!items || items.length === 0){
+      items = await fallbackCollectByDetails(state.genre);
+    }
+    state.clientGenreItems = items;
   } else {
     state.clientGenreItems = null;
   }
