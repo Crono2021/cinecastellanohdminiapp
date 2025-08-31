@@ -1,6 +1,45 @@
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
+// --- Client-side aggregation for full-catalog genre filtering ---
+state.clientGenreItems = null;
+
+async function fetchAllPagesForGenre(genreId, maxPages=200){
+  const collected = [];
+  const seen = new Set();
+  let consecutiveEmpty = 0;
+
+  for (let p=1; p<=maxPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
+    const res = await fetch('/api/movies?' + params.toString());
+    if (!res.ok) break;
+    const data = await res.json();
+    const before = collected.length;
+
+    (data.items || []).forEach(it => {
+      const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
+      if (!seen.has(id)){
+        seen.add(id);
+        collected.push(it);
+      }
+    });
+
+    if ((data.items||[]).length === 0){
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 3) break; // assume we've reached the end
+    } else {
+      consecutiveEmpty = 0;
+    }
+
+    // Heuristic: if no new items were added in last 5 pages, stop early
+    if (p % 5 === 0 && collected.length === before){
+      break;
+    }
+  }
+  return collected;
+}
+
+
 async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
@@ -8,7 +47,36 @@ async function fetchGenres(){
   sel.innerHTML = '<option value="">Todos los géneros</option>' + data.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
 }
 
+
 async function load(){
+  const pageInfo = document.getElementById('pageInfo');
+  const grid = document.getElementById('grid');
+
+  if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
+    // Client-side paginated render from the aggregated list
+    const start = (state.page - 1) * state.pageSize;
+    const end = start + state.pageSize;
+    const slice = state.clientGenreItems.slice(start, end);
+
+    grid.innerHTML = slice.map(item => `
+      <div class="card" data-id="${item.tmdb_id}">
+        <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+        <div class="meta">
+          <div class="title">${item.title}</div>
+          <div class="year">${item.year || ''}</div>
+        </div>
+      </div>
+    `).join('');
+
+    document.querySelectorAll('.card').forEach(el => {
+      el.addEventListener('click', () => openDetails(el.dataset.id));
+    });
+
+    const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
+    pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
+    return;
+  }
+
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
@@ -16,7 +84,6 @@ async function load(){
   const res = await fetch('/api/movies?' + params.toString());
   const data = await res.json();
 
-  const grid = document.getElementById('grid');
   grid.innerHTML = data.items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -31,7 +98,6 @@ async function load(){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  const pageInfo = document.getElementById('pageInfo');
   pageInfo.textContent = `Página ${data.page}`;
 }
 
@@ -61,17 +127,25 @@ const actor = document.getElementById('actor');
 const genre = document.getElementById('genre');
 
 document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); });
-document.getElementById('resetBtn').addEventListener('click', ()=>{ state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; load(); });
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  state.clientGenreItems = null; state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; load(); });
 
 document.getElementById('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; load(); }});
 document.getElementById('next').addEventListener('click', ()=>{ state.page++; load(); });
 
 
 // React to genre changes immediately and query the full catalog via the API
-document.getElementById('genre').addEventListener('change', (e)=>{
-  state.page = 1;             // always start from the first page for a new genre
-  state.genre = e.target.value || '';  // set/clear genre
-  load();                     // server-side filtering with pagination
-});
 
+document.getElementById('genre').addEventListener('change', async (e)=>{
+  state.page = 1;
+  state.genre = e.target.value || '';
+  if (state.genre){
+    // Build the aggregated list across all pages
+    document.getElementById('pageInfo').textContent = 'Cargando…';
+    state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+  } else {
+    state.clientGenreItems = null;
+  }
+  load();
+});
 fetchGenres().then(load);
