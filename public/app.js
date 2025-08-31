@@ -160,3 +160,41 @@ fetchGenres().then(load);
     actor.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ btn.click(); } });
   }
 })();
+
+
+// --- Enter-to-search helper (desktop & mobile) ---
+(function(){
+  const qEl = document.getElementById('q');
+  const actorEl = document.getElementById('actor');
+  const genreEl = document.getElementById('genre');
+  const btn = document.getElementById('searchBtn');
+
+  function triggerSearch(){
+    if (!btn) return;
+    // Mirror the search click behavior
+    state.page = 1;
+    state.q = qEl ? qEl.value.trim() : '';
+    state.actor = actorEl ? actorEl.value.trim() : '';
+    state.genre = genreEl ? genreEl.value : (state.genre||'');
+    state.clientGenreItems = null; // rely on backend pagination when doing a search
+    btn.click ? btn.click() : load();
+  }
+
+  function handleEnter(e){
+    if (e.key === 'Enter'){
+      // prevent default form submits or unwanted line breaks
+      e.preventDefault();
+      triggerSearch();
+    }
+  }
+
+  // Desktop & Mobile soft keyboards
+  if (qEl)    qEl.addEventListener('keydown', handleEnter, { passive: false });
+  if (actorEl)actorEl.addEventListener('keydown', handleEnter, { passive: false });
+
+  // If the inputs are inside a form, catch submit too
+  const form = (qEl && qEl.form) || (actorEl && actorEl.form) || document.getElementById('searchForm');
+  if (form){
+    form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
+  }
+})();
