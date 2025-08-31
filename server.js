@@ -281,6 +281,47 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   }
 });
 
+
+// DELETE /api/admin/delete
+app.post('/api/admin/delete', adminGuard, async (req, res) => {
+  try {
+    const { title, year } = req.body;
+    if (!title) return res.status(400).json({ error: 'Falta título' });
+
+    const t = String(title).trim().toLowerCase();
+    const y = year ? parseInt(year) : null;
+
+    // Buscar candidatos por título (case-insensitive) y opcionalmente por año
+    const rows = await new Promise((resolve, reject) => {
+      const sql = y
+        ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
+        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?';
+      const params = y ? [t, y] : [t];
+      db.all(sql, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    if (!rows.length) return res.json({ deleted: 0, matches: [] });
+
+    // Eliminar todos los matches encontrados
+    const ids = rows.map(r => r.tmdb_id);
+    await new Promise((resolve, reject) => {
+      const placeholders = ids.map(()=>'?').join(',');
+      db.run(`DELETE FROM movies WHERE tmdb_id IN (${placeholders})`, ids, function(err){
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+
+    res.json({ deleted: ids.length, matches: rows });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo eliminar' });
+  }
+});
+
 // GET /api/admin/export
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
