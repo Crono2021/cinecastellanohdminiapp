@@ -66,4 +66,12 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{ state={ page
 document.getElementById('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; load(); }});
 document.getElementById('next').addEventListener('click', ()=>{ state.page++; load(); });
 
+
+// React to genre changes immediately and query the full catalog via the API
+document.getElementById('genre').addEventListener('change', (e)=>{
+  state.page = 1;             // always start from the first page for a new genre
+  state.genre = e.target.value || '';  // set/clear genre
+  load();                     // server-side filtering with pagination
+});
+
 fetchGenres().then(load);
