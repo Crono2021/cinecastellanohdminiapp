@@ -4,30 +4,24 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
 
-async function fetchAllPagesForGenre(genreId){
+async function fetchAllPagesForGenre(genreId, maxPages=200){
   const collected = [];
   const seen = new Set();
+  let consecutiveEmpty = 0;
 
-  for (let p=1; ; p++){
+  for (let p=1; p<=maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
     const res = await fetch('/api/movies?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    for (const it of items){
+    const before = collected.length;
+
+    (data.items || []).forEach(it => {
       const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
       if (!seen.has(id)){
         seen.add(id);
         collected.push(it);
       }
-    }
-    // stop when this is the last page (server returns fewer than pageSize)
-    if (items.length < state.pageSize) break;
-    // safety cap to avoid infinite loops
-    if (p > 999) break;
-  }
-  return collected;
-}
     });
 
     if ((data.items||[]).length === 0){
