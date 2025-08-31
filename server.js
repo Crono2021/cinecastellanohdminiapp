@@ -130,43 +130,9 @@ app.get('/api/movies', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const count = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
-        if (err) return reject(err);
-        resolve(row.c);
-      });
-    });
+    
+    // --- Actor pre-filter BEFORE count/pagination (stable) ---
 
-    const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
-
-    const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows);
-      });
-    });
-
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-
-    let items = rows.map((r, i) => ({
-      ...r,
-      poster_path: details[i]?.poster_path || null,
-      _details: details[i] || null
-    }));
-
-    if (actor) {
-      const person = await tmdbSearchPersonByName(actor);
-      if (person) {
-        const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
-        items = items.filter(it => ids.has(it.tmdb_id));
-      } else {
-        items = [];
-      }
-    }
 
     if (genre) {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
@@ -338,6 +304,6 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log('[CCHD] server.js build tag:', 'syntax-fix-concat');
+  console.log('[CCHD] build tag:', 'stable-actor-fix');
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
 });
