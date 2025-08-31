@@ -8,18 +8,8 @@ async function fetchAllPagesForGenre(genreId){
   const collected = [];
   const seen = new Set();
 
-  // First request: get total to compute how many pages exist in the entire catalog
-  const firstParams = new URLSearchParams({ page: 1, pageSize: 1 }); // minimal to fetch only metadata
-  const firstRes = await fetch('/api/movies?' + firstParams.toString());
-  if (!firstRes.ok) return collected;
-  const firstData = await firstRes.json();
-  const total = Number(firstData.total ?? 0);
-  const pageSizeForSweep = 200; // use a large pageSize to minimize requests
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSizeForSweep));
-
-  for (let p=1; p<=totalPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: pageSizeForSweep, genre: genreId });
+  for (let p=1; ; p++){
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
     const res = await fetch('/api/movies?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -30,10 +20,6 @@ async function fetchAllPagesForGenre(genreId){
         seen.add(id);
         collected.push(it);
       }
-    }
-  }
-  return collected;
-}
     }
     // stop when this is the last page (server returns fewer than pageSize)
     if (items.length < state.pageSize) break;
