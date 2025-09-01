@@ -1,59 +1,59 @@
 
-// -- Mobile Fullscreen (Telegram & iOS/Android WebView) --
+// -- Theater mode (fake fullscreen without exposing URL or relying on Fullscreen API) --
 (function(){
-  function tgRequestFullscreenSync(){
-    try{
-      if (window.Telegram && Telegram.WebApp){
-        if (typeof Telegram.WebApp.requestFullscreen === 'function'){
-          Telegram.WebApp.requestFullscreen(); return true;
-        }
-        if (typeof Telegram.WebApp.postEvent === 'function'){
-          // synchronous request for older containers
-          Telegram.WebApp.postEvent('web_app_request_fullscreen'); return true;
-        }
-      }
-    }catch(_){}
-    return false;
-  }
+  let origParent = null;
+  let placeholder = null;
 
-  function enableWhenReady(){
+  function showTheater(){
+    const overlay = document.getElementById('theaterOverlay');
+    const slot = document.getElementById('theaterSlot');
     const v = document.getElementById('pxVideo');
-    const btn = document.getElementById('btnFullscreen');
-    if (!v || !btn) return;
-    const enable = ()=>{ btn.style.display='inline-block'; btn.disabled=false; };
-    if (v.readyState >= 1) enable();
-    else v.addEventListener('loadedmetadata', enable, { once:true });
+    if (!overlay || !slot || !v) return;
+    if (!origParent){
+      origParent = v.parentElement;
+      placeholder = document.createElement('div');
+      placeholder.id = 'videoPlaceholder';
+      placeholder.style.display = 'none';
+      origParent.insertBefore(placeholder, v);
+    }
+    // Move the real video into overlay (keeps buffer & playback position)
+    slot.appendChild(v);
+    v.style.width = '100%';
+    v.style.height = '100%';
+    v.style.maxHeight = '100%';
+    document.body.classList.add('no-scroll');
+    overlay.style.display = 'block';
   }
 
-  function tryEnterFullscreenSync(){
+  function hideTheater(){
+    const overlay = document.getElementById('theaterOverlay');
     const v = document.getElementById('pxVideo');
-    if (!v) return;
-    // ask container first (Telegram)
-    tgRequestFullscreenSync();
-    // element fullscreen (avoid async/await; must be sync in mobile webviews)
-    try{ if (v.requestFullscreen) v.requestFullscreen(); }catch(_){}
-    try{ if (typeof v.webkitEnterFullscreen === 'function') v.webkitEnterFullscreen(); }catch(_){}
+    if (!overlay || !v || !origParent || !placeholder) return;
+    // Move back to original place
+    origParent.insertBefore(v, placeholder);
+    placeholder.remove();
+    placeholder = null;
+    v.style.width = '100%';
+    v.style.height = '';
+    v.style.maxHeight = '60vh';
+    document.body.classList.remove('no-scroll');
+    overlay.style.display = 'none';
   }
 
-  function wireControls(){
-    const v = document.getElementById('pxVideo');
-    const btn = document.getElementById('btnFullscreen');
-    if (!v || !btn) return;
-
-    // Button: click/touch/pointer
-    const handler = function(ev){ tryEnterFullscreenSync(); };
-    ['click','touchend','pointerup'].forEach(evt => btn.addEventListener(evt, handler, { passive:true }));
-
-    // Also allow tapping the video to enter fullscreen (common on iOS)
-    ['dblclick','touchend'].forEach(evt => v.addEventListener(evt, handler, { passive:true }));
+  function wireTheaterButtons(){
+    const openBtn = document.getElementById('btnTheater');
+    const closeBtn = document.getElementById('exitTheater');
+    if (openBtn && closeBtn){
+      ['click','touchend','pointerup'].forEach(evt => openBtn.addEventListener(evt, showTheater, { passive:true }));
+      ['click','touchend','pointerup'].forEach(evt => closeBtn.addEventListener(evt, hideTheater, { passive:true }));
+    }
   }
 
-  // Expose a hook to be called when video src is set/cleared
-  window.__fullscreenMobileSetup = function(active){
-    const btn = document.getElementById('btnFullscreen');
-    if (!btn) return;
-    if (active){ enableWhenReady(); wireControls(); }
-    else { btn.style.display='none'; btn.disabled=true; }
+  window.__theaterSetup = function(active){
+    const openBtn = document.getElementById('btnTheater');
+    if (!openBtn) return;
+    if (active){ openBtn.style.display='inline-block'; wireTheaterButtons(); }
+    else { openBtn.style.display='none'; }
   };
 })();
 
@@ -203,14 +203,14 @@ async function openDetails(id){
       pxVideo.load();
       videoWrap.style.display='block';
       videoNote.style.display='none';
-      __fullscreenMobileSetup(true);
-      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __fullscreenMobileSetup(false); };
+      __theaterSetup(true);
+      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __theaterSetup(false); };
     } else {
       videoWrap.style.display='none';
       videoNote.style.display='block';
-      __fullscreenMobileSetup(false);
+      __theaterSetup(false);
     }
-  } else { link.style.display='none'; videoWrap.style.display='none'; __fullscreenMobileSetup(false); }
+  } else { link.style.display='none'; videoWrap.style.display='none'; __theaterSetup(false); }
   document.getElementById('modal').classList.add('open');
 }
 
