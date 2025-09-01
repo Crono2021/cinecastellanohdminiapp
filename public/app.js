@@ -1,4 +1,19 @@
 
+function pixeldrainViewerUrl(link){
+  if (!link) return null;
+  try{
+    const u = new URL(link);
+    const segs = u.pathname.split('/').filter(Boolean);
+    let id = null;
+    const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
+    if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
+    if (!id && segs.length) id = segs[segs.length-1];
+    if (!id) return null;
+    return `https://pixeldrain.com/u/${id}`;
+  }catch(_){ return null; }
+}
+
+
 function pixeldrainDirectUrl(link){
   if (!link) return null;
   try{
@@ -132,11 +147,19 @@ async function openDetails(id){
   const playerWrap = document.getElementById('playerWrap');
   const pxVideo = document.getElementById('pxVideo');
   const playerNote = document.getElementById('playerNote');
+  const iframeWrap = document.getElementById('iframeWrap');
+  const pxFrame = document.getElementById('pxFrame');
   if (d.link) { link.href = d.link; link.style.display='inline-flex';
     const direct = pixeldrainDirectUrl(d.link);
-    if (direct){ pxVideo.src = direct; playerWrap.style.display='block'; playerNote.style.display='none'; }
-    else { playerWrap.style.display='none'; playerNote.style.display='block'; }
-  } else { link.style.display='none'; playerWrap.style.display='none'; }
+    if (direct){
+      pxVideo.src = direct; playerWrap.style.display='block'; playerNote.style.display='none'; iframeWrap.style.display='none'; pxFrame.removeAttribute('src');
+      // si falla la reproducción, usar iframe del visor oficial (no consume hotlink)
+      pxVideo.onerror = ()=>{ showIframeFallback(d.link); };
+      pxVideo.onstalled = ()=>{ /* red si se atasca */ };
+    } else {
+      showIframeFallback(d.link);
+    }
+  } else { link.style.display='none'; playerWrap.style.display='none'; iframeWrap.style.display='none'; pxFrame.removeAttribute('src'); }
   document.getElementById('modal').classList.add('open');
 }
 
@@ -220,3 +243,21 @@ fetchGenres().then(load);
     form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
   }
 })();
+
+function showIframeFallback(link){
+  const view = pixeldrainViewerUrl(link);
+  const iframeWrap = document.getElementById('iframeWrap');
+  const pxFrame = document.getElementById('pxFrame');
+  const playerWrap = document.getElementById('playerWrap');
+  const playerNote = document.getElementById('playerNote');
+  if (view){
+    pxFrame.src = view;
+    iframeWrap.style.display='block';
+    playerWrap.style.display='none';
+    playerNote.style.display='none';
+  } else {
+    iframeWrap.style.display='none';
+    playerWrap.style.display='none';
+    playerNote.style.display='block';
+  }
+}
