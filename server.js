@@ -3,6 +3,9 @@ const express = require('express');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
+axios.defaults.timeout = 8000;
+axios.defaults.validateStatus = s => s >= 200 && s < 500;
+
 const helmet = require('helmet');
 const cors = require('cors');
 require('dotenv').config();
@@ -117,8 +120,18 @@ async function tmdbSearchPersonByName(name) {
   return data.results[0];
 }
 
+
+// --- Health checks ---
+app.get('/healthz', (req,res)=>res.type('text').send('ok'));
+app.get('/readyz', (req,res)=>res.type('text').send('ready'));
+
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
+// --- Root handler for Railway ---
+app.get('/', (req,res)=>{
+  res.sendFile(path.join(__dirname,'public','index.html'));
+});
+
 
 // GET /api/genres
 app.get('/api/genres', async (req, res) => {
@@ -584,6 +597,11 @@ app.get('/api/admin/tv/export', requireAdmin, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT,'0.0.0.0') => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
 });
+
+
+// --- Error handlers ---
+process.on('unhandledRejection', (err)=>{ console.error('Unhandled Rejection:',err); });
+process.on('uncaughtException', (err)=>{ console.error('Uncaught Exception:',err); });
