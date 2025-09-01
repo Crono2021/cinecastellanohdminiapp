@@ -444,51 +444,37 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 });
 
 
-// --- Pixeldrain proxy (hide real URL) ---
-// Streams Pixeldrain file without exposing its origin URL. Supports Range for seeking.
-app.get('
-app.head('/pd/:id', async (req, res) => {
-  const { id } = req.params;
-  const upstream = `https://pixeldrain.net/api/file/${id}`;
-  try{
-    const r = await axios.head(upstream, { timeout: 10000, validateStatus: s=>s>=200&&s<400 });
-    const passthrough = ['content-type','content-length','accept-ranges'];
-    for (const h of passthrough){
-      if (r.headers[h]) res.setHeader(h, r.headers[h]);
-    }
-    res.status(200).end();
-  }catch(e){
-    res.status(404).end();
-  }
-});
-
-/pd/:id', async (req, res) => {
-  const { id } = req.params;
-  if (!id) return res.status(400).send('Missing id');
-  const upstream = `https://pixeldrain.net/api/file/${id}`;
-  try{
+// === Pixeldrain proxy (safe, no template literals) ===
+app.get('/pd/:id', async (req, res) => {
+  const id = req.params.id;
+  if (!id) { res.status(400).send('Missing id'); return; }
+  const upstream = 'https://pixeldrain.net/api/file/' + id;
+  try {
     const headers = {};
     if (req.headers.range) headers['Range'] = req.headers.range;
-    // keep user-agent minimal
     headers['User-Agent'] = 'CCHD/1.0';
-    const r = await axios.get(upstream, { responseType: 'stream', headers, timeout: 15000, validateStatus: s=>s>=200&&s<400 });
-    // Forward important headers
-    const passthrough = ['content-type','content-length','accept-ranges','content-range'];
-    for (const h of passthrough){
-      if (r.headers[h]) res.setHeader(h, r.headers[h]);
-    }
-    // Suggest inline playback
-    res.setHeader('Content-Disposition', 'inline; filename="'+id+'.mp4"');
-    // Caching (optional): adjust as needed
+    const r = await axios.get(upstream, { responseType: 'stream', headers, timeout: 15000, validateStatus: s => s >= 200 && s < 400 });
+    const fwd = ['content-type','content-length','accept-ranges','content-range'];
+    fwd.forEach(h => { if (r.headers[h]) res.setHeader(h, r.headers[h]); });
+    res.setHeader('Content-Disposition', 'inline; filename="' + id + '.mp4"');
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    // Status: if Range present and upstream provided content-range, use 206
     const status = (req.headers.range && r.headers['content-range']) ? 206 : 200;
     r.data.on('error', (e)=>{ try{ res.destroy(e); }catch(_){}});
     r.data.pipe(res.status(status));
-  }catch(e){
-    console.error('PD proxy error', e?.response?.status || e?.code || e?.message);
+  } catch (e) {
+    console.error('PD proxy error', e && (e.response && e.response.status) || e.code || e.message);
     res.status(502).send('Bad gateway');
   }
+});
+
+app.head('/pd/:id', async (req, res) => {
+  const id = req.params.id;
+  const upstream = 'https://pixeldrain.net/api/file/' + id;
+  try{
+    const r = await axios.head(upstream, { timeout: 10000, validateStatus: s => s >= 200 && s < 400 });
+    ['content-type','content-length','accept-ranges'].forEach(h => { if (r.headers[h]) res.setHeader(h, r.headers[h]); });
+    res.status(200).end();
+  }catch(e){ res.status(404).end(); }
 });
 
 app.listen(PORT, () => {
