@@ -144,26 +144,23 @@ async function openDetails(id){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
+  const iframeWrap = document.getElementById('iframeWrap');
+  const pxFrame = document.getElementById('pxFrame');
   const playerWrap = document.getElementById('playerWrap');
   const pxVideo = document.getElementById('pxVideo');
   const playerNote = document.getElementById('playerNote');
   const iframeWrap = document.getElementById('iframeWrap');
   const pxFrame = document.getElementById('pxFrame');
-  if (d.link) { link.href = d.link; link.style.display='inline-flex';
-    const direct = pixeldrainDirectUrl(d.link);
-    if (direct){
-      pxVideo.src = direct; playerWrap.style.display='block'; playerNote.style.display='none'; iframeWrap.style.display='none'; pxFrame.removeAttribute('src');
-      // si falla la reproducción, usar iframe del visor oficial (no consume hotlink)
-      pxVideo.onerror = ()=>{ showIframeFallback(d.link); };
-      pxVideo.onstalled = ()=>{ /* red si se atasca */ };
-    } else {
-      showIframeFallback(d.link);
-    }
-  } else { link.style.display='none'; playerWrap.style.display='none'; iframeWrap.style.display='none'; pxFrame.removeAttribute('src'); }
+  if (d.link) {
+    link.href = d.link; link.style.display='inline-flex';
+    const view = pixeldrainViewerUrl(d.link);
+    if (view){ pxFrame.src = view; iframeWrap.style.display='block'; }
+    else { iframeWrap.style.display='none'; }
+  } else { link.style.display='none'; iframeWrap.style.display='none'; }
   document.getElementById('modal').classList.add('open');
-}
 
-function closeModal(){ document.getElementById('modal').classList.remove('open'); const v=document.getElementById('pxVideo'); if(v){ v.pause(); v.removeAttribute('src'); v.load(); } }
+
+function closeModal(){ document.getElementById('modal').classList.remove('open'); const fr=document.getElementById('pxFrame'); if(fr){ fr.removeAttribute('src'); } const v=document.getElementById('pxVideo'); if(v){ v.pause(); v.removeAttribute('src'); v.load(); } }
 
 document.getElementById('closeModal').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
