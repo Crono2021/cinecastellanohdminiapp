@@ -13,6 +13,26 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// --- DB ---
+const db = new sqlite3.Database(path.join(__dirname, 'data.db'));
+db.serialize(()=>{
+  db.run(`CREATE TABLE IF NOT EXISTS movies (
+    tmdb_id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    year INTEGER,
+    link TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS series (
+    tmdb_id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    year INTEGER,
+    link TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+});
+
+
 // --- Config ---
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
@@ -27,13 +47,7 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
 
 db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS movies (
-    tmdb_id INTEGER PRIMARY KEY,
-    title TEXT NOT NULL,
-    year INTEGER,
-    link TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now'))
-  )`);
+  );
 });
 
 // --- Helpers ---
@@ -440,6 +454,133 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
     res.json({ count: rows.length, items: rows });
   } catch (e) {
     res.status(500).json({ error: 'No se pudo exportar' });
+  }
+});
+
+
+// ===== TV (Series) Support =====
+
+async function tmdbFindTvShow(title, year) {
+  if (!title) return null;
+  const { data } = await axios.get('https://api.themoviedb.org/3/search/tv', {
+    headers: { Authorization: `Bearer ${process.env.TMDB_BEARER || ''}` },
+    params: {
+      api_key: process.env.TMDB_API_KEY,
+      query: title,
+      include_adult: true,
+      first_air_date_year: year || undefined,
+      language: 'es-ES'
+    }
+  });
+  if (!data.results || data.results.length === 0) return null;
+  if (year) {
+    const exact = data.results.find(r => (r.first_air_date || '').startsWith(String(year)));
+    if (exact) return exact;
+  }
+  return data.results[0];
+}
+
+async function tmdbGetTvDetails(tmdbId) {
+  const url = `https://api.themoviedb.org/3/tv/${tmdbId}`;
+  const { data } = await axios.get(url, {
+    headers: { Authorization: `Bearer ${process.env.TMDB_BEARER || ''}` },
+    params: {
+      api_key: process.env.TMDB_API_KEY,
+      language: 'es-ES'
+    }
+  });
+  return data;
+}
+
+// Add TV routes (admin)
+app.post('/api/admin/tv/add', requireAdmin, async (req, res) => {
+  try {
+    const { title, year, tmdbId, link } = req.body;
+    if (!link) return res.status(400).json({ error: 'Link requerido' });
+
+    let tv;
+    if (tmdbId) {
+      tv = await tmdbGetTvDetails(tmdbId);
+    } else {
+      const found = await tmdbFindTvShow(title, year);
+      if (!found) return res.status(404).json({ error: 'Serie no encontrada en TMDB' });
+      tv = await tmdbGetTvDetails(found.id);
+    }
+
+    const tvTitle = tv.name || (tv.title ?? 'Sin título');
+    const tvYear = (tv.first_air_date || '').slice(0, 4) || null;
+    const id = tv.id;
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR REPLACE INTO series (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)`,
+        [id, tvTitle, tvYear, link],
+        function (err) { if (err) return reject(err); resolve(); }
+      );
+    });
+
+    res.json({ tmdb_id: id, title: tvTitle, year: tvYear, link });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo añadir la serie' });
+  }
+});
+
+app.post('/api/admin/tv/addById', requireAdmin, async (req, res) => {
+  try {
+    const { tmdbId, link } = req.body;
+    if (!tmdbId) return res.status(400).json({ error: 'TMDB ID requerido' });
+    if (!link) return res.status(400).json({ error: 'Link requerido' });
+
+    const tv = await tmdbGetTvDetails(tmdbId);
+    const tvTitle = tv.name || 'Sin título';
+    const tvYear = (tv.first_air_date || '').slice(0, 4) || null;
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT OR REPLACE INTO series (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)`,
+        [tv.id, tvTitle, tvYear, link],
+        function (err) { if (err) return reject(err); resolve(); }
+      );
+    });
+
+    res.json({ tmdb_id: tv.id, title: tvTitle, year: tvYear, link });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo añadir la serie por ID' });
+  }
+});
+
+app.post('/api/admin/tv/deleteById', requireAdmin, async (req, res) => {
+  try {
+    const { tmdbId } = req.body;
+    if (!tmdbId) return res.status(400).json({ error: 'TMDB ID requerido' });
+
+    await new Promise((resolve, reject) => {
+      db.run(`DELETE FROM series WHERE tmdb_id = ?`, [tmdbId], function (err) {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+
+    res.json({ deleted: 1, tmdb_id: tmdbId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo eliminar la serie' });
+  }
+});
+
+app.get('/api/admin/tv/export', requireAdmin, async (req, res) => {
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      db.all('SELECT tmdb_id, title, year, link, created_at FROM series ORDER BY created_at DESC', (err, r) => {
+        if (err) return reject(err);
+        resolve(r);
+      });
+    });
+    res.json({ count: rows.length, items: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'No se pudo exportar series' });
   }
 });
 
