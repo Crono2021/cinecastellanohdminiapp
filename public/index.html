@@ -45,6 +45,10 @@
             <div id="modalCast" class="cast"></div>
             <h4 style="margin-top:12px">Reproducir</h4>
             <div id="videoWrap" style="display:none;margin-top:8px">
+              <div class="hstack" style="justify-content:flex-end;margin-bottom:8px;gap:8px">
+                <button id="btnFullscreen" style="display:none">Pantalla completa</button>
+                <a id="openExternal" class="button" target="_blank" rel="noopener" style="display:none">Abrir en el reproductor</a>
+              </div>
               <video id="pxVideo" controls playsinline style="width:100%;max-height:60vh;border-radius:8px"></video>
               <div id="videoNote" class="mute" style="margin-top:6px;display:none">Si el vídeo no carga, puede que el archivo no permita hotlink.</div>
             </div>
