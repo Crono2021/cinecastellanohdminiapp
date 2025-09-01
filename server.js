@@ -119,7 +119,142 @@ app.get('/api/genres', async (req, res) => {
 
 
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
+app.get('/api/movies/by-actor', async (req, res) => {
+  try {
+    const { name, q, genre, page = 1, pageSize = 24 } = req.query;
+    if (!name || String(name).trim() === '') {
+      return res.status(400).json({ error: 'Falta name' });
+    }
+
+    // Find person in TMDB
+    const person = await tmdbSearchPersonByName(String(name).trim());
+    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
+
+    // Get movie credits and build tmdb_id set
+    const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
+    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
+    if (ids.length === 0) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
+
+    // Intersect with our DB and apply optional title filter 'q'
+    let where = [];
+    let params = [];
+
+    const limited = ids.slice(0, 900); // SQLite params safety
+    const placeholders = limited.map(()=>'?').join(',');
+    where.push(`tmdb_id IN (${placeholders})`);
+    params.push(...limited);
+
+    if (q) {
+      where.push('LOWER(title) LIKE ?');
+      params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+    const limit = Math.min(parseInt(pageSize), 60) || 24;
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+
+    const total = await new Promise((resolve, reject) => {
+      const sql = `SELECT COUNT(*) as c FROM movies ${whereSql}`;
+      db.get(sql, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row.c);
+      });
+    });
+
+    if (!total) {
+      return res.json({ total: 0, page: Number(page), pageSize: limit, items: [] });
+    }
+
+    const rows = await new Promise((resolve, reject) => {
+      const sql = `SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+      db.all(sql, [...params, limit, offset], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    // Enrich to allow optional genre filter (consistent with /api/movies)
+    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+    let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
+
+    if (genre) {
+      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+    }
+
+    items = items.map(({ _details, ...rest }) => rest);
+
+    res.json({ total, page: Number(page), pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo buscar por actor' });
+  }
+});
+
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
+app.get('/api/movies', async (req, res) => {
+  try {
+    const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
+
+    let where = [];
+    let params = [];
+
+    if (q) {
+      where.push('LOWER(title) LIKE ?');
+      params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const count = await new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row.c);
+      });
+    });
+
+    const limit = Math.min(parseInt(pageSize), 60) || 24;
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows);
+      });
+    });
+
+    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+
+    let items = rows.map((r, i) => ({
+      ...r,
+      poster_path: details[i]?.poster_path || null,
+      _details: details[i] || null
+    }));
+
+    if (actor) {
+      const person = await tmdbSearchPersonByName(actor);
+      if (person) {
+        const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
+        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
+        items = items.filter(it => ids.has(it.tmdb_id));
+      } else {
+        items = [];
+      }
+    }
+
+    if (genre) {
+      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+    }
+
+    items = items.map(({ _details, ...rest }) => rest);
+
+    res.json({ total: count, page: Number(page), pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el listado' });
+  }
+});
+
 // GET /api/movie/:id
 app.get('/api/movie/:id', async (req, res) => {
   try {
@@ -364,301 +499,6 @@ app.get('/watch/:id', function(req, res){
   res.send(html);
 });
 
-
-
-// --- Robust /api/movies: filter whole catalog (TMDB year/genre/actor) then paginate ---
-app.get('/api/movies', async (req, res) => {
-  try {
-    const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
-
-    // 1) Base selection from DB (only q on title to keep DB fast)
-    const baseWhere = [];
-    const baseParams = [];
-    if (q) { baseWhere.push('LOWER(title) LIKE ?'); baseParams.push('%' + String(q).toLowerCase() + '%'); }
-    const baseSql = baseWhere.length ? ('WHERE ' + baseWhere.join(' AND ')) : '';
-    const allRows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${baseSql} ORDER BY created_at DESC`, baseParams, (err, rows) => {
-        if (err) return reject(err); resolve(rows || []);
-      });
-    });
-
-    // Early exit: nothing
-    if (!allRows.length) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
-
-    // 2) If actor provided: build a Set of allowed TMDB IDs from TMDB credits
-    let allowedByActor = null;
-    if (actor && String(actor).trim() !== '') {
-      try {
-        const person = await tmdbSearchPersonByName(String(actor).trim());
-        if (person) {
-          const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-          const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-          allowedByActor = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
-        } else {
-          allowedByActor = new Set(); // no matches
-        }
-      } catch(e) {
-        console.error('actor filter failed', e && (e.response && e.response.status) || e.message);
-        allowedByActor = new Set();
-      }
-    }
-
-    // 3) For filters that depend on TMDB (year, genre), we fetch minimal details
-    const needTmdbFilter = Boolean(year || genre);
-    let detailsCache = new Map();
-    async function getDetails(id){
-      if (detailsCache.has(id)) return detailsCache.get(id);
-      const d = await tmdbGetMovieDetails(id);
-      detailsCache.set(id, d || null);
-      return d || null;
-    }
-
-    // 4) Filter all rows according to actor/year/genre (TMDB)
-    const filteredRows = [];
-    for (const r of allRows) {
-      if (allowedByActor && !allowedByActor.has(r.tmdb_id)) continue;
-      if (needTmdbFilter) {
-        const d = await getDetails(r.tmdb_id);
-        if (!d) continue;
-        if (year && String((d.release_date||'').slice(0,4)) !== String(year)) continue;
-        if (genre) {
-          const want = new Set(String(genre).split(',').map(s=>s.trim()));
-          const has = (d.genres||[]).some(g => want.has(String(g.id)));
-          if (!has) continue;
-        }
-      }
-      filteredRows.push(r);
-    }
-
-    const total = filteredRows.length;
-    const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const pageNum = Math.max(parseInt(page), 1);
-    const start = (pageNum - 1) * limit;
-    const slice = filteredRows.slice(start, start + limit);
-
-    // 5) For the slice, ensure we have poster/year from TMDB
-    const items = [];
-    for (const r of slice) {
-      let d = detailsCache.get(r.tmdb_id);
-      if (!d) d = await tmdbGetMovieDetails(r.tmdb_id);
-      const item = {
-        ...r,
-        year: (d && d.release_date ? d.release_date.slice(0,4) : (r.year || null)),
-        poster_path: d && d.poster_path ? d.poster_path : null
-      };
-      items.push(item);
-    }
-
-    res.json({ total, page: pageNum, pageSize: limit, items });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'No se pudo obtener el listado' });
-  }
-});
-
-
-
-
-// ===== v2 endpoints (apply TMDB filters over full catalog, then paginate) =====
-app.get('/api/movies2', async (req, res) => {
-  try {
-    const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
-
-    // Base selection from DB (only q on title)
-    const baseWhere = [];
-    const baseParams = [];
-    if (q) { baseWhere.push('LOWER(title) LIKE ?'); baseParams.push('%' + String(q).toLowerCase() + '%'); }
-    const baseSql = baseWhere.length ? ('WHERE ' + baseWhere.join(' AND ')) : '';
-    const allRows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${baseSql} ORDER BY created_at DESC`, baseParams, (err, rows) => {
-        if (err) return reject(err); resolve(rows || []);
-      });
-    });
-    if (!allRows.length) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
-
-    // Actor filter -> set of ids from TMDB
-    let allowedByActor = null;
-    if (actor && String(actor).trim() !== ''){
-      try{
-        const person = await tmdbSearchPersonByName(String(actor).trim());
-        if (person){
-          const creditsUrl = 'https://api.themoviedb.org/3/person/' + person.id + '/movie_credits';
-          const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-          allowedByActor = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
-        } else {
-          allowedByActor = new Set();
-        }
-      }catch(e){
-        console.error('actor filter failed', e && (e.response && e.response.status) || e.message);
-        allowedByActor = new Set();
-      }
-    }
-
-    const needTmdb = Boolean(year || genre);
-    const detailsCache = new Map();
-    async function getDetails(id){
-      if (detailsCache.has(id)) return detailsCache.get(id);
-      const d = await tmdbGetMovieDetails(id);
-      detailsCache.set(id, d || null);
-      return d || null;
-    }
-
-    const filtered = [];
-    for (const r of allRows){
-      if (allowedByActor && !allowedByActor.has(r.tmdb_id)) continue;
-      if (needTmdb){
-        const d = await getDetails(r.tmdb_id);
-        if (!d) continue;
-        if (year && String((d.release_date||'').slice(0,4)) !== String(year)) continue;
-        if (genre){
-          const want = new Set(String(genre).split(',').map(s=>s.trim()));
-          const ok = (d.genres||[]).some(g => want.has(String(g.id)));
-          if (!ok) continue;
-        }
-      }
-      filtered.push(r);
-    }
-
-    const total = filtered.length;
-    const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const pageNum = Math.max(parseInt(page), 1);
-    const start = (pageNum - 1) * limit;
-    const pageSlice = filtered.slice(start, start + limit);
-
-    const items = [];
-    for (const r of pageSlice){
-      let d = detailsCache.get(r.tmdb_id);
-      if (!d) d = await tmdbGetMovieDetails(r.tmdb_id);
-      items.push({
-        ...r,
-        year: (d && d.release_date ? d.release_date.slice(0,4) : (r.year || null)),
-        poster_path: d && d.poster_path ? d.poster_path : null
-      });
-    }
-
-    res.json({ total, page: pageNum, pageSize: limit, items });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'No se pudo obtener el listado (v2)' });
-  }
-});
-
-app.get('/api/movies2/by-actor', async (req, res) => {
-  try {
-    const { name, q, genre, year, page = 1, pageSize = 24 } = req.query;
-    if (!name || String(name).trim() === '') {
-      return res.status(400).json({ error: 'Falta name' });
-    }
-    const person = await tmdbSearchPersonByName(String(name).trim());
-    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
-    const creditsUrl = 'https://api.themoviedb.org/3/person/' + person.id + '/movie_credits';
-    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-    const allowed = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
-
-    // Base selection from DB with q
-    const baseWhere = ['tmdb_id IN (' + Array.from({length: allowed.size}).map(()=>'?').join(',') + ')'];
-    const baseParams = Array.from(allowed);
-    if (q) { baseWhere.push('LOWER(title) LIKE ?'); baseParams.push('%' + String(q).toLowerCase() + '%'); }
-    const baseSql = 'WHERE ' + baseWhere.join(' AND ');
-    const allRows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${baseSql} ORDER BY created_at DESC`, baseParams, (err, rows) => {
-        if (err) return reject(err); resolve(rows || []);
-      });
-    });
-
-    const detailsCache = new Map();
-    async function getDetails(id){
-      if (detailsCache.has(id)) return detailsCache.get(id);
-      const d = await tmdbGetMovieDetails(id);
-      detailsCache.set(id, d || null);
-      return d || null;
-    }
-
-    const filtered = [];
-    for (const r of allRows){
-      const d = await getDetails(r.tmdb_id);
-      if (!d) continue;
-      if (year && String((d.release_date||'').slice(0,4)) !== String(year)) continue;
-      if (genre){
-        const want = new Set(String(genre).split(',').map(s=>s.trim()));
-        const ok = (d.genres||[]).some(g => want.has(String(g.id)));
-        if (!ok) continue;
-      }
-      filtered.push(r);
-    }
-
-    const total = filtered.length;
-    const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const pageNum = Math.max(parseInt(page), 1);
-    const start = (pageNum - 1) * limit;
-    const pageSlice = filtered.slice(start, start + limit);
-
-    const items = [];
-    for (const r of pageSlice){
-      let d = detailsCache.get(r.tmdb_id);
-      if (!d) d = await tmdbGetMovieDetails(r.tmdb_id);
-      items.push({
-        ...r,
-        year: (d && d.release_date ? d.release_date.slice(0,4) : (r.year || null)),
-        poster_path: d && d.poster_path ? d.poster_path : null
-      });
-    }
-
-    res.json({ total, page: pageNum, pageSize: limit, items });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'No se pudo buscar por actor (v2)' });
-  }
-});
-
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
-});
-
-
-
-// --- Movies endpoint with TMDB year filter ---
-// --- Movies by actor endpoint with TMDB year filter ---
-app.get('/api/movies/by-actor', async (req, res) => {
-  try {
-    const { name, q, genre, year, page = 1, pageSize = 24 } = req.query;
-    if (!name || String(name).trim() === '') {
-      return res.status(400).json({ error: 'Falta name' });
-    }
-    const person = await tmdbSearchPersonByName(String(name).trim());
-    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
-    const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
-    if (!ids.length) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
-    let where = [];
-    let params = [];
-    const limited = ids.slice(0, 900);
-    const placeholders = limited.map(()=>'?').join(',');
-    where.push(`tmdb_id IN (${placeholders})`);
-    params.push(...limited);
-    if (q) { where.push('LOWER(title) LIKE ?'); params.push('%' + String(q).toLowerCase() + '%'); }
-    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
-    const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
-    const total = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
-        if (err) return reject(err); resolve(row.c);
-      });
-    });
-    const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
-        if (err) return reject(err); resolve(rows || []);
-      });
-    });
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r,i) => ({ ...r, year: (details[i] && details[i].release_date ? details[i].release_date.slice(0,4) : (r.year||null)), poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
-    if (genre) { items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre))); }
-    if (year) { items = items.filter(it => String(it.year||'') === String(year)); }
-    items = items.map(({ _details, ...rest }) => rest);
-    res.json({ total, page: Number(page), pageSize: limit, items });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'No se pudo buscar por actor' });
-  }
 });
