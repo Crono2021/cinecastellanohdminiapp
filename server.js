@@ -456,6 +456,161 @@ app.get('/api/movies', async (req, res) => {
   }
 });
 
+
+
+
+// ===== v2 endpoints (apply TMDB filters over full catalog, then paginate) =====
+app.get('/api/movies2', async (req, res) => {
+  try {
+    const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
+
+    // Base selection from DB (only q on title)
+    const baseWhere = [];
+    const baseParams = [];
+    if (q) { baseWhere.push('LOWER(title) LIKE ?'); baseParams.push('%' + String(q).toLowerCase() + '%'); }
+    const baseSql = baseWhere.length ? ('WHERE ' + baseWhere.join(' AND ')) : '';
+    const allRows = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, title, year, link FROM movies ${baseSql} ORDER BY created_at DESC`, baseParams, (err, rows) => {
+        if (err) return reject(err); resolve(rows || []);
+      });
+    });
+    if (!allRows.length) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
+
+    // Actor filter -> set of ids from TMDB
+    let allowedByActor = null;
+    if (actor && String(actor).trim() !== ''){
+      try{
+        const person = await tmdbSearchPersonByName(String(actor).trim());
+        if (person){
+          const creditsUrl = 'https://api.themoviedb.org/3/person/' + person.id + '/movie_credits';
+          const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+          allowedByActor = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
+        } else {
+          allowedByActor = new Set();
+        }
+      }catch(e){
+        console.error('actor filter failed', e && (e.response && e.response.status) || e.message);
+        allowedByActor = new Set();
+      }
+    }
+
+    const needTmdb = Boolean(year || genre);
+    const detailsCache = new Map();
+    async function getDetails(id){
+      if (detailsCache.has(id)) return detailsCache.get(id);
+      const d = await tmdbGetMovieDetails(id);
+      detailsCache.set(id, d || null);
+      return d || null;
+    }
+
+    const filtered = [];
+    for (const r of allRows){
+      if (allowedByActor && !allowedByActor.has(r.tmdb_id)) continue;
+      if (needTmdb){
+        const d = await getDetails(r.tmdb_id);
+        if (!d) continue;
+        if (year && String((d.release_date||'').slice(0,4)) !== String(year)) continue;
+        if (genre){
+          const want = new Set(String(genre).split(',').map(s=>s.trim()));
+          const ok = (d.genres||[]).some(g => want.has(String(g.id)));
+          if (!ok) continue;
+        }
+      }
+      filtered.push(r);
+    }
+
+    const total = filtered.length;
+    const limit = Math.min(parseInt(pageSize), 60) || 24;
+    const pageNum = Math.max(parseInt(page), 1);
+    const start = (pageNum - 1) * limit;
+    const pageSlice = filtered.slice(start, start + limit);
+
+    const items = [];
+    for (const r of pageSlice){
+      let d = detailsCache.get(r.tmdb_id);
+      if (!d) d = await tmdbGetMovieDetails(r.tmdb_id);
+      items.push({
+        ...r,
+        year: (d && d.release_date ? d.release_date.slice(0,4) : (r.year || null)),
+        poster_path: d && d.poster_path ? d.poster_path : null
+      });
+    }
+
+    res.json({ total, page: pageNum, pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el listado (v2)' });
+  }
+});
+
+app.get('/api/movies2/by-actor', async (req, res) => {
+  try {
+    const { name, q, genre, year, page = 1, pageSize = 24 } = req.query;
+    if (!name || String(name).trim() === '') {
+      return res.status(400).json({ error: 'Falta name' });
+    }
+    const person = await tmdbSearchPersonByName(String(name).trim());
+    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize)||24, items: [] });
+    const creditsUrl = 'https://api.themoviedb.org/3/person/' + person.id + '/movie_credits';
+    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+    const allowed = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
+
+    // Base selection from DB with q
+    const baseWhere = ['tmdb_id IN (' + Array.from({length: allowed.size}).map(()=>'?').join(',') + ')'];
+    const baseParams = Array.from(allowed);
+    if (q) { baseWhere.push('LOWER(title) LIKE ?'); baseParams.push('%' + String(q).toLowerCase() + '%'); }
+    const baseSql = 'WHERE ' + baseWhere.join(' AND ');
+    const allRows = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, title, year, link FROM movies ${baseSql} ORDER BY created_at DESC`, baseParams, (err, rows) => {
+        if (err) return reject(err); resolve(rows || []);
+      });
+    });
+
+    const detailsCache = new Map();
+    async function getDetails(id){
+      if (detailsCache.has(id)) return detailsCache.get(id);
+      const d = await tmdbGetMovieDetails(id);
+      detailsCache.set(id, d || null);
+      return d || null;
+    }
+
+    const filtered = [];
+    for (const r of allRows){
+      const d = await getDetails(r.tmdb_id);
+      if (!d) continue;
+      if (year && String((d.release_date||'').slice(0,4)) !== String(year)) continue;
+      if (genre){
+        const want = new Set(String(genre).split(',').map(s=>s.trim()));
+        const ok = (d.genres||[]).some(g => want.has(String(g.id)));
+        if (!ok) continue;
+      }
+      filtered.push(r);
+    }
+
+    const total = filtered.length;
+    const limit = Math.min(parseInt(pageSize), 60) || 24;
+    const pageNum = Math.max(parseInt(page), 1);
+    const start = (pageNum - 1) * limit;
+    const pageSlice = filtered.slice(start, start + limit);
+
+    const items = [];
+    for (const r of pageSlice){
+      let d = detailsCache.get(r.tmdb_id);
+      if (!d) d = await tmdbGetMovieDetails(r.tmdb_id);
+      items.push({
+        ...r,
+        year: (d && d.release_date ? d.release_date.slice(0,4) : (r.year || null)),
+        poster_path: d && d.poster_path ? d.poster_path : null
+      });
+    }
+
+    res.json({ total, page: pageNum, pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo buscar por actor (v2)' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
 });
