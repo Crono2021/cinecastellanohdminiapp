@@ -1,70 +1,59 @@
 
-// -- Telegram Mini Apps fullscreen flow (SDK v2+ or postEvent fallback) --
+// -- Mobile Fullscreen (Telegram & iOS/Android WebView) --
 (function(){
-  function requestTgFullscreen(){
+  function tgRequestFullscreenSync(){
     try{
       if (window.Telegram && Telegram.WebApp){
         if (typeof Telegram.WebApp.requestFullscreen === 'function'){
-          Telegram.WebApp.requestFullscreen();
-          return true;
+          Telegram.WebApp.requestFullscreen(); return true;
         }
         if (typeof Telegram.WebApp.postEvent === 'function'){
-          Telegram.WebApp.postEvent('web_app_request_fullscreen');
-          return true;
+          // synchronous request for older containers
+          Telegram.WebApp.postEvent('web_app_request_fullscreen'); return true;
         }
       }
     }catch(_){}
     return false;
   }
 
-  // enable button once metadata is loaded (required on iOS for programmatic fullscreen)
-  function bindVideoMetadata(){
+  function enableWhenReady(){
     const v = document.getElementById('pxVideo');
     const btn = document.getElementById('btnFullscreen');
     if (!v || !btn) return;
-    const enable = ()=>{ btn.disabled = false; btn.classList.remove('disabled'); };
-    if (v.readyState >= 1){ enable(); } 
-    else { v.addEventListener('loadedmetadata', enable, { once:true }); }
+    const enable = ()=>{ btn.style.display='inline-block'; btn.disabled=false; };
+    if (v.readyState >= 1) enable();
+    else v.addEventListener('loadedmetadata', enable, { once:true });
   }
 
-  // Install button handler
-  function wireFullscreenButton(){
-    const btn = document.getElementById('btnFullscreen');
+  function tryEnterFullscreenSync(){
     const v = document.getElementById('pxVideo');
-    if (!btn || !v) return;
-    btn.onclick = async ()=>{
-      // 1) Ask Telegram container to go fullscreen (removes UI chrome)
-      requestTgFullscreen();
-      // 2) Then try element fullscreen
-      try{
-        if (v.requestFullscreen) { await v.requestFullscreen(); return; }
-      }catch(_){}
-      try{
-        if (typeof v.webkitEnterFullscreen === 'function'){ v.webkitEnterFullscreen(); return; }
-      }catch(_){}
-    };
+    if (!v) return;
+    // ask container first (Telegram)
+    tgRequestFullscreenSync();
+    // element fullscreen (avoid async/await; must be sync in mobile webviews)
+    try{ if (v.requestFullscreen) v.requestFullscreen(); }catch(_){}
+    try{ if (typeof v.webkitEnterFullscreen === 'function') v.webkitEnterFullscreen(); }catch(_){}
   }
 
-  // Listen to Telegram fullscreen events (optional debug/robustness)
-  try{
-    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.onEvent === 'function'){
-      Telegram.WebApp.onEvent('fullscreen_changed', (st)=>{
-        // st: { is_fullscreen: boolean }
-        // You could adjust styles if needed
-      });
-      Telegram.WebApp.onEvent('fullscreen_failed', (e)=>{
-        // e: { error: 'UNSUPPORTED' | 'ALREADY_FULLSCREEN' }
-        // We still keep native fallback above
-      });
-    }
-  }catch(_){}
+  function wireControls(){
+    const v = document.getElementById('pxVideo');
+    const btn = document.getElementById('btnFullscreen');
+    if (!v || !btn) return;
 
-  // Expose setup called from openDetails
-  window.__setupTgFullscreen = function(visible){
+    // Button: click/touch/pointer
+    const handler = function(ev){ tryEnterFullscreenSync(); };
+    ['click','touchend','pointerup'].forEach(evt => btn.addEventListener(evt, handler, { passive:true }));
+
+    // Also allow tapping the video to enter fullscreen (common on iOS)
+    ['dblclick','touchend'].forEach(evt => v.addEventListener(evt, handler, { passive:true }));
+  }
+
+  // Expose a hook to be called when video src is set/cleared
+  window.__fullscreenMobileSetup = function(active){
     const btn = document.getElementById('btnFullscreen');
     if (!btn) return;
-    if (visible){ btn.style.display='inline-block'; bindVideoMetadata(); wireFullscreenButton(); }
-    else { btn.style.display='none'; }
+    if (active){ enableWhenReady(); wireControls(); }
+    else { btn.style.display='none'; btn.disabled=true; }
   };
 })();
 
@@ -214,14 +203,14 @@ async function openDetails(id){
       pxVideo.load();
       videoWrap.style.display='block';
       videoNote.style.display='none';
-      __setupTgFullscreen(true);
-      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __setupTgFullscreen(false); };
+      __fullscreenMobileSetup(true);
+      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __fullscreenMobileSetup(false); };
     } else {
       videoWrap.style.display='none';
       videoNote.style.display='block';
-      __setupTgFullscreen(false);
+      __fullscreenMobileSetup(false);
     }
-  } else { link.style.display='none'; videoWrap.style.display='none'; __setupTgFullscreen(false); }
+  } else { link.style.display='none'; videoWrap.style.display='none'; __fullscreenMobileSetup(false); }
   document.getElementById('modal').classList.add('open');
 }
 
