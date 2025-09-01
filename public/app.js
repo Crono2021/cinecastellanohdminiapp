@@ -1,24 +1,72 @@
 
-// -- Fullscreen helper (Telegram Mini App aware) --
-function setupFullscreenButtonForTelegram(apiUrl){
-  const btn = document.getElementById('btnFullscreen');
-  const v = document.getElementById('pxVideo');
-  if (!btn || !v){ return; }
-  if (apiUrl){ btn.style.display = 'inline-block'; } else { btn.style.display = 'none'; }
-
-  btn.onclick = async () => {
+// -- Telegram Mini Apps fullscreen flow (SDK v2+ or postEvent fallback) --
+(function(){
+  function requestTgFullscreen(){
     try{
-      // 1) Telegram WebApp v2+ proposed method
-      if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.requestFullscreen === 'function'){
-        Telegram.WebApp.requestFullscreen();
+      if (window.Telegram && Telegram.WebApp){
+        if (typeof Telegram.WebApp.requestFullscreen === 'function'){
+          Telegram.WebApp.requestFullscreen();
+          return true;
+        }
+        if (typeof Telegram.WebApp.postEvent === 'function'){
+          Telegram.WebApp.postEvent('web_app_request_fullscreen');
+          return true;
+        }
       }
-      // 2) Standards Fullscreen API
-      if (v.requestFullscreen){ await v.requestFullscreen(); }
-      // 3) iOS Safari legacy
-      else if (typeof v.webkitEnterFullscreen === 'function'){ v.webkitEnterFullscreen(); }
-    }catch(_){ /* swallow */ }
+    }catch(_){}
+    return false;
+  }
+
+  // enable button once metadata is loaded (required on iOS for programmatic fullscreen)
+  function bindVideoMetadata(){
+    const v = document.getElementById('pxVideo');
+    const btn = document.getElementById('btnFullscreen');
+    if (!v || !btn) return;
+    const enable = ()=>{ btn.disabled = false; btn.classList.remove('disabled'); };
+    if (v.readyState >= 1){ enable(); } 
+    else { v.addEventListener('loadedmetadata', enable, { once:true }); }
+  }
+
+  // Install button handler
+  function wireFullscreenButton(){
+    const btn = document.getElementById('btnFullscreen');
+    const v = document.getElementById('pxVideo');
+    if (!btn || !v) return;
+    btn.onclick = async ()=>{
+      // 1) Ask Telegram container to go fullscreen (removes UI chrome)
+      requestTgFullscreen();
+      // 2) Then try element fullscreen
+      try{
+        if (v.requestFullscreen) { await v.requestFullscreen(); return; }
+      }catch(_){}
+      try{
+        if (typeof v.webkitEnterFullscreen === 'function'){ v.webkitEnterFullscreen(); return; }
+      }catch(_){}
+    };
+  }
+
+  // Listen to Telegram fullscreen events (optional debug/robustness)
+  try{
+    if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.onEvent === 'function'){
+      Telegram.WebApp.onEvent('fullscreen_changed', (st)=>{
+        // st: { is_fullscreen: boolean }
+        // You could adjust styles if needed
+      });
+      Telegram.WebApp.onEvent('fullscreen_failed', (e)=>{
+        // e: { error: 'UNSUPPORTED' | 'ALREADY_FULLSCREEN' }
+        // We still keep native fallback above
+      });
+    }
+  }catch(_){}
+
+  // Expose setup called from openDetails
+  window.__setupTgFullscreen = function(visible){
+    const btn = document.getElementById('btnFullscreen');
+    if (!btn) return;
+    if (visible){ btn.style.display='inline-block'; bindVideoMetadata(); wireFullscreenButton(); }
+    else { btn.style.display='none'; }
   };
-}
+})();
 
 
 // --- Build proxied URL (hides real origin) ---
@@ -166,13 +214,14 @@ async function openDetails(id){
       pxVideo.load();
       videoWrap.style.display='block';
       videoNote.style.display='none';
-      pxVideo.onerror = ()=>{ videoNote.style.display='block'; };
+      __setupTgFullscreen(true);
+      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __setupTgFullscreen(false); };
     } else {
       videoWrap.style.display='none';
       videoNote.style.display='block';
-      setupFullscreenButtonForTelegram(null);
+      __setupTgFullscreen(false);
     }
-  } else { link.style.display='none'; videoWrap.style.display='none'; setupFullscreenButtonForTelegram(null); }
+  } else { link.style.display='none'; videoWrap.style.display='none'; __setupTgFullscreen(false); }
   document.getElementById('modal').classList.add('open');
 }
 
