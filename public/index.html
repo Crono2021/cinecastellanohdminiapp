@@ -44,9 +44,10 @@
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
             <h4 style="margin-top:12px">Reproducir</h4>
-            <iframe id="pxEmbed"
-                    style="border:none;width:100%;height:60vh;border-radius:8px;display:none"
-                    allowfullscreen></iframe>
+            <div id="videoWrap" style="display:none;margin-top:8px">
+              <video id="pxVideo" controls playsinline style="width:100%;max-height:60vh;border-radius:8px"></video>
+              <div id="videoNote" class="mute" style="margin-top:6px;display:none">Si el vídeo no carga, puede que el archivo no permita hotlink.</div>
+            </div>
 
             <p>
               <a id="watchLink" class="link" target="_blank">▶ Ver en Pixeldrain</a>

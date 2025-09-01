@@ -1,3 +1,23 @@
+
+// --- Pixeldrain hotlink helper ---
+function toPixeldrainApiFile(link){
+  if (!link) return null;
+  try{
+    const u = new URL(link);
+    const host = (u.hostname || '').replace(/^www\./,'');
+    if (!/pixeldrain\.(net|com)$/i.test(host)) return null;
+    const segs = (u.pathname || '').split('/').filter(Boolean);
+    let id = null;
+    // supports: /u/{id}, /d/{id}, /api/file/{id}, /file/{id}
+    const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
+    if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
+    if (!id && segs.length) id = segs[segs.length-1];
+    if (!id) return null;
+    const base = host.endsWith('.net') ? 'https://pixeldrain.net' : 'https://pixeldrain.com';
+    return `${base}/api/file/${id}`; // añadir ?download no es necesario para reproducir
+  }catch(_){ return null; }
+}
+
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
@@ -113,21 +133,28 @@ async function openDetails(id){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
-  const iframe = document.getElementById('pxEmbed');
+  const videoWrap = document.getElementById('videoWrap');
+  const pxVideo = document.getElementById('pxVideo');
+  const videoNote = document.getElementById('videoNote');
   if (d.link) { link.href = d.link; link.style.display='inline-flex';
-    try{
-      const u = new URL(d.link);
-      const segs = u.pathname.split('/').filter(Boolean);
-      let pid = null;
-      if (segs[0]==='u' && segs[1]) pid = segs[1];
-      else if (segs.length) pid = segs[segs.length-1];
-      if (pid){ iframe.src = `https://pixeldrain.net/u/${pid}?embed`; iframe.style.display='block'; }
-    }catch(e){ iframe.removeAttribute('src'); iframe.style.display='none'; }
-  } else { link.style.display='none'; iframe.removeAttribute('src'); iframe.style.display='none'; }
+    const apiUrl = toPixeldrainApiFile(d.link);
+    if (apiUrl){
+      pxVideo.innerHTML = '';
+      const src = document.createElement('source');
+      src.src = apiUrl; src.type = 'video/mp4';
+      pxVideo.appendChild(src);
+      pxVideo.load();
+      videoWrap.style.display='block';
+      videoNote.style.display='none';
+      pxVideo.onerror = ()=>{ videoNote.style.display='block'; };
+    } else {
+      videoWrap.style.display='none'; videoNote.style.display='block';
+    }
+  } else { link.style.display='none'; videoWrap.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
 
-function closeModal(){ document.getElementById('modal').classList.remove('open'); const iframe=document.getElementById('pxEmbed'); if(iframe){ iframe.removeAttribute('src'); iframe.style.display='none'; } }
+function closeModal(){ document.getElementById('modal').classList.remove('open'); const v=document.getElementById('pxVideo'); if(v){ try{ v.pause(); v.removeAttribute('src'); v.innerHTML=''; v.load(); }catch(_){ } } }
 
 document.getElementById('closeModal').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
