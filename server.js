@@ -46,9 +46,7 @@ if (!TMDB_API_KEY) {
 }
 
 // --- DB (persistencia opcional vía DB_PATH) ---
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
-const db = new sqlite3.Database(DB_PATH);
-
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 db.serialize(() => {
   );
 });
@@ -597,7 +595,7 @@ app.get('/api/admin/tv/export', requireAdmin, async (req, res) => {
   }
 });
 
-app.listen(PORT,'0.0.0.0') => {
+app.listen(PORT, '0.0.0.0','0.0.0.0') => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
 });
 
