@@ -371,48 +371,94 @@ app.listen(PORT, () => {
 
 
 // --- Movies endpoint with TMDB year filter ---
+
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, year, page = 1, pageSize = 24 } = req.query;
-    let where = [];
-    let params = [];
-    if (q) { where.push('LOWER(title) LIKE ?'); params.push('%' + String(q).toLowerCase() + '%'); }
-    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const count = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
-        if (err) return reject(err); resolve(row.c);
-      });
-    });
     const limit = Math.min(parseInt(pageSize), 60) || 24;
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+
+    let where = [];
+    let params = [];
+
+    // If year is provided, restrict to ids discovered from TMDB for that year (and optional genre)
+    let yearIds = null;
+    if (year && String(year).trim() !== ''){
+      yearIds = await tmdbDiscoverIdsByYear(String(year).trim(), genre ? String(genre).trim() : null);
+      if (yearIds && yearIds.length){
+        const chunks = []; const inParams = [];
+        // chunk IN clause to avoid too many placeholders
+        for (let i=0;i<yearIds.length;i+=200){
+          const part = yearIds.slice(i, i+200);
+          chunks.push('tmdb_id IN (' + part.map(_=>'?').join(',') + ')');
+          inParams.push(...part);
+        }
+        where.push('(' + chunks.join(' OR ') + ')');
+        params.push(...inParams);
+      } else {
+        return res.json({ total: 0, page: Number(page), pageSize: limit, items: [] });
+      }
+    }
+
+    if (q) { where.push('LOWER(title) LIKE ?'); params.push('%' + String(q).toLowerCase() + '%'); }
+
+    // Build WHERE SQL
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+
+    // Count and page using DB only (fast)
+    const total = await new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
+        if (err) return reject(err); resolve(row.c || 0);
+      });
+    });
+
     const rows = await new Promise((resolve, reject) => {
       db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
         if (err) return reject(err); resolve(rows || []);
       });
     });
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r,i) => ({
-      ...r,
-      year: (details[i] && details[i].release_date ? details[i].release_date.slice(0,4) : (r.year || null)),
-      poster_path: details[i]?.poster_path || null,
-      _details: details[i] || null
-    }));
-    if (actor) {
+
+    // Optional: if actor filter present, post-filter using TMDB credits
+    let itemsRows = rows;
+    if (actor && String(actor).trim() !== ''){
       const d = await tmdbSearchPersonByName(String(actor).trim());
       if (d){
         const creditsUrl = `https://api.themoviedb.org/3/person/${d.id}/movie_credits`;
         const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-        const ids = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
-        items = items.filter(it => ids.has(it.tmdb_id));
-      } else { items = []; }
+        const idset = new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id));
+        itemsRows = rows.filter(r => idset.has(r.tmdb_id));
+      } else {
+        itemsRows = [];
+      }
     }
-    if (genre) { items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre))); }
-    if (year) { items = items.filter(it => String(it.year||'') === String(year)); }
-    items = items.map(({ _details, ...rest }) => rest);
-    res.json({ total: count, page: Number(page), pageSize: limit, items });
+
+    // Fetch details for the page only, to get poster/year
+    const details = await Promise.all(itemsRows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+    let items = itemsRows.map((r, i) => ({
+      ...r,
+      year: (details[i] && details[i].release_date ? details[i].release_date.slice(0,4) : (r.year || null)),
+      poster_path: details[i]?.poster_path || null
+    }));
+
+    // If genre is set but not using discover (i.e., no year), filter by TMDB genre client-side on the page slice
+    if (!year && genre){ 
+      const detailsG = await Promise.all(itemsRows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+      const gset = new Set(String(genre).split(',').map(s=>s.trim()));
+      items = itemsRows.map((r, i) => ({
+        ...r,
+        year: (detailsG[i] && detailsG[i].release_date ? detailsG[i].release_date.slice(0,4) : (r.year || null)),
+        poster_path: detailsG[i]?.poster_path || null,
+        _genres: (detailsG[i]?.genres || []).map(g => String(g.id))
+      })).filter(it => it._genres?.some(id => gset.has(id))).map(({_genres, ...rest}) => rest);
+    }
+
+    res.json({ total, page: Number(page), pageSize: limit, items });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
+  }
+});
+
   }
 });
 
@@ -460,3 +506,23 @@ app.get('/api/movies/by-actor', async (req, res) => {
     res.status(500).json({ error: 'No se pudo buscar por actor' });
   }
 });
+
+
+async function tmdbDiscoverIdsByYear(year, genre){
+  try{
+    const ids = new Set();
+    const paramsBase = { api_key: TMDB_API_KEY, language: 'es-ES', sort_by: 'popularity.desc', page: 1, include_adult: false, primary_release_year: String(year) };
+    if (genre) paramsBase.with_genres = String(genre);
+    for (let p=1; p<=5; p++){ // up to 5 pages (100 results); adjust if needed
+      const { data } = await axios.get('https://api.themoviedb.org/3/discover/movie', { params: { ...paramsBase, page: p } });
+      const results = (data && data.results) || [];
+      results.forEach(r => { if (r && r.id) ids.add(r.id); });
+      if (p >= (data.total_pages || 1)) break;
+    }
+    return Array.from(ids);
+  }catch(e){
+    console.error('discover by year failed', e && (e.response && e.response.status) || e.message);
+    return [];
+  }
+}
+
