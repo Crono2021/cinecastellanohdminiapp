@@ -72,11 +72,9 @@ async function load(){
 
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
     // Client-side paginated render from the aggregated list
-    let list = state.clientGenreItems;
-    if (state.year){ list = list.filter(it => (String(it.year||'') || '').slice(0,4) === state.year || (it.release_date||'').slice(0,4) === state.year); }
     const start = (state.page - 1) * state.pageSize;
     const end = start + state.pageSize;
-    const slice = list.slice(start, end);
+    const slice = state.clientGenreItems.slice(start, end);
 
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
@@ -102,12 +100,14 @@ async function load(){
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
   if (state.year) params.set('year', state.year);
+  if (state.q) params.set('q', state.q);
+  if (state.actor) params.set('actor', state.actor);
+  if (state.genre) params.set('genre', state.genre);
     const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/movies?' + params.toString();
   const res = await fetch(endpoint);
   const data = await res.json();
 
-  const items = (state.year ? (data.items||[]).filter(it => (String(it.year||'') || '').slice(0,4) === state.year || (it.release_date||'').slice(0,4) === state.year) : (data.items||[]));
-  grid.innerHTML = items.map(item => `
+  grid.innerHTML = data.items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
@@ -121,7 +121,7 @@ async function load(){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  pageInfo.textContent = `Página ${data.page}` + (state.year ? ` · filtrado por año ${state.year}` : '');
+  pageInfo.textContent = `Página ${data.page}`;
 }
 
 async function openDetails(id){
@@ -147,9 +147,10 @@ document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id
 
 const q = document.getElementById('q');
 const actor = document.getElementById('actor');
+const year = document.getElementById('year');
 const genre = document.getElementById('genre');
 
-document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); });
+document.getElementById('searchBtn').addEventListener('click', () => { state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.year=year ? year.value.trim() : ''; state.genre=genre.value; state.clientGenreItems=null; load(); });
 document.getElementById('resetBtn').addEventListener('click', ()=>{
   state.clientGenreItems = null; state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; load(); });
 
@@ -197,7 +198,7 @@ fetchGenres().then(load);
     // Mirror the search click behavior
     state.page = 1;
     state.q = qEl ? qEl.value.trim() : '';
-    state.actor = actorEl ? actorEl.value.trim() : '';
+    state.actor = actorEl ? actorEl.value.trim() : ''; state.year = yearEl ? yearEl.value.trim() : '';
     state.genre = genreEl ? genreEl.value : (state.genre||'');
     state.clientGenreItems = null; // rely on backend pagination when doing a search
     btn.click ? btn.click() : load();
@@ -221,4 +222,5 @@ fetchGenres().then(load);
   if (form){
     form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
   }
+  if (yearEl) yearEl.addEventListener('change', () => { state.page=1; triggerSearch(); });
 })();
