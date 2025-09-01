@@ -1,65 +1,6 @@
 
-// -- Theater mode (fake fullscreen without exposing URL or relying on Fullscreen API) --
-(function(){
-  let origParent = null;
-  let placeholder = null;
-
-  function showTheater(){
-    const overlay = document.getElementById('theaterOverlay');
-    const slot = document.getElementById('theaterSlot');
-    const v = document.getElementById('pxVideo');
-    if (!overlay || !slot || !v) return;
-    if (!origParent){
-      origParent = v.parentElement;
-      placeholder = document.createElement('div');
-      placeholder.id = 'videoPlaceholder';
-      placeholder.style.display = 'none';
-      origParent.insertBefore(placeholder, v);
-    }
-    // Move the real video into overlay (keeps buffer & playback position)
-    slot.appendChild(v);
-    v.style.width = '100%';
-    v.style.height = '100%';
-    v.style.maxHeight = '100%';
-    document.body.classList.add('no-scroll');
-    overlay.style.display = 'block';
-  }
-
-  function hideTheater(){
-    const overlay = document.getElementById('theaterOverlay');
-    const v = document.getElementById('pxVideo');
-    if (!overlay || !v || !origParent || !placeholder) return;
-    // Move back to original place
-    origParent.insertBefore(v, placeholder);
-    placeholder.remove();
-    placeholder = null;
-    v.style.width = '100%';
-    v.style.height = '';
-    v.style.maxHeight = '60vh';
-    document.body.classList.remove('no-scroll');
-    overlay.style.display = 'none';
-  }
-
-  function wireTheaterButtons(){
-    const openBtn = document.getElementById('btnTheater');
-    const closeBtn = document.getElementById('exitTheater');
-    if (openBtn && closeBtn){
-      ['click','touchend','pointerup'].forEach(evt => openBtn.addEventListener(evt, showTheater, { passive:true }));
-      ['click','touchend','pointerup'].forEach(evt => closeBtn.addEventListener(evt, hideTheater, { passive:true }));
-    }
-  }
-
-  window.__theaterSetup = function(active){
-    const openBtn = document.getElementById('btnTheater');
-    if (!openBtn) return;
-    if (active){ openBtn.style.display='inline-block'; wireTheaterButtons(); }
-    else { openBtn.style.display='none'; }
-  };
-})();
-
-
-// --- Build proxied URL (hides real origin) ---
-function toProxiedPixeldrain(link){
+// --- Build watch URL that hides origin (uses server-side /watch/:id -> /pd/:id) ---
+function toWatchUrl(link){
   if (!link) return null;
   try{
     const u = new URL(link);
@@ -71,7 +12,7 @@ function toProxiedPixeldrain(link){
     if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
     if (!id && segs.length) id = segs[segs.length-1];
     if (!id) return null;
-    return '/pd/' + id;
+    return '/watch/' + id;
   }catch(_){ return null; }
 }
 
@@ -190,31 +131,12 @@ async function openDetails(id){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
-  const videoWrap = document.getElementById('videoWrap');
-  const pxVideo = document.getElementById('pxVideo');
-  const videoNote = document.getElementById('videoNote');
-  if (d.link) { link.href = d.link; link.style.display='inline-flex';
-    const apiUrl = toProxiedPixeldrain(d.link);
-    if (apiUrl){
-      pxVideo.innerHTML = '';
-      const src = document.createElement('source');
-      src.src = apiUrl; src.type = 'video/mp4';
-      pxVideo.appendChild(src);
-      pxVideo.load();
-      videoWrap.style.display='block';
-      videoNote.style.display='none';
-      __theaterSetup(true);
-      pxVideo.onerror = ()=>{ videoNote.style.display='block'; __theaterSetup(false); };
-    } else {
-      videoWrap.style.display='none';
-      videoNote.style.display='block';
-      __theaterSetup(false);
-    }
-  } else { link.style.display='none'; videoWrap.style.display='none'; __theaterSetup(false); }
+  if (d.link) { const w = toWatchUrl(d.link); link.href = w || d.link; link.style.display='inline-flex'; }
+  else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
 
-function closeModal(){ document.getElementById('modal').classList.remove('open'); const v=document.getElementById('pxVideo'); if(v){ try{ v.pause(); v.removeAttribute('src'); v.innerHTML=''; v.load(); }catch(_){ } } }
+function closeModal(){ document.getElementById('modal').classList.remove('open'); }
 
 document.getElementById('closeModal').addEventListener('click', closeModal);
 document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });

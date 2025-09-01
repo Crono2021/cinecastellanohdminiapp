@@ -43,15 +43,6 @@
             <div id="modalGenres"></div>
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
-            <h4 style="margin-top:12px">Reproducir</h4>
-            <div id="videoWrap" style="display:none;margin-top:8px">
-              <div class="hstack" style="justify-content:flex-end;margin-bottom:8px;gap:8px">
-                <button id="btnTheater" style="display:none">Pantalla completa</button>
-              </div>
-              <video id="pxVideo" controls playsinline style="width:100%;max-height:60vh;border-radius:8px"></video>
-              <div id="videoNote" class="mute" style="margin-top:6px;display:none">Si el vídeo no carga, puede que el archivo no permita hotlink.</div>
-            </div>
-
             <p>
               <a id="watchLink" class="link" target="_blank">▶ Ver en Pixeldrain</a>
             </p>
@@ -68,16 +59,5 @@
   </footer>
 
   <script src="/app.js"></script>
-
-  <!-- Theater-mode overlay (fake fullscreen without using browser Fullscreen API) -->
-  <div id="theaterOverlay" style="display:none; position:fixed; inset:0; background:#000; z-index:9999; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);">
-    <div style="position:absolute; top:8px; right:8px; z-index:10000;">
-      <button id="exitTheater" style="padding:8px 12px; border-radius:8px;">Cerrar</button>
-    </div>
-    <div id="theaterSlot" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
-      <!-- pxVideo will be moved here while in theater mode -->
-    </div>
-  </div>
-
 </body>
 </html>
