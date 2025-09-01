@@ -1,41 +1,6 @@
 
-// -- Fullscreen / External open helpers --
-function setupFullscreenButton(apiUrl){
-  const btn = document.getElementById('btnFullscreen');
-  const a = document.getElementById('openExternal');
-  const v = document.getElementById('pxVideo');
-  if (!btn || !a || !v) return;
-  // Show controls when apiUrl is available
-  if (apiUrl){
-    btn.style.display = 'inline-block';
-    a.style.display = 'inline-flex';
-    a.href = apiUrl; // fallback external open
-  } else {
-    btn.style.display = 'none';
-    a.style.display = 'none';
-    a.removeAttribute('href');
-  }
-  btn.onclick = async ()=>{
-    try{
-      if (v.requestFullscreen) { await v.requestFullscreen(); return; }
-    }catch(_){}
-    try{
-      if (typeof v.webkitEnterFullscreen === 'function'){ v.webkitEnterFullscreen(); return; }
-    }catch(_){}
-    // As a last resort open the file externally (Telegram/WebApp friendly)
-    try{
-      if (window.Telegram && Telegram.WebApp && typeof Telegram.WebApp.openLink === 'function'){
-        Telegram.WebApp.openLink(a.href || apiUrl, { try_instant_view: false });
-      } else {
-        window.open(a.href || apiUrl, '_blank', 'noopener');
-      }
-    }catch(_){}
-  };
-}
-
-
-// --- Pixeldrain hotlink helper ---
-function toPixeldrainApiFile(link){
+// --- Build proxied URL (hides real origin) ---
+function toProxiedPixeldrain(link){
   if (!link) return null;
   try{
     const u = new URL(link);
@@ -43,13 +8,11 @@ function toPixeldrainApiFile(link){
     if (!/pixeldrain\.(net|com)$/i.test(host)) return null;
     const segs = (u.pathname || '').split('/').filter(Boolean);
     let id = null;
-    // supports: /u/{id}, /d/{id}, /api/file/{id}, /file/{id}
     const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
     if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
     if (!id && segs.length) id = segs[segs.length-1];
     if (!id) return null;
-    const base = host.endsWith('.net') ? 'https://pixeldrain.net' : 'https://pixeldrain.com';
-    return `${base}/api/file/${id}`; // añadir ?download no es necesario para reproducir
+    return `/pd/${id}`; // served by our server proxy
   }catch(_){ return null; }
 }
 
@@ -172,7 +135,7 @@ async function openDetails(id){
   const pxVideo = document.getElementById('pxVideo');
   const videoNote = document.getElementById('videoNote');
   if (d.link) { link.href = d.link; link.style.display='inline-flex';
-    const apiUrl = toPixeldrainApiFile(d.link);
+    const apiUrl = toProxiedPixeldrain(d.link);
     if (apiUrl){
       pxVideo.innerHTML = '';
       const src = document.createElement('source');
@@ -181,12 +144,12 @@ async function openDetails(id){
       pxVideo.load();
       videoWrap.style.display='block';
       videoNote.style.display='none';
-      setupFullscreenButton(apiUrl);
       pxVideo.onerror = ()=>{ videoNote.style.display='block'; };
     } else {
-      videoWrap.style.display='none'; videoNote.style.display='block';
+      videoWrap.style.display='none';
+      videoNote.style.display='block';
     }
-  } else { link.style.display='none'; videoWrap.style.display='none'; setupFullscreenButton(null); }
+  } else { link.style.display='none'; videoWrap.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
 
