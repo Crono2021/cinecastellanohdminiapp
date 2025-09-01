@@ -1,20 +1,3 @@
-
-// --- Pixeldrain helpers (non-intrusive) ---
-function pixeldrainViewerUrl(link){
-  if (!link) return null;
-  try{
-    const u = new URL(link);
-    const host = (u.hostname || '').replace(/^www\./,'');
-    if (!host.endsWith('pixeldrain.com')) return null;
-    const segs = (u.pathname || '').split('/').filter(Boolean);
-    let id = null;
-    const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
-    if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
-    if (!id && segs.length) id = segs[segs.length-1];
-    return id ? `https://pixeldrain.com/u/${id}` : null;
-  }catch(_){ return null; }
-}
-
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
@@ -132,22 +115,6 @@ async function openDetails(id){
   const link = document.getElementById('watchLink');
   if (d.link) { link.href = d.link; link.style.display='inline-flex'; }
   else { link.style.display='none'; }
-  
-  // [PLAYER_INJECT] Iframe-only player for Pixeldrain links (safe, non-breaking)
-  try {
-    const iframeWrap = document.getElementById('iframeWrap');
-    const pxFrame = document.getElementById('pxFrame');
-    if (iframeWrap && pxFrame){
-      if (d.link){
-        const view = pixeldrainViewerUrl(d.link);
-        if (view){ pxFrame.src = view; iframeWrap.style.display='block'; }
-        else { iframeWrap.style.display='none'; pxFrame.removeAttribute('src'); }
-      } else {
-        iframeWrap.style.display='none'; if (pxFrame) pxFrame.removeAttribute('src');
-      }
-    }
-  } catch(e) { /* no romper UI */ }
-
   document.getElementById('modal').classList.add('open');
 }
 
@@ -229,5 +196,81 @@ fetchGenres().then(load);
   const form = (qEl && qEl.form) || (actorEl && actorEl.form) || document.getElementById('searchForm');
   if (form){
     form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
+  }
+})();
+
+
+// === Pixeldrain runtime player inject (non-intrusive) ===
+(function(){
+  function ensurePlayerElements(){
+    const cast = document.getElementById('modalCast');
+    if (!cast) return null;
+    let wrap = document.getElementById('iframeWrap');
+    if (!wrap){
+      wrap = document.createElement('div');
+      wrap.id = 'iframeWrap';
+      wrap.style.cssText = 'display:none;margin-top:8px';
+      const h4 = document.createElement('h4');
+      h4.textContent = 'Reproducir';
+      h4.style.marginTop = '12px';
+      const iframe = document.createElement('iframe');
+      iframe.id = 'pxFrame';
+      iframe.setAttribute('allow', 'autoplay; fullscreen');
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('referrerpolicy', 'no-referrer');
+      iframe.style.width = '100%';
+      iframe.style.height = '60vh';
+      iframe.style.border = '0';
+      iframe.style.borderRadius = '8px';
+      cast.insertAdjacentElement('afterend', wrap);
+      wrap.insertAdjacentElement('afterbegin', iframe);
+      cast.insertAdjacentElement('afterend', h4);
+    }
+    return { wrap: document.getElementById('iframeWrap'), frame: document.getElementById('pxFrame') };
+  }
+
+  function pixeldrainViewerUrl(link){
+    if (!link) return null;
+    try{
+      const u = new URL(link);
+      const host = (u.hostname || '').replace(/^www\./,'');
+      if (!host.endsWith('pixeldrain.com')) return null;
+      const segs = (u.pathname || '').split('/').filter(Boolean);
+      let id = null;
+      const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
+      if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
+      if (!id && segs.length) id = segs[segs.length-1];
+      return id ? `https://pixeldrain.com/u/${id}` : null;
+    }catch(_){ return null; }
+  }
+
+  // Wrap openDetails to set the iframe src
+  const _openDetails = typeof openDetails === 'function' ? openDetails : null;
+  if (_openDetails){
+    window.openDetails = async function(id){
+      await _openDetails(id);
+      const els = ensurePlayerElements();
+      if (!els) return;
+      const linkEl = document.getElementById('watchLink');
+      if (linkEl && linkEl.href){
+        const view = pixeldrainViewerUrl(linkEl.href);
+        if (view){ els.frame.src = view; els.wrap.style.display = 'block'; }
+        else { els.frame.removeAttribute('src'); els.wrap.style.display = 'none'; }
+      }else{
+        els.frame.removeAttribute('src'); els.wrap.style.display = 'none';
+      }
+    }
+  }
+
+  // Wrap closeModal to clear iframe src
+  if (typeof closeModal === 'function'){
+    const _close = closeModal;
+    window.closeModal = function(){
+      try{
+        const fr = document.getElementById('pxFrame');
+        if (fr) fr.removeAttribute('src');
+      }catch(_){}
+      _close();
+    }
   }
 })();
