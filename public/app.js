@@ -1,21 +1,3 @@
-
-function pixeldrainDirectUrl(link){
-  if (!link) return null;
-  try{
-    const u = new URL(link);
-    // expected: https://pixeldrain.com/u/<id> or .../d/<id> or direct /api/file/<id>
-    const segs = u.pathname.split('/').filter(Boolean);
-    let id = null;
-    const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
-    if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
-    if (!id && segs.length) id = segs[segs.length-1];
-    // If it's already an /api/file link, keep it
-    if (segs.includes('api') && segs.includes('file')) return link;
-    if (!id) return null;
-    return `https://pixeldrain.com/api/file/${id}?download`;
-  }catch(_){ return null; }
-}
-
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
@@ -131,24 +113,8 @@ async function openDetails(id){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
-  const playerWrap = document.getElementById('playerWrap');
-  const pxVideo = document.getElementById('pxVideo');
-  const playerNote = document.getElementById('playerNote');
-  if (d.link) {
-    link.href = d.link; link.style.display='inline-flex';
-    const direct = pixeldrainDirectUrl(d.link);
-    if (direct){
-      pxVideo.src = direct;
-      playerWrap.style.display='block';
-      playerNote.style.display='none';
-    } else {
-      playerWrap.style.display='none';
-      playerNote.style.display='block';
-    }
-  } else {
-    link.style.display='none';
-    playerWrap.style.display='none';
-  }
+  if (d.link) { link.href = d.link; link.style.display='inline-flex'; }
+  else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
 
