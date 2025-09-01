@@ -107,7 +107,8 @@ async function load(){
   const res = await fetch(endpoint);
   const data = await res.json();
 
-  grid.innerHTML = data.items.map(item => `
+  const items = filterByYearClient(data.items, state.year);
+  grid.innerHTML = items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
@@ -177,6 +178,16 @@ fetchGenres().then(load);
 
 /* Enter on actor triggers search */
 (function(){
+  function filterByYearClient(items, year){
+    if (!year) return items;
+    const Y = String(year).trim();
+    if (!/^[0-9]{4}$/.test(Y)) return items;
+    return (items||[]).filter(it => {
+      const y = it && (it.year || (it.release_date && String(it.release_date).slice(0,4)));
+      return String(y||'') === Y;
+    });
+  }
+
   const actor = document.getElementById('actor');
   const btn = document.getElementById('searchBtn');
   if (actor && btn){
@@ -187,6 +198,16 @@ fetchGenres().then(load);
 
 // --- Enter-to-search helper (desktop & mobile) ---
 (function(){
+  function filterByYearClient(items, year){
+    if (!year) return items;
+    const Y = String(year).trim();
+    if (!/^[0-9]{4}$/.test(Y)) return items;
+    return (items||[]).filter(it => {
+      const y = it && (it.year || (it.release_date && String(it.release_date).slice(0,4)));
+      return String(y||'') === Y;
+    });
+  }
+
   const qEl = document.getElementById('q');
   const actorEl = document.getElementById('actor');
   const yearEl = document.getElementById('year');
