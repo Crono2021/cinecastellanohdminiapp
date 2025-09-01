@@ -17,7 +17,7 @@ function toWatchUrl(link){
 }
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
+let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', year: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
@@ -72,9 +72,11 @@ async function load(){
 
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
     // Client-side paginated render from the aggregated list
+    let list = state.clientGenreItems;
+    if (state.year){ list = list.filter(it => (String(it.year||'') || '').slice(0,4) === state.year || (it.release_date||'').slice(0,4) === state.year); }
     const start = (state.page - 1) * state.pageSize;
     const end = start + state.pageSize;
-    const slice = state.clientGenreItems.slice(start, end);
+    const slice = list.slice(start, end);
 
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
@@ -99,11 +101,13 @@ async function load(){
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
+  if (state.year) params.set('year', state.year);
     const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/movies?' + params.toString();
   const res = await fetch(endpoint);
   const data = await res.json();
 
-  grid.innerHTML = data.items.map(item => `
+  const items = (state.year ? (data.items||[]).filter(it => (String(it.year||'') || '').slice(0,4) === state.year || (it.release_date||'').slice(0,4) === state.year) : (data.items||[]));
+  grid.innerHTML = items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
@@ -117,7 +121,7 @@ async function load(){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  pageInfo.textContent = `Página ${data.page}`;
+  pageInfo.textContent = `Página ${data.page}` + (state.year ? ` · filtrado por año ${state.year}` : '');
 }
 
 async function openDetails(id){
@@ -184,6 +188,7 @@ fetchGenres().then(load);
 (function(){
   const qEl = document.getElementById('q');
   const actorEl = document.getElementById('actor');
+  const yearEl = document.getElementById('year');
   const genreEl = document.getElementById('genre');
   const btn = document.getElementById('searchBtn');
 
@@ -209,6 +214,7 @@ fetchGenres().then(load);
   // Desktop & Mobile soft keyboards
   if (qEl)    qEl.addEventListener('keydown', handleEnter, { passive: false });
   if (actorEl)actorEl.addEventListener('keydown', handleEnter, { passive: false });
+  if (yearEl) yearEl.addEventListener('keydown', handleEnter, { passive: false });
 
   // If the inputs are inside a form, catch submit too
   const form = (qEl && qEl.form) || (actorEl && actorEl.form) || document.getElementById('searchForm');
