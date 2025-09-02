@@ -1,64 +1,19 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <title>Cine en Castellano HD</title>
-  <link rel="stylesheet" href="/styles.css" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Aquí enlazamos el manifest -->
+  <link rel="manifest" href="/manifest.webmanifest">
+
+  <!-- Opcional: color del navegador -->
+  <meta name="theme-color" content="#000000" />
 </head>
 <body>
-  <header>
-    <div class="container hstack">
-      <h2 style="margin:0">🎬 Cine en Castellano HD</h2>
-      <div style="font-size:0.8em; color:#aaa; margin-top:2px;">Por Crono2021</div>
-      <input id="q" placeholder="Buscar por título..." style="flex:1" />
-      <input id="actor" placeholder="...o por actor/actriz" />
-      <select id="genre"></select>
-      <button id="searchBtn">Buscar</button>
-      <button id="resetBtn">Vista global</button>
-    </div>
-  </header>
-
-  <div class="container">
-    <div id="grid" class="grid"></div>
-    <div class="pagination">
-      <button id="prev">◀︎</button>
-      <small id="pageInfo"></small>
-      <button id="next">▶︎</button>
-    </div>
-  </div>
-
-  <div id="modal" class="modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <strong id="modalTitle"></strong>
-        <button id="closeModal">Cerrar</button>
-      </div>
-      <div class="modal-body">
-        <div class="detail">
-          <img id="modalPoster" class="poster-lg" />
-          <div>
-            <p id="modalOverview"></p>
-            <p><small class="mute" id="modalMeta"></small></p>
-            <div id="modalGenres"></div>
-            <h4>Reparto principal</h4>
-            <div id="modalCast" class="cast"></div>
-            <p>
-              <a id="watchLink" class="link" target="_blank">▶ Reproducir</a>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <footer>
-    <div class="container">
-      <small class="mute">® Cine Castellano HD — datos de TMDB. Esta mini app no está afiliada ni respaldada por TMDB.</small>
-    </div>
-  </footer>
-
-  <script src="/app.js"></script>
+  <h1>Bienvenido a Cine en Castellano HD</h1>
+  <p>Tu aplicación PWA ya está lista 🚀</p>
 </body>
 </html>
