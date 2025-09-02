@@ -3,7 +3,6 @@
   "short_name": "Catálogo",
   "id": "/",
   "lang": "es-ES",
-  "dir": "ltr",
   "description": "Catálogo instalable como app. Acceso directo al catálogo y navegación en modo standalone.",
   "start_url": "/catalogo?source=pwa",
   "scope": "/",
