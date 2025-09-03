@@ -512,3 +512,15 @@ app.post('/api/admin/importCatalog', (req, res) => {
   // Lógica para procesar el catálogo JSON (se puede modificar según la estructura)
   res.status(200).json({ message: 'Catálogo importado correctamente' });
 });
+
+app.post('/api/admin/importCatalog', (req, res) => {
+  const { json } = req.body;
+  if (!json) {
+    return res.status(400).json({ error: 'No se recibió un catálogo JSON válido' });
+  }
+
+  // Procesar el catálogo JSON (por ejemplo, guardarlo en la base de datos)
+  console.log("Catálogo recibido:", json);
+
+  res.status(200).json({ message: 'Catálogo importado correctamente' });
+});
