@@ -502,3 +502,13 @@ app.get('/watch/:id', function(req, res){
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
 });
+
+app.post('/api/admin/importCatalog', (req, res) => {
+  const { json } = req.body;
+  if (!json) {
+    return res.status(400).json({ error: 'No se recibió un catálogo JSON válido' });
+  }
+
+  // Lógica para procesar el catálogo JSON (se puede modificar según la estructura)
+  res.status(200).json({ message: 'Catálogo importado correctamente' });
+});
