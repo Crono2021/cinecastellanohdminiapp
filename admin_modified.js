@@ -22,12 +22,13 @@ async function post(url, body){
   return res.json();
 }
 
-window.onpopstate = function(event) {
+window.addEventListener('popstate', function(event) {
     if (window.location.hash === "#ficha") {
-        window.history.pushState(null, "", "#menu");
-        showMenu();
+        event.preventDefault();  // Prevenir la acción de retroceder.
+        window.history.pushState(null, "", "#menu"); // Retroceder al menú.
+        showMenu(); // Mostrar el menú.
     }
-};
+}, false);
 
 function showMenu() {
     document.getElementById('menu').style.display = 'block';
@@ -44,3 +45,10 @@ function goToFicha() {
     document.getElementById('ficha').style.display = 'block';
     document.getElementById('menu').style.display = 'none';
 }
+
+document.addEventListener('backbutton', function(event) {
+    if (window.location.hash === "#ficha") {
+        event.preventDefault(); // Prevenir la acción predeterminada.
+        showMenu(); // Mostrar el menú.
+    }
+}, false);
