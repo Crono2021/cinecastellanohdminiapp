@@ -67,24 +67,3 @@ document.getElementById('exportBtn').onclick = async ()=>{
   a.href = url; a.download = 'cchd_export.json'; a.click();
   URL.revokeObjectURL(url);
 };
-
-document.getElementById('importCatalog').onclick = async () => {
-  const fileInput = document.getElementById('jsonFile');
-  const file = fileInput.files[0];
-  if (!file) {
-    alert('Por favor, selecciona un archivo JSON.');
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const jsonContent = JSON.parse(reader.result);
-    try {
-      const res = await post('/api/admin/importCatalog', { json: jsonContent });
-      document.getElementById('importStatus').textContent = 'Catálogo importado con éxito';
-    } catch (e) {
-      document.getElementById('importStatus').textContent = 'Error al importar el catálogo: ' + e.message;
-    }
-  };
-  reader.readAsText(file);
-};

@@ -68,23 +68,47 @@ document.getElementById('exportBtn').onclick = async ()=>{
   URL.revokeObjectURL(url);
 };
 
-document.getElementById('importCatalog').onclick = async () => {
-  const fileInput = document.getElementById('jsonFile');
-  const file = fileInput.files[0];
-  if (!file) {
-    alert('Por favor, selecciona un archivo JSON.');
-    return;
-  }
 
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const jsonContent = JSON.parse(reader.result);
-    try {
-      const res = await post('/api/admin/importCatalog', { json: jsonContent });
-      document.getElementById('importStatus').textContent = 'Catálogo importado con éxito';
-    } catch (e) {
-      document.getElementById('importStatus').textContent = 'Error al importar el catálogo: ' + e.message;
+document.getElementById('deleteBtn').onclick = async ()=>{
+  const title = document.getElementById('delTitle').value.trim();
+  const year = document.getElementById('delYear').value.trim();
+  const out = document.getElementById('deleteOut');
+  if (!title) { out.textContent = 'Escribe un título'; return; }
+  out.textContent = 'Eliminando...';
+  try{
+    const r = await post('/api/admin/delete', { title, year: year || null });
+    if (r.deleted > 0){
+      out.textContent = `Eliminadas: ${r.deleted}. (${r.matches.map(m=>m.title + (m.year? ' ('+m.year+')':'' )).join(' · ')})`;
+    }else{
+      out.textContent = 'No se encontraron coincidencias';
+    }
+  }catch(e){
+    out.textContent = 'Error: ' + e.message;
+  }
+};
+
+
+/* Delete by TMDB ID */
+(function(){
+  const btn = document.getElementById('deleteByIdBtn');
+  if (!btn) return;
+  btn.onclick = async ()=>{
+    const out = document.getElementById('deleteByIdOut');
+    const input = document.getElementById('delIdInput');
+    const raw = input ? input.value.trim() : '';
+    const id = Number(raw);
+    if (!raw || Number.isNaN(id)){ out.textContent = 'Introduce un TMDB ID válido'; return; }
+    out.textContent = 'Eliminando...';
+    try{
+      const r = await post('/api/admin/deleteById', { tmdb_id: id });
+      if (r.deleted > 0){
+        const label = r.match ? (r.match.title + (r.match.year ? ' ('+r.match.year+')' : '')) : ('ID ' + id);
+        out.textContent = `Eliminado: ${label}`;
+      }else{
+        out.textContent = 'No se encontró ninguna película con ese ID';
+      }
+    }catch(e){
+      out.textContent = 'Error: ' + (e?.message || e);
     }
   };
-  reader.readAsText(file);
-};
+})();
