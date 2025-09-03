@@ -514,3 +514,36 @@ app.post('/api/admin/importCatalog', (req, res) => {
 
   res.status(200).json({ message: 'Catálogo importado correctamente' });
 });
+
+app.post('/api/admin/importCatalog', (req, res) => {
+  const { json } = req.body;
+  if (!json) {
+    return res.status(400).json({ error: 'No se recibió un catálogo JSON válido' });
+  }
+
+  // Aquí puedes procesar el catálogo (por ejemplo, insertarlo en la base de datos)
+  console.log("Catálogo recibido:", json);
+  res.status(200).json({ message: 'Catálogo importado correctamente' });
+});
+
+app.post('/api/admin/deleteByTmdbId', (req, res) => {
+  const { tmdbId } = req.body;
+  if (!tmdbId) {
+    return res.status(400).json({ error: 'No se proporcionó un TMDB ID' });
+  }
+
+  // Lógica para eliminar la película por TMDB ID
+  console.log("Eliminando película con TMDB ID:", tmdbId);
+  res.status(200).json({ message: 'Película eliminada correctamente por TMDB ID' });
+});
+
+app.post('/api/admin/deleteByTitleAndYear', (req, res) => {
+  const { title, year } = req.body;
+  if (!title || !year) {
+    return res.status(400).json({ error: 'No se proporcionaron título y año' });
+  }
+
+  // Lógica para eliminar la película por título y año
+  console.log("Eliminando película con título:", title, "y año:", year);
+  res.status(200).json({ message: 'Película eliminada correctamente por título y año' });
+});
