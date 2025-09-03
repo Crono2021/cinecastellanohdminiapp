@@ -1,37 +1,69 @@
+function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
+function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
 
-// Detenemos el comportamiento de retroceso físico en Android.
-document.addEventListener('backbutton', function(event) {
-    if (window.location.hash === "#ficha") {
-        event.preventDefault(); // Prevenir la acción predeterminada (salir de la app).
-        window.history.replaceState(null, "", "#menu"); // Reemplazamos el historial con el menú.
-        showMenu(); // Mostrar el menú.
-    }
-}, false);
+const tokenInput = document.getElementById('token');
+tokenInput.value = getToken();
+document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
 
-// Manejamos el cambio de historial cuando el usuario navega entre el menú y la ficha
-window.addEventListener('popstate', function(event) {
-    if (window.location.hash === "#ficha") {
-        event.preventDefault();  // Prevenir la acción de retroceder.
-        window.history.replaceState(null, "", "#menu"); // Retroceder al menú sin añadir una nueva entrada al historial.
-        showMenu(); // Mostrar el menú.
-    }
-}, false);
-
-// Función para mostrar el menú
-function showMenu() {
-    document.getElementById('menu').style.display = 'block';
-    document.getElementById('ficha').style.display = 'none';
+async function post(url, body){
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getToken()
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok){
+    const e = await res.json().catch(()=>({error:'Error desconocido'}));
+    throw new Error(e.error||('HTTP '+res.status));
+  }
+  return res.json();
 }
 
-// Función para ir a la ficha
-function goToFicha() {
-    window.history.pushState(null, "", "#ficha"); // Añadir al historial la vista ficha
-    document.getElementById('ficha').style.display = 'block';
-    document.getElementById('menu').style.display = 'none';
-}
+document.getElementById('addOne').onclick = async ()=>{
+  const title = document.getElementById('title').value.trim();
+  const year = document.getElementById('year').value.trim();
+  const link = document.getElementById('link').value.trim();
+  const out = document.getElementById('oneOut');
+  out.textContent = 'Añadiendo...';
+  try{
+    const r = await post('/api/admin/add', { title, year: year?parseInt(year):undefined, link });
+    out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
+  }catch(e){ out.textContent = 'Error: ' + e.message; }
+};
 
-// Función para regresar al menú
-function goBackToMenu() {
-    window.history.pushState(null, "", "#menu"); // Añadir al historial la vista menú
-    showMenu();
-}
+document.getElementById('addById').onclick = async ()=>{
+  const tmdbId = parseInt(document.getElementById('tmdbId').value.trim());
+  const link = document.getElementById('link').value.trim();
+  const out = document.getElementById('oneOut');
+  if (!tmdbId) return alert('TMDB ID requerido');
+  if (!link) return alert('Link requerido');
+  out.textContent = 'Añadiendo por ID...';
+  try{
+    const r = await post('/api/admin/add', { tmdbId, link });
+    out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
+  }catch(e){ out.textContent = 'Error: ' + e.message; }
+};
+
+document.getElementById('doBulk').onclick = async ()=>{
+  const text = document.getElementById('bulk').value;
+  const out = document.getElementById('bulkOut');
+  out.textContent = 'Importando...';
+  try{
+    const r = await post('/api/admin/bulkImport', { text });
+    out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
+    console.log(r);
+  }catch(e){ out.textContent = 'Error: ' + e.message; }
+};
+
+document.getElementById('exportBtn').onclick = async ()=>{
+  const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
+  if(!res.ok) return alert('Error exportando');
+  const data = await res.json();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'cchd_export.json'; a.click();
+  URL.revokeObjectURL(url);
+};
