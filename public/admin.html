@@ -17,6 +17,18 @@
       <small class="mute">Se guarda en este navegador.</small>
     </div>
 
+    
+    <div class="box">
+      <h3>🗑️ Eliminar película</h3>
+      <div class="hstack">
+        <input id="delTitle" placeholder="Título exacto" style="flex:1" />
+        <input id="delYear" placeholder="Año (yyyy)" style="width:140px" />
+        <button id="deleteBtn">Eliminar</button>
+      </div>
+      <small class="mute">Consejo: si el título tiene acentos, escribe el título tal cual está guardado. El año es opcional para desambiguar.</small>
+      <div id="deleteOut" class="mute" style="margin-top:8px"></div>
+    </div>
+    
     <div class="box">
       <h3>Alta rápida (1 a 1)</h3>
       <div class="hstack">
@@ -42,18 +54,18 @@
     <div class="box">
       <h3>Exportar catálogo</h3>
       <button id="exportBtn">Descargar JSON</button>
+    
+    <div class="box">
+      <h3>🗑️ Eliminar por TMDB ID</h3>
+      <div class="hstack">
+        <input id="delIdInput" placeholder="TMDB ID (número)" inputmode="numeric" style="flex:1" />
+        <button id="deleteByIdBtn">Eliminar</button>
+      </div>
+      <small class="mute">Elimina directamente por <b>tmdb_id</b>. Requiere token admin.</small>
+      <div id="deleteByIdOut" class="mute" style="margin-top:8px"></div>
     </div>
+    
   </div>
   <script src="/admin.js"></script>
 </body>
 </html>
-
-<!-- Añadir la opción de importar catálogo JSON -->
-<input type="file" id="jsonFile" />
-<button id="importCatalog">Importar Catálogo</button>
-<p id="importStatus"></p>
-
-<!-- Formulario para cargar archivo JSON -->
-<input type="file" id="jsonFile" />
-<button id="importCatalog">Importar Catálogo</button>
-<p id="importStatus"></p>
