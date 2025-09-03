@@ -1,54 +1,37 @@
 
-function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
-function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
-
-const tokenInput = document.getElementById('token');
-tokenInput.value = getToken();
-document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
-
-async function post(url, body){
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + getToken()
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok){
-    const e = await res.json().catch(()=>({error:'Error desconocido'}));
-    throw new Error(e.error||('HTTP '+res.status));
-  }
-  return res.json();
-}
-
-window.addEventListener('popstate', function(event) {
+// Detenemos el comportamiento de retroceso físico en Android.
+document.addEventListener('backbutton', function(event) {
     if (window.location.hash === "#ficha") {
-        event.preventDefault();  // Prevenir la acción de retroceder.
-        window.history.pushState(null, "", "#menu"); // Retroceder al menú.
+        event.preventDefault(); // Prevenir la acción predeterminada (salir de la app).
+        window.history.replaceState(null, "", "#menu"); // Reemplazamos el historial con el menú.
         showMenu(); // Mostrar el menú.
     }
 }, false);
 
+// Manejamos el cambio de historial cuando el usuario navega entre el menú y la ficha
+window.addEventListener('popstate', function(event) {
+    if (window.location.hash === "#ficha") {
+        event.preventDefault();  // Prevenir la acción de retroceder.
+        window.history.replaceState(null, "", "#menu"); // Retroceder al menú sin añadir una nueva entrada al historial.
+        showMenu(); // Mostrar el menú.
+    }
+}, false);
+
+// Función para mostrar el menú
 function showMenu() {
     document.getElementById('menu').style.display = 'block';
     document.getElementById('ficha').style.display = 'none';
 }
 
-function goBackToMenu() {
-    window.history.pushState(null, "", "#menu");
-    showMenu();
-}
-
+// Función para ir a la ficha
 function goToFicha() {
-    window.history.pushState(null, "", "#ficha");
+    window.history.pushState(null, "", "#ficha"); // Añadir al historial la vista ficha
     document.getElementById('ficha').style.display = 'block';
     document.getElementById('menu').style.display = 'none';
 }
 
-document.addEventListener('backbutton', function(event) {
-    if (window.location.hash === "#ficha") {
-        event.preventDefault(); // Prevenir la acción predeterminada.
-        showMenu(); // Mostrar el menú.
-    }
-}, false);
+// Función para regresar al menú
+function goBackToMenu() {
+    window.history.pushState(null, "", "#menu"); // Añadir al historial la vista menú
+    showMenu();
+}
