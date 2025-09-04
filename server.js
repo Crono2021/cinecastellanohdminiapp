@@ -59,6 +59,10 @@ if (usePg) {
     }
   };
 } else {
+
+  // In pg mode, provide a no-op serialize to avoid crashes if called
+  db.serialize = function(fn){ if (typeof fn === 'function') fn(); };
+
   const dbSqlite = new sqlite3.Database(DB_PATH);
   db = dbSqlite;
 }
