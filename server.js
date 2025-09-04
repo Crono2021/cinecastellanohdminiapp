@@ -445,15 +445,7 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 
 
 // === Pixeldrain proxy ===
-app.get('/pd/:id', async function(req, res){
-  var id = req.params.id;
-  if (!id) { res.status(400).send('Missing id'); return; }
-  var upstream = 'https://pixeldrain.net/api/file/' + id;
-  try{
-    var headers = {};
-    if (req.headers.range) headers['Range'] = req.headers.range;
-    headers['User-Agent'] = 'CCHD/1.0';
-    var r = await axios.get(upstream, { responseType: 'stream', headers: headers, timeout: 15000, validateStatus: function(s){ return s>=200 && s<400; } });
+// (disabled) /pd proxy removed to avoid tunneling costs
     ['content-type','content-length','accept-ranges','content-range'].forEach(function(h){ if (r.headers[h]) res.setHeader(h, r.headers[h]); });
     res.setHeader('Content-Disposition', 'inline; filename="' + id + '.mp4"');
     res.setHeader('Cache-Control', 'public, max-age=3600');
@@ -477,27 +469,7 @@ app.head('/pd/:id', async function(req, res){
 });
 
 // === Watch page (no real URL exposed) ===
-app.get('/watch/:id', function(req, res){
-  var id = req.params.id;
-  var html = ''
-  + '<!doctype html><html><head><meta charset="utf-8">'
-  + '<meta name="viewport" content="width=device-width, initial-scale=1">'
-  + '<title>Reproductor</title>'
-  + '<style>body{margin:0;background:#000;color:#fff;font-family:ui-sans-serif,system-ui;}'
-  + '.wrap{max-width:900px;margin:0 auto;padding:16px;}'
-  + 'video{width:100%;height:auto;max-height:80vh;border-radius:8px;background:#000;}'
-  + '.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}'
-  + 'a.btn{display:inline-flex;gap:6px;align-items:center;padding:8px 12px;border-radius:8px;background:#222;color:#fff;text-decoration:none;}'
-  + '</style></head><body><div class="wrap">'
-  + '<div class="topbar"><a class="btn" href="/">← Volver</a><span>Reproduciendo</span></div>'
-  + '<video controls playsinline preload="metadata">'
-  + '  <source src="/pd/' + id + '" type="video/mp4">'
-  + '  Tu navegador no soporta el elemento de video.'
-  + '</video>'
-  + '</div></body></html>';
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(html);
-});
+// (disabled) /watch page removed in favor of direct PixelDrain links
 
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);

@@ -1,5 +1,5 @@
 
-// --- Build watch URL that hides origin (uses server-side /watch/:id -> /pd/:id) ---
+// --- Build direct PixelDrain URL using /api for fullscreen (no server-side proxy) ---
 function toWatchUrl(link){
   if (!link) return null;
   try{
@@ -12,7 +12,7 @@ function toWatchUrl(link){
     if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
     if (!id && segs.length) id = segs[segs.length-1];
     if (!id) return null;
-    return '/watch/' + id;
+    return `https://${host}/api/file/${id}`;
   }catch(_){ return null; }
 }
 
