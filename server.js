@@ -6,6 +6,7 @@ const axios = require('axios');
 const helmet = require('helmet');
 const cors = require('cors');
 require('dotenv').config();
+const { Pool } = require('pg');
 
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -24,7 +25,41 @@ if (!TMDB_API_KEY) {
 
 // --- DB (persistencia opcional vía DB_PATH) ---
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
-const db = new sqlite3.Database(DB_PATH);
+const DATABASE_URL = process.env.DATABASE_URL;
+const usePg = !!DATABASE_URL;
+let db;
+
+if (usePg) {
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+
+  function toPg(sql){
+    let i = 0;
+    let out = sql.replace(/insert\s+or\s+replace/ig, 'INSERT');
+    out = out.replace(/\?/g, () => '$' + (++i));
+    out = out.replace(/datetime\('now'\)/ig, 'CURRENT_TIMESTAMP');
+    if (/INSERT\s+INTO\s+movies/i.test(out) && !/ON\s+CONFLICT/i.test(out)) {
+      out = out.replace(/;?$/, ' ON CONFLICT (tmdb_id) DO UPDATE SET title = EXCLUDED.title, year = EXCLUDED.year, link = EXCLUDED.link;');
+    }
+    return out;
+  }
+
+  db = {
+    run(sql, params = [], cb){
+      const q = toPg(sql);
+      pool.query(q, params).then(() => cb && cb(null)).catch(err => cb && cb(err));
+    },
+    all(sql, params = [], cb){
+      const q = toPg(sql);
+      pool.query(q, params).then(r => cb && cb(null, r.rows)).catch(err => cb && cb(err));
+    }
+  };
+} else {
+  const dbSqlite = new sqlite3.Database(DB_PATH);
+  db = dbSqlite;
+}
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS movies (
