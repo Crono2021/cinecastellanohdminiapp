@@ -67,7 +67,7 @@ if (usePg) {
   db = dbSqlite;
 }
 
-db.serialize(() => {
+if (!usePg) db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS movies (
     tmdb_id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
