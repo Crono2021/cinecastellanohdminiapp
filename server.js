@@ -444,30 +444,6 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 });
 
 
-// === Pixeldrain proxy ===
-// (disabled) /pd proxy removed to avoid tunneling costs
-    ['content-type','content-length','accept-ranges','content-range'].forEach(function(h){ if (r.headers[h]) res.setHeader(h, r.headers[h]); });
-    res.setHeader('Content-Disposition', 'inline; filename="' + id + '.mp4"');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    var status = (req.headers.range && r.headers['content-range']) ? 206 : 200;
-    r.data.on('error', function(e){ try{ res.destroy(e); }catch(_){ } });
-    r.data.pipe(res.status(status));
-  }catch(e){
-    console.error('PD proxy error', (e && e.response && e.response.status) || e && e.code || e && e.message);
-    res.status(502).send('Bad gateway');
-  }
-});
-
-app.head('/pd/:id', async function(req, res){
-  var id = req.params.id;
-  var upstream = 'https://pixeldrain.net/api/file/' + id;
-  try{
-    var r = await axios.head(upstream, { timeout: 10000, validateStatus: function(s){ return s>=200 && s<400; } });
-    ['content-type','content-length','accept-ranges'].forEach(function(h){ if (r.headers[h]) res.setHeader(h, r.headers[h]); });
-    res.status(200).end();
-  }catch(e){ res.status(404).end(); }
-});
-
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
 
