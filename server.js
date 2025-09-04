@@ -507,6 +507,51 @@ app.get('/pd/:id', async function(req, res){
   }
 });
 
+
+
+// === Debug endpoints (enabled only if DEBUG=1) ===
+if (process.env.DEBUG === '1') {
+  app.get('/debug/health', async (req, res) => {
+    try {
+      if (usePg) {
+        const { Pool } = require('pg');
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+        const r = await pool.query('select now() as now, current_user as user, current_database() as db');
+        res.json({ mode: 'pg', now: r.rows[0].now, user: r.rows[0].user, db: r.rows[0].db });
+      } else {
+        res.json({ mode: 'sqlite', path: DB_PATH });
+      }
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/debug/export', async (req, res) => {
+    try {
+      const rows = await new Promise((resolve, reject) => {
+        db.all('SELECT tmdb_id, title, year, link FROM movies ORDER BY tmdb_id DESC LIMIT 50', [], (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows);
+        });
+      });
+      res.json({ count: rows.length, items: rows });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.post('/debug/add', async (req, res) => {
+    try {
+      const tmdb_id = 999999002;
+      const title = 'DEBUG ADD';
+      const year = 2024;
+      const link = 'https://example.com/video.mp4';
+      await new Promise((resolve, reject) => {
+        db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)', [tmdb_id, title, year, link], function(err){
+          if (err) return reject(err);
+          resolve();
+        });
+      });
+      res.json({ ok: true, tmdb_id, title });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+}
 app.head('/pd/:id', async function(req, res){
   var id = req.params.id;
   var upstream = 'https://pixeldrain.net/api/file/' + id;
