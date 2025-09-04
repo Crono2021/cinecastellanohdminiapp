@@ -27,6 +27,8 @@ if (!TMDB_API_KEY) {
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const DATABASE_URL = process.env.DATABASE_URL;
 const usePg = !!DATABASE_URL;
+console.log('[DB] DATABASE_URL present?', !!DATABASE_URL);
+console.log('[DB] Mode:', usePg ? 'pg' : 'sqlite');
 let db;
 
 if (usePg) {
@@ -532,6 +534,21 @@ app.get('/watch/:id', function(req, res){
   + '</div></body></html>';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(html);
+});
+
+app.get('/health/db', async (req, res) => {
+  try {
+    if (typeof usePg !== 'undefined' && usePg) {
+      const { Pool } = require('pg');
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+      const r = await pool.query('select now() as now, current_user as user, current_database() as db');
+      res.json({ mode: 'pg', now: r.rows[0].now, user: r.rows[0].user, db: r.rows[0].db });
+    } else {
+      res.json({ mode: 'sqlite', path: DB_PATH });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, () => {
