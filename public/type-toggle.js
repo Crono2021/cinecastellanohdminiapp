@@ -13,41 +13,37 @@
     updateButton();
   }
   function updateButton(){
-    try{
-      const btn = document.getElementById('typeToggle');
-      if (!btn) return;
-      const t = getType();
-      // When showing movies, the button invites to switch to series
-      btn.textContent = (t === 'movie') ? 'Series' : 'Películas';
-    }catch(_){}
+    const btn = document.getElementById('typeToggle');
+    if (!btn) return;
+    const t = getType();
+    btn.textContent = (t === 'movie') ? 'Series' : 'Películas';
   }
 
-  // Intercept fetch to inject &type=
+  // Intercept fetch to filter /api/catalog responses on the client
   const origFetch = window.fetch;
   window.fetch = function(input, init){
-    try{
-      let url = (typeof input === 'string') ? input : (input && input.url) || '';
-      if (/\/api\/catalog(\?|$)/.test(url)){
-        const t = getType();
-        if (typeof input === 'string'){
-          const u = new URL(url, location.origin);
-          // Avoid overwriting if already present
-          if (!u.searchParams.has('type')){
-            u.searchParams.set('type', t);
-            input = u.pathname + u.search;
-          }
-        }else if (input && input.url){
-          const u = new URL(input.url, location.origin);
-          if (!u.searchParams.has('type')){
-            u.searchParams.set('type', getType());
-            const newUrl = u.pathname + u.search;
-            // Clone the Request while keeping init
-            input = new Request(newUrl, input);
-          }
+    const isString = (typeof input === 'string');
+    const url = isString ? input : (input && input.url) || '';
+    const isCatalog = /\/api\/catalog(\?|$)/.test(url);
+    const t = getType();
+
+    const p = origFetch.apply(this, [input, init]);
+    if (!isCatalog) return p;
+
+    return p.then(async (resp) => {
+      try{
+        // Clone response and read JSON
+        const data = await resp.clone().json();
+        if (Array.isArray(data.items)){
+          const filtered = (t === 'tv') ? data.items.filter(it => it.type === 'tv')
+                                        : data.items.filter(it => it.type !== 'tv');
+          const newData = { ...data, items: filtered, total: filtered.length };
+          const blob = new Blob([JSON.stringify(newData)], { type: 'application/json' });
+          return new Response(blob, { status: 200, statusText: 'OK', headers: resp.headers });
         }
-      }
-    }catch(_){ /* ignore */ }
-    return origFetch.apply(this, [input, init]);
+      }catch(_){ /* fallthrough, return original response */ }
+      return resp;
+    });
   };
 
   // Wire up the toggle button
@@ -57,7 +53,7 @@
       btn.addEventListener('click', () => {
         const next = (getType() === 'movie') ? 'tv' : 'movie';
         setType(next);
-        // Trigger a reload via the existing search button or load()
+        // Trigger refresh
         const searchBtn = document.getElementById('searchBtn');
         if (searchBtn && searchBtn.click) searchBtn.click();
         else if (typeof window.load === 'function') window.load();
