@@ -79,3 +79,19 @@ footer{border-top:1px solid #222;color:#aaa}
 @media (prefers-reduced-motion: reduce){
   .link{transition:none}
 }
+
+/* --- Serie badge (catalog cards only) --- */
+.card{ position: relative; }
+.serie-badge{
+  position:absolute;
+  top:8px; left:8px;
+  padding:4px 10px;
+  border:2px solid #22c55e; /* green outline */
+  color:#22c55e;
+  background:transparent; /* transparent fill */
+  border-radius:9999px; /* full circle/pill */
+  font-weight:700;
+  font-size:.75rem;
+  line-height:1;
+  pointer-events:none; /* don't block clicks on the card */
+}

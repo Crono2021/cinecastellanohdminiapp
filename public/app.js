@@ -78,6 +78,7 @@ async function load(){
 
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
+        ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${item.title}</div>
