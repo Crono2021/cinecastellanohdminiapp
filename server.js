@@ -295,8 +295,8 @@ app.get('/api/catalog', async (req, res) => {
     // Fetch a generous window from both, order by rowid desc to approximate recency
     const movies = await new Promise((resolve, reject) => {
       const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-      const params = qLike ? [qLike, 1000] : [1000];
-      db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC LIMIT ?`, params, (err, rows) => {
+      const params = qLike ? [qLike] : [];
+      db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
@@ -304,8 +304,8 @@ app.get('/api/catalog', async (req, res) => {
 
     const series = await new Promise((resolve, reject) => {
       const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const params = qLike ? [qLike, 1000] : [1000];
-      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, created_at FROM series ${where} ORDER BY rowid DESC LIMIT ?`, params, (err, rows) => {
+      const params = qLike ? [qLike] : [];
+      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, created_at FROM series ${where} ORDER BY rowid DESC`, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
