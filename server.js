@@ -56,9 +56,9 @@ async function tmdbSearchTv(name, year){
       include_adult: true,
       first_air_date_year: year || undefined,
       language: 'es-ES'
-    }
-  });
-  const r = (data.results || [])[0];
+      }
+});
+const r = (data.results || [])[0];
   return r ? { id: r.id, name: r.name, first_air_date: r.first_air_date } : null;
 }
 
@@ -96,9 +96,9 @@ async function tmdbSearchMovie(title, year) {
       include_adult: true,
       year: year || undefined,
       language: 'es-ES'
-    }
-  });
-  if (!data.results || data.results.length === 0) return null;
+      }
+});
+if (!data.results || data.results.length === 0) return null;
   if (year) {
     const exact = data.results.find(r => (r.release_date || '').startsWith(String(year)));
     if (exact) return exact;
@@ -133,14 +133,16 @@ async function tmdbGetMovieDetails(tmdbId) {
 
 async function tmdbGetGenres() {
   const url = `https://api.themoviedb.org/3/genre/movie/list`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-  return data.genres || [];
+  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
+});
+return data.genres || [];
 }
 
 async function tmdbSearchPersonByName(name) {
   const url = `https://api.themoviedb.org/3/search/person`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES' } });
-  if (!data.results || data.results.length === 0) return null;
+  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES'   }
+});
+if (!data.results || data.results.length === 0) return null;
   return data.results[0];
 }
 
@@ -155,10 +157,8 @@ app.get('/api/genres', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los géneros' });
-  }
+    }
 });
-
-
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
 app.get('/api/movies/by-actor', async (req, res) => {
   try {
@@ -173,8 +173,9 @@ app.get('/api/movies/by-actor', async (req, res) => {
 
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
+    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
+});
+const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
     if (ids.length === 0) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Intersect with our DB and apply optional title filter 'q'
@@ -229,9 +230,8 @@ app.get('/api/movies/by-actor', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo buscar por actor' });
-  }
+    }
 });
-
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 app.get('/api/movies', async (req, res) => {
   try {
@@ -275,8 +275,9 @@ app.get('/api/movies', async (req, res) => {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
         const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
+        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
+});
+const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
         items = items.filter(it => ids.has(it.tmdb_id));
       } else {
         items = [];
@@ -293,9 +294,8 @@ app.get('/api/movies', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
-  }
+    }
 });
-
 // GET /api/movie/:id
 app.get('/api/movie/:id', async (req, res) => {
   try {
@@ -313,10 +313,8 @@ app.get('/api/movie/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
-  }
+    }
 });
-
-
 async function getTmdbMovieDetails(tmdbId){
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
   const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
@@ -401,14 +399,12 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo añadir' });
-  }
+    }
 });
- console.error(e);
+console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
-  }
+    }
 });
-
-
 // DELETE /api/admin/delete
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
@@ -449,11 +445,8 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo eliminar' });
-  }
+    }
 });
-
-
-
 // POST /api/admin/deleteById
 app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   try {
@@ -481,9 +474,8 @@ app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo eliminar por ID' });
-  }
+    }
 });
-
 // GET /api/admin/export
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
@@ -496,10 +488,8 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
     res.json({ count: rows.length, items: rows });
   } catch (e) {
     res.status(500).json({ error: 'No se pudo exportar' });
-  }
+    }
 });
-
-
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
 
