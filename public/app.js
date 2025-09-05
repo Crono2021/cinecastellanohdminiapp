@@ -134,19 +134,6 @@ async function openDetails(id){
   if (d.link) { const w = toWatchUrl(d.link); link.href = w || d.link; link.style.display='inline-flex'; }
   else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
-
-  // TVNAV PATCH START
-  try {
-    const watch = document.getElementById('watchLink');
-    if (watch) {
-      watch.setAttribute('tabindex','0');
-      watch.classList.add('play');
-      watch.setAttribute('data-tvnav','primary');
-    }
-    const closeBtn = document.getElementById('closeModal');
-    if (closeBtn) closeBtn.setAttribute('tabindex','0');
-  } catch(_e) { /* ignore */ }
-  // TVNAV PATCH END
 }
 
 function closeModal(){ document.getElementById('modal').classList.remove('open'); }
