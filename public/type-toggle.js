@@ -19,41 +19,47 @@
     btn.textContent = (t === 'movie') ? 'Series' : 'Películas';
   }
 
-  // Intercept fetch to filter /api/catalog responses on the client
-  const origFetch = window.fetch;
+  // Intercept fetch ONLY for /api/catalog to filter items client-side
+  const origFetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     const isString = (typeof input === 'string');
     const url = isString ? input : (input && input.url) || '';
-    const isCatalog = /\/api\/catalog(\?|$)/.test(url);
-    const t = getType();
+    const isCatalog = typeof url === 'string' && /\/api\/catalog(\?|$)/.test(url);
 
-    const p = origFetch.apply(this, [input, init]);
+    const p = origFetch(input, init);
     if (!isCatalog) return p;
 
     return p.then(async (resp) => {
       try{
-        // Clone response and read JSON
-        const data = await resp.clone().json();
-        if (Array.isArray(data.items)){
-          const filtered = (t === 'tv') ? data.items.filter(it => it.type === 'tv')
-                                        : data.items.filter(it => it.type !== 'tv');
-          const newData = { ...data, items: filtered, total: filtered.length };
-          const blob = new Blob([JSON.stringify(newData)], { type: 'application/json' });
-          return new Response(blob, { status: 200, statusText: 'OK', headers: resp.headers });
+        const clone = resp.clone();
+        const data = await clone.json();
+        if (!data || !Array.isArray(data.items)) return resp;
+
+        const t = getType();
+        let filtered;
+        if (t === 'tv'){
+          filtered = data.items.filter(it => it && it.type === 'tv');
+        }else{
+          // movie mode: keep items that are not TV; tolerate missing type
+          filtered = data.items.filter(it => it && it.type !== 'tv');
         }
-      }catch(_){ /* fallthrough, return original response */ }
-      return resp;
+
+        const newData = { ...data, items: filtered, total: (typeof data.total==='number' ? data.total : filtered.length) };
+        const body = JSON.stringify(newData);
+        return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }catch(_){
+        return resp;
+      }
     });
   };
 
-  // Wire up the toggle button
   function setup(){
     const btn = document.getElementById('typeToggle');
     if (btn){
       btn.addEventListener('click', () => {
         const next = (getType() === 'movie') ? 'tv' : 'movie';
         setType(next);
-        // Trigger refresh
+        // Trigger a refresh via the existing search button or load()
         const searchBtn = document.getElementById('searchBtn');
         if (searchBtn && searchBtn.click) searchBtn.click();
         else if (typeof window.load === 'function') window.load();
