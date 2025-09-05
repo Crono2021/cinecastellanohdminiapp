@@ -239,6 +239,66 @@ app.get('/api/movies/by-actor', async (req, res) => {
 });
 
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
+
+// GET /api/catalog -- unified movies + series
+app.get('/api/catalog', async (req, res) => {
+  try {
+    const { q, genre, page = 1, pageSize = 24 } = req.query;
+    const limit = Math.min(parseInt(pageSize) || 24, 100);
+    const offset = ((parseInt(page) || 1) - 1) * limit;
+
+    // Filter by q on title/name
+    const qParam = q ? '%' + String(q).toLowerCase() + '%' : null;
+
+    // Fetch movies page
+    const movies = await new Promise((resolve, reject) => {
+      const where = qParam ? 'WHERE LOWER(title) LIKE ?' : '';
+      const params = qParam ? [qParam, limit, offset] : [limit, offset];
+      db.all(`SELECT tmdb_id, title, year, link FROM movies ${where} ORDER BY rowid DESC LIMIT ? OFFSET ?`, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    // Fetch series page
+    const series = await new Promise((resolve, reject) => {
+      const where = qParam ? 'WHERE LOWER(name) LIKE ?' : '';
+      const params = qParam ? [qParam, limit, offset] : [limit, offset];
+      db.all(`SELECT tmdb_id, name, first_air_year as year, link FROM series ${where} ORDER BY rowid DESC LIMIT ? OFFSET ?`, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    let items = [
+      ...movies.map(m => ({ type:'movie', ...m })),
+      ...series.map(s => ({ type:'tv', title: s.name, ...s })),
+    ];
+
+    // Apply genre filter using TMDB details if requested
+    if (genre) {
+      const ids = new Set(String(genre).split(',').map(x=>String(x)));
+      for (const it of items){
+        try{
+          if (it.type === 'movie'){
+            it._details = await getTmdbMovieDetails(it.tmdb_id);
+          }else{
+            const d = await getTmdbTvDetails(it.tmdb_id);
+            it._details = { ...d, genres: d.genres };
+          }
+        }catch(_){ it._details = null; }
+      }
+      items = items.filter(it => it._details?.genres?.some(g => ids.has(String(g.id))));
+    }
+
+    // Sort by newest row (approx by rowid via union order not guaranteed across tables). Keep current order.
+    res.json({ total: items.length, page: Number(page), pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el catálogo' });
+  }
+});
+
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
