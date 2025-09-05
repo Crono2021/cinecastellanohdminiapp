@@ -267,6 +267,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
 app.get('/api/catalog', async (req, res) => {
   try {
     const { q, genre, page = 1, pageSize = 24 } = req.query;
+    const wantType = (req.query.type||'').toLowerCase(); // 'movie' or 'tv'
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
@@ -326,7 +327,12 @@ app.get('/api/catalog', async (req, res) => {
 
     // Enrich only the current page to keep it fast
     const startIdx = (pageNum - 1) * limit;
-    const pageItems = items.slice(startIdx, startIdx + limit);
+    
+    // --- Filter by type if requested ---
+    if (wantType === 'movie') { items = items.filter(it => it.type !== 'tv'); }
+    else if (wantType === 'tv') { items = items.filter(it => it.type === 'tv'); }
+
+const pageItems = items.slice(startIdx, startIdx + limit);
 
     const enriched = await Promise.all(pageItems.map(async (it) => {
       try{
