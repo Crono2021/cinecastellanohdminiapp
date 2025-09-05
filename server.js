@@ -34,6 +34,13 @@ db.serialize(() => {
     link TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS series (
+    tmdb_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    first_air_year INTEGER,
+    link TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
 });
 
 // --- Helpers ---
@@ -46,7 +53,6 @@ function adminGuard(req, res, next) {
   next();
 }
 
-
 async function tmdbSearchTv(name, year){
   const url = 'https://api.themoviedb.org/3/search/tv';
   const { data } = await axios.get(url, {
@@ -56,9 +62,9 @@ async function tmdbSearchTv(name, year){
       include_adult: true,
       first_air_date_year: year || undefined,
       language: 'es-ES'
-      }
-});
-const r = (data.results || [])[0];
+    }
+  });
+  const r = (data.results || [])[0];
   return r ? { id: r.id, name: r.name, first_air_date: r.first_air_date } : null;
 }
 
@@ -96,9 +102,9 @@ async function tmdbSearchMovie(title, year) {
       include_adult: true,
       year: year || undefined,
       language: 'es-ES'
-      }
-});
-if (!data.results || data.results.length === 0) return null;
+    }
+  });
+  if (!data.results || data.results.length === 0) return null;
   if (year) {
     const exact = data.results.find(r => (r.release_date || '').startsWith(String(year)));
     if (exact) return exact;
@@ -133,16 +139,14 @@ async function tmdbGetMovieDetails(tmdbId) {
 
 async function tmdbGetGenres() {
   const url = `https://api.themoviedb.org/3/genre/movie/list`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
-});
-return data.genres || [];
+  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+  return data.genres || [];
 }
 
 async function tmdbSearchPersonByName(name) {
   const url = `https://api.themoviedb.org/3/search/person`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES'   }
-});
-if (!data.results || data.results.length === 0) return null;
+  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, query: name, language: 'es-ES' } });
+  if (!data.results || data.results.length === 0) return null;
   return data.results[0];
 }
 
@@ -157,8 +161,10 @@ app.get('/api/genres', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los géneros' });
-    }
+  }
 });
+
+
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
 app.get('/api/movies/by-actor', async (req, res) => {
   try {
@@ -173,9 +179,8 @@ app.get('/api/movies/by-actor', async (req, res) => {
 
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
-});
-const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
+    const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
     if (ids.length === 0) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Intersect with our DB and apply optional title filter 'q'
@@ -230,8 +235,9 @@ const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m =>
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo buscar por actor' });
-    }
+  }
 });
+
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 app.get('/api/movies', async (req, res) => {
   try {
@@ -275,9 +281,8 @@ app.get('/api/movies', async (req, res) => {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
         const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
-        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES'   }
-});
-const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
+        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
         items = items.filter(it => ids.has(it.tmdb_id));
       } else {
         items = [];
@@ -294,8 +299,9 @@ const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
-    }
+  }
 });
+
 // GET /api/movie/:id
 app.get('/api/movie/:id', async (req, res) => {
   try {
@@ -313,8 +319,9 @@ app.get('/api/movie/:id', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
-    }
+  }
 });
+
 async function getTmdbMovieDetails(tmdbId){
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
   const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
@@ -338,6 +345,7 @@ async function getTmdbMovieDetails(tmdbId){
     cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
   };
 }
+
 // POST /api/admin/add
 
 app.post('/api/admin/add', adminGuard, async (req, res) => {
@@ -363,15 +371,14 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
       await new Promise((resolve, reject)=>{
         const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link) VALUES (?, ?, ?, ?)';
-        db.run(sql, [tv_id, realName, realYear||null, link], (err)=> err?reject(err):resolve());
+        db.run(sql, [tv_id, realName || '', realYear || null, link], (err)=> err?reject(err):resolve());
       });
 
-      // Fetch details to return to UI
       const d = await getTmdbTvDetails(tv_id);
-      return res.json({ ok:true, type:'tv', tmdb_id: tv_id, name: d.name, year: realYear, title: d.name });
+      return res.json({ ok:true, type:'tv', tmdb_id: tv_id, title: d.name, year: realYear });
     }
 
-    // Movies (comportamiento existente)
+    // Películas
     let tmdb_id = tmdbId;
     let realTitle = title;
     let realYear = year;
@@ -388,7 +395,7 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
     await new Promise((resolve, reject) => {
       const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)';
-      db.run(sql, [tmdb_id, realTitle, realYear || null, link], (err) => {
+      db.run(sql, [tmdb_id, realTitle || '', realYear || null, link], (err) => {
         if (err) return reject(err);
         resolve();
       });
@@ -399,16 +406,61 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo añadir' });
-    }
+  }
 });
-console.error(e);
+
+
+// POST /api/admin/bulkImport
+app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Falta text' });
+
+    const re = /\[(.+?)\s*\((\d{4})\)\]\((https?:[^\)]+)\)/g;
+    const out = [];
+    const errors = [];
+    let match;
+
+    const tasks = [];
+    while ((match = re.exec(text)) !== null) {
+      const title = match[1].trim();
+      const year = parseInt(match[2]);
+      const link = match[3].trim();
+      tasks.push({ title, year, link });
+    }
+
+    for (const t of tasks) {
+      try {
+        const m = await tmdbSearchMovie(t.title, t.year);
+        if (!m) {
+          errors.push({ ...t, error: 'No TMDB match' });
+          continue;
+        }
+        await new Promise((resolve, reject) => {
+          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)', [m.id, m.title, t.year, t.link], function (err) {
+            if (err) return reject(err);
+            resolve();
+          });
+        });
+        out.push({ tmdb_id: m.id, title: m.title, year: t.year });
+      } catch (e) {
+        console.error('Import error', t, e.message);
+        errors.push({ ...t, error: e.message });
+      }
+    }
+
+    res.json({ ok: true, imported: out.length, items: out, errors });
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
-    }
+  }
 });
+
+
 // DELETE /api/admin/delete
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
-    const { title, year, type } = req.body; const isTv = (type==='tv');
+    const { title, year } = req.body;
     if (!title) return res.status(400).json({ error: 'Falta título' });
 
     const t = String(title).trim().toLowerCase();
@@ -416,12 +468,9 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 
     // Buscar candidatos por título (case-insensitive) y opcionalmente por año
     const rows = await new Promise((resolve, reject) => {
-      const sql = isTv ? (y
-        ? 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ? AND first_air_year = ?'
-        : 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ?')
-        : (y
+      const sql = y
         ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
-        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?');
+        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?';
       const params = y ? [t, y] : [t];
       db.all(sql, params, (err, rows) => {
         if (err) return reject(err);
@@ -445,12 +494,15 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo eliminar' });
-    }
+  }
 });
+
+
+
 // POST /api/admin/deleteById
 app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   try {
-    const { tmdb_id, type } = req.body; const isTv = (type==='tv');
+    const { tmdb_id } = req.body;
     const id = Number(tmdb_id);
     if (!id || Number.isNaN(id)) return res.status(400).json({ error: 'tmdb_id inválido' });
 
@@ -474,8 +526,9 @@ app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo eliminar por ID' });
-    }
+  }
 });
+
 // GET /api/admin/export
 app.get('/api/admin/export', adminGuard, async (req, res) => {
   try {
@@ -488,8 +541,10 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
     res.json({ count: rows.length, items: rows });
   } catch (e) {
     res.status(500).json({ error: 'No se pudo exportar' });
-    }
+  }
 });
+
+
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
 
