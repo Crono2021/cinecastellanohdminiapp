@@ -82,7 +82,7 @@ async function load(){
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${item.title}</div>
-          <div class="year">${item.year || ''}</div>
+          <div class="year">${item.year || ''} ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}</div>
         </div>
       </div>
     `).join('');
@@ -109,7 +109,7 @@ async function load(){
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${item.title}</div>
-        <div class="year">${item.year || ''}</div>
+        <div class="year">${item.year || ''} ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}</div>
       </div>
     </div>
   `).join('');
