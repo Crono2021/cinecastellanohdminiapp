@@ -20,17 +20,6 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
-
-// --- Type filter helpers (safe, no fetch override) ---
-function currentType(){
-  const t = (localStorage.getItem('cc_hd_currentType') || 'movie');
-  return (t === 'tv') ? 'tv' : 'movie';
-}
-function filterByType(arr){
-  const t = currentType();
-  if (t === 'tv') return (arr||[]).filter(it => it && it.type === 'tv');
-  return (arr||[]).filter(it => !it || it.type !== 'tv');
-}
 state.clientGenreItems = null;
 
 async function fetchAllPagesForGenre(genreId, maxPages=200){
@@ -82,10 +71,11 @@ async function load(){
   const grid = document.getElementById('grid');
 
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
-    const source = filterByType(state.clientGenreItems);
+    // Client-side paginated render from the aggregated list
     const start = (state.page - 1) * state.pageSize;
     const end = start + state.pageSize;
-    const slice = source.slice(start, end);
+    const slice = state.clientGenreItems.slice(start, end);
+
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -95,8 +85,13 @@ async function load(){
         </div>
       </div>
     `).join('');
-    const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
-    pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${items.length} resultados`;
+
+    document.querySelectorAll('.card').forEach(el => {
+      el.addEventListener('click', () => openDetails(el.dataset.id));
+    });
+
+    const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
+    pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
     return;
   }
 
@@ -107,8 +102,8 @@ async function load(){
     const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/catalog?' + params.toString();
   const res = await fetch(endpoint);
   const data = await res.json();
-  const items = filterByType(data.items || []);
-  grid.innerHTML = items.map(item => `
+
+  grid.innerHTML = data.items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
