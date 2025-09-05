@@ -86,7 +86,9 @@ async function load(){
         ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
       </div>
         </div>
-      </div>
+      
+      ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
+    </div>
     `).join('');
 
     document.querySelectorAll('.card').forEach(el => {
@@ -113,6 +115,8 @@ async function load(){
         <div class="title">${item.title}</div>
         <div class="year">${item.year || ''} </div>
       </div>
+    
+      ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
     </div>
   `).join('');
 
