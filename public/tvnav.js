@@ -25,14 +25,27 @@
   function getFichaItems() {
     const root = fichaRoot();
     if (!root) return [];
+    // Broad, but safe: collect actionable controls within the open modal/ficha
     const sel = [
       '[data-tvnav]',
       'a[tabindex], button[tabindex], [role="button"][tabindex]',
-      'a, button, [role="button"]',
-      '.btn, .play, .btn-cerrar-ficha, .btn-reproducir'
+      'a[href], button, [role="button"]',
+      '[data-action="close"]',
+      '#closeModal',
+      '#watchLink'
     ].join(',');
-    const items = $all(sel, root).filter(visible).filter(el => !el.closest('[aria-hidden="true"]'));
-    return Array.from(new Set(items));
+    let items = $all(sel, root).filter(visible).filter(el => !el.closest('[aria-hidden="true"]'));
+    // Fallback if no visible items detected (some CSS transitions may delay sizes)
+    if (!items.length) {
+      items = $all('a, button, [role=\"button\"]', root).filter(el => getComputedStyle(el).display !== 'none');
+    }
+    // Deduplicate while keeping order
+    const unique = [];
+    const seen = new Set();
+    for (const el of items) {
+      if (!seen.has(el)) { unique.push(el); seen.add(el); }
+    }
+    return unique;
   }
 
   function currentItems() {
@@ -93,8 +106,18 @@
 
     if (isFichaOpen()) {
       const root = fichaRoot();
-      const target = root.querySelector('[data-tvnav="primary"], .play, .btn-reproducir, a.btn-primaria, button.btn-primaria');
-      if (target && visible(target)) { target.click(); return; }
+      const preferred = root.querySelector('[data-tvnav="primary"], .play, .btn-reproducir, a.btn-primaria, button.btn-primaria');
+      const target = preferred && visible(preferred) ? preferred :
+                     (el.matches('a, button, [role="button"]') ? el :
+                      el.querySelector('a, button, [role="button"], .play'));
+      if (target) { target.click(); return; }
+    }
+
+    const clickable = el.matches('a, button, [role="button"]') ? el
+      : el.querySelector('a, button, [role="button"], .play');
+    if (clickable) { clickable.click(); return; }
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  }
     }
 
     const clickable = el.matches('a, button, [role="button"]') ? el
