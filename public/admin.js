@@ -73,3 +73,48 @@ document.getElementById('exportBtn').onclick = async ()=>{
   a.href = url; a.download = 'cchd_export.json'; a.click();
   URL.revokeObjectURL(url);
 };
+
+
+document.getElementById('deleteBtn').onclick = async ()=>{
+  const title = document.getElementById('delTitle').value.trim();
+  const year = document.getElementById('delYear').value.trim();
+  const out = document.getElementById('deleteOut');
+  if (!title) { out.textContent = 'Escribe un título'; return; }
+  out.textContent = 'Eliminando...';
+  try{
+    const r = await post('/api/admin/delete', {  title, year: year || null, type: getContentType() });
+    if (r.deleted > 0){
+      out.textContent = `Eliminadas: ${r.deleted}. (${r.matches.map(m=>m.title + (m.year? ' ('+m.year+')':'' )).join(' · ')})`;
+    }else{
+      out.textContent = 'No se encontraron coincidencias';
+    }
+  }catch(e){
+    out.textContent = 'Error: ' + e.message;
+  }
+};
+
+
+/* Delete by TMDB ID */
+(function(){
+  const btn = document.getElementById('deleteByIdBtn');
+  if (!btn) return;
+  btn.onclick = async ()=>{
+    const out = document.getElementById('deleteByIdOut');
+    const input = document.getElementById('delIdInput');
+    const raw = input ? input.value.trim() : '';
+    const id = Number(raw);
+    if (!raw || Number.isNaN(id)){ out.textContent = 'Introduce un TMDB ID válido'; return; }
+    out.textContent = 'Eliminando...';
+    try{
+      const r = await post('/api/admin/deleteById', {  tmdb_id: id, type: getContentType() });
+      if (r.deleted > 0){
+        const label = r.match ? (r.match.title + (r.match.year ? ' ('+r.match.year+')' : '')) : ('ID ' + id);
+        out.textContent = `Eliminado: ${label}`;
+      }else{
+        out.textContent = 'No se encontró ninguna película con ese ID';
+      }
+    }catch(e){
+      out.textContent = 'Error: ' + (e?.message || e);
+    }
+  };
+})();

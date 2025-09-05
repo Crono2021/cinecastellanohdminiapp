@@ -1,6 +1,12 @@
 function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
 function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
 
+function getContentType(){
+  const el = document.querySelector('input[name="contentType"]:checked');
+  return el ? el.value : 'movie';
+}
+
+
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
@@ -28,7 +34,7 @@ document.getElementById('addOne').onclick = async ()=>{
   const out = document.getElementById('oneOut');
   out.textContent = 'Añadiendo...';
   try{
-    const r = await post('/api/admin/add', { title, year: year?parseInt(year):undefined, link });
+    const r = await post('/api/admin/add', { title, year: year?parseInt(year):undefined, link, type: getContentType() });
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
@@ -41,7 +47,7 @@ document.getElementById('addById').onclick = async ()=>{
   if (!link) return alert('Link requerido');
   out.textContent = 'Añadiendo por ID...';
   try{
-    const r = await post('/api/admin/add', { tmdbId, link });
+    const r = await post('/api/admin/add', { tmdbId, link, type: getContentType() });
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };

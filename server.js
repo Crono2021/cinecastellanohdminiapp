@@ -46,6 +46,47 @@ function adminGuard(req, res, next) {
   next();
 }
 
+
+async function tmdbSearchTv(name, year){
+  const url = 'https://api.themoviedb.org/3/search/tv';
+  const { data } = await axios.get(url, {
+    params: {
+      api_key: TMDB_API_KEY,
+      query: name,
+      include_adult: true,
+      first_air_date_year: year || undefined,
+      language: 'es-ES'
+    }
+  });
+  const r = (data.results || [])[0];
+  return r ? { id: r.id, name: r.name, first_air_date: r.first_air_date } : null;
+}
+
+async function getTmdbTvDetails(tmdbId){
+  const url = `https://api.themoviedb.org/3/tv/${tmdbId}`;
+  const creditsUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/credits`;
+  const [detailsResp, creditsResp] = await Promise.all([
+    axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } }),
+    axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } })
+  ]);
+  const d = detailsResp.data;
+  const c = creditsResp.data;
+  return {
+    id: d.id,
+    name: d.name,
+    original_name: d.original_name,
+    overview: d.overview,
+    poster_path: d.poster_path,
+    backdrop_path: d.backdrop_path,
+    first_air_date: d.first_air_date,
+    genres: d.genres,
+    number_of_seasons: d.number_of_seasons,
+    number_of_episodes: d.number_of_episodes,
+    vote_average: d.vote_average,
+    cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
+  };
+}
+
 async function tmdbSearchMovie(title, year) {
   const url = 'https://api.themoviedb.org/3/search/movie';
   const { data } = await axios.get(url, {
@@ -275,12 +316,64 @@ app.get('/api/movie/:id', async (req, res) => {
   }
 });
 
+
+async function getTmdbMovieDetails(tmdbId){
+  const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
+  const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
+  const [detailsResp, creditsResp] = await Promise.all([
+    axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } }),
+    axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } })
+  ]);
+  const d = detailsResp.data;
+  const c = creditsResp.data;
+  return {
+    id: d.id,
+    title: d.title,
+    original_title: d.original_title,
+    overview: d.overview,
+    poster_path: d.poster_path,
+    backdrop_path: d.backdrop_path,
+    release_date: d.release_date,
+    genres: d.genres,
+    runtime: d.runtime,
+    vote_average: d.vote_average,
+    cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
+  };
+}
 // POST /api/admin/add
+
 app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
-    const { title, year, link, tmdbId } = req.body;
+    const { title, year, link, tmdbId, type } = req.body;
     if (!link) return res.status(400).json({ error: 'Falta link' });
+    const isTv = (type === 'tv');
 
+    if (isTv){
+      let tv_id = tmdbId;
+      let realName = title;
+      let realYear = year;
+
+      if (!tv_id && title){
+        const t = await tmdbSearchTv(title, year ? parseInt(year) : undefined);
+        if (!t) return res.status(404).json({ error: 'No se encontró la serie en TMDB' });
+        tv_id = t.id;
+        realName = t.name;
+        realYear = t.first_air_date ? parseInt(t.first_air_date.slice(0,4)) : year || null;
+      }
+
+      if (!tv_id) return res.status(400).json({ error: 'Falta tmdbId o title para series' });
+
+      await new Promise((resolve, reject)=>{
+        const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link) VALUES (?, ?, ?, ?)';
+        db.run(sql, [tv_id, realName, realYear||null, link], (err)=> err?reject(err):resolve());
+      });
+
+      // Fetch details to return to UI
+      const d = await getTmdbTvDetails(tv_id);
+      return res.json({ ok:true, type:'tv', tmdb_id: tv_id, name: d.name, year: realYear, title: d.name });
+    }
+
+    // Movies (comportamiento existente)
     let tmdb_id = tmdbId;
     let realTitle = title;
     let realYear = year;
@@ -296,61 +389,21 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
     if (!tmdb_id) return res.status(400).json({ error: 'Falta tmdbId o title' });
 
     await new Promise((resolve, reject) => {
-      db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)', [tmdb_id, realTitle || '', realYear || null, link], function (err) {
+      const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)';
+      db.run(sql, [tmdb_id, realTitle, realYear || null, link], (err) => {
         if (err) return reject(err);
         resolve();
       });
     });
 
-    res.json({ ok: true, tmdb_id, title: realTitle, year: realYear });
+    const d = await getTmdbMovieDetails(tmdb_id);
+    res.json({ ok: true, type:'movie', tmdb_id, title: d.title, year: realYear });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo añadir' });
   }
 });
-
-// POST /api/admin/bulkImport
-app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
-  try {
-    const { text } = req.body;
-    if (!text) return res.status(400).json({ error: 'Falta text' });
-
-    const re = /\[(.+?)\s*\((\d{4})\)\]\((https?:[^\)]+)\)/g;
-    const out = [];
-    const errors = [];
-    let match;
-
-    const tasks = [];
-    while ((match = re.exec(text)) !== null) {
-      const title = match[1].trim();
-      const year = parseInt(match[2]);
-      const link = match[3].trim();
-      tasks.push({ title, year, link });
-    }
-
-    for (const t of tasks) {
-      try {
-        const m = await tmdbSearchMovie(t.title, t.year);
-        if (!m) {
-          errors.push({ ...t, error: 'No TMDB match' });
-          continue;
-        }
-        await new Promise((resolve, reject) => {
-          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)', [m.id, m.title, t.year, t.link], function (err) {
-            if (err) return reject(err);
-            resolve();
-          });
-        });
-        out.push({ tmdb_id: m.id, title: m.title, year: t.year });
-      } catch (e) {
-        console.error('Import error', t, e.message);
-        errors.push({ ...t, error: e.message });
-      }
-    }
-
-    res.json({ ok: true, imported: out.length, items: out, errors });
-  } catch (e) {
-    console.error(e);
+ console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
   }
 });
@@ -359,7 +412,7 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
 // DELETE /api/admin/delete
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
-    const { title, year } = req.body;
+    const { title, year, type } = req.body; const isTv = (type==='tv');
     if (!title) return res.status(400).json({ error: 'Falta título' });
 
     const t = String(title).trim().toLowerCase();
@@ -367,9 +420,12 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 
     // Buscar candidatos por título (case-insensitive) y opcionalmente por año
     const rows = await new Promise((resolve, reject) => {
-      const sql = y
+      const sql = isTv ? (y
+        ? 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ? AND first_air_year = ?'
+        : 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ?')
+        : (y
         ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
-        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?';
+        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?');
       const params = y ? [t, y] : [t];
       db.all(sql, params, (err, rows) => {
         if (err) return reject(err);
@@ -401,7 +457,7 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 // POST /api/admin/deleteById
 app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   try {
-    const { tmdb_id } = req.body;
+    const { tmdb_id, type } = req.body; const isTv = (type==='tv');
     const id = Number(tmdb_id);
     if (!id || Number.isNaN(id)) return res.status(400).json({ error: 'tmdb_id inválido' });
 

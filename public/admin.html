@@ -17,29 +17,27 @@
       <small class="mute">Se guarda en este navegador.</small>
     </div>
     <div class="box">
-      <h3>Añadir contenido</h3>
+      <h3>Tipo de contenido</h3>
       <div class="hstack" style="gap:12px;align-items:center">
-        <strong>Tipo:</strong>
         <label><input type="radio" name="contentType" value="movie" checked> Película</label>
         <label><input type="radio" name="contentType" value="tv"> Serie</label>
       </div>
-      <div class="vstack" style="gap:8px;margin-top:8px">
-        <div class="hstack" style="gap:8px">
-          <input id="title" placeholder="Título" style="flex:1">
-          <input id="year" type="number" placeholder="Año (solo películas)" style="width:160px">
-        </div>
-        <input id="tmdbId" type="number" placeholder="TMDB ID (película o serie)">
-        <input id="link" placeholder="Enlace (Telegram, Mega, etc.)">
-        <div class="hstack" style="gap:8px;flex-wrap:wrap">
-          <button id="addOne">Añadir por título/año</button>
-          <button id="addById">Añadir por TMDB ID</button>
-          <div id="oneOut" class="mute"></div>
-        </div>
-      </div>
-      <p class="mute" style="margin-top:8px">Para series selecciona “Serie”. El <b>TMDB ID</b> de TV es distinto al de películas.</p>
+      <small class="mute">El TMDB ID de <b>Series</b> usa el endpoint de TV y es distinto al de Películas.</small>
     </div>
 
 
+    
+    <div class="box">
+      <h3>🗑️ Eliminar película</h3>
+      <div class="hstack">
+        <input id="delTitle" placeholder="Título exacto" style="flex:1" />
+        <input id="delYear" placeholder="Año (yyyy)" style="width:140px" />
+        <button id="deleteBtn">Eliminar</button>
+      </div>
+      <small class="mute">Consejo: si el título tiene acentos, escribe el título tal cual está guardado. El año es opcional para desambiguar.</small>
+      <div id="deleteOut" class="mute" style="margin-top:8px"></div>
+    </div>
+    
     <div class="box">
       <h3>Alta rápida (1 a 1)</h3>
       <div class="hstack">
@@ -65,7 +63,17 @@
     <div class="box">
       <h3>Exportar catálogo</h3>
       <button id="exportBtn">Descargar JSON</button>
+    
+    <div class="box">
+      <h3>🗑️ Eliminar por TMDB ID</h3>
+      <div class="hstack">
+        <input id="delIdInput" placeholder="TMDB ID (número)" inputmode="numeric" style="flex:1" />
+        <button id="deleteByIdBtn">Eliminar</button>
+      </div>
+      <small class="mute">Elimina directamente por <b>tmdb_id</b>. Requiere token admin.</small>
+      <div id="deleteByIdOut" class="mute" style="margin-top:8px"></div>
     </div>
+    
   </div>
   <script src="/admin.js"></script>
 </body>
