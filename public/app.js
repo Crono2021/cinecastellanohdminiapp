@@ -21,7 +21,7 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
 
-// --- Type filter helpers ---
+// --- Type filter helpers (safe, no fetch override) ---
 function currentType(){
   const t = (localStorage.getItem('cc_hd_currentType') || 'movie');
   return (t === 'tv') ? 'tv' : 'movie';
@@ -29,7 +29,6 @@ function currentType(){
 function filterByType(arr){
   const t = currentType();
   if (t === 'tv') return (arr||[]).filter(it => it && it.type === 'tv');
-  // movie mode: accept items without type as movies
   return (arr||[]).filter(it => !it || it.type !== 'tv');
 }
 state.clientGenreItems = null;
@@ -83,12 +82,10 @@ async function load(){
   const grid = document.getElementById('grid');
 
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
-    // Client-side paginated render from the aggregated list (with type filter)
     const source = filterByType(state.clientGenreItems);
     const start = (state.page - 1) * state.pageSize;
     const end = start + state.pageSize;
     const slice = source.slice(start, end);
-
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -98,8 +95,7 @@ async function load(){
         </div>
       </div>
     `).join('');
-
-    const totalPages = Math.max(1, Math.ceil(source.length / state.pageSize));
+    const totalPages = Math.max(1, Math.ceil(items.length / state.pageSize));
     pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${items.length} resultados`;
     return;
   }
@@ -112,7 +108,6 @@ async function load(){
   const res = await fetch(endpoint);
   const data = await res.json();
   const items = filterByType(data.items || []);
-
   grid.innerHTML = items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
