@@ -247,52 +247,68 @@ app.get('/api/catalog', async (req, res) => {
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const offset = ((parseInt(page) || 1) - 1) * limit;
 
-    // Filter by q on title/name
-    const qParam = q ? '%' + String(q).toLowerCase() + '%' : null;
+    const qLike = q ? '%' + String(q).toLowerCase() + '%' : null;
 
-    // Fetch movies page
-    const movies = await new Promise((resolve, reject) => {
-      const where = qParam ? 'WHERE LOWER(title) LIKE ?' : '';
-      const params = qParam ? [qParam, limit, offset] : [limit, offset];
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${where} ORDER BY rowid DESC LIMIT ? OFFSET ?`, params, (err, rows) => {
+    const total = await new Promise((resolve, reject) => {
+      const whereMovies = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const whereSeries = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const sql = `
+        SELECT
+          (SELECT COUNT(*) FROM movies ${whereMovies})
+          +
+          (SELECT COUNT(*) FROM series ${whereSeries})
+          AS c
+      `;
+      const params = qLike ? [qLike, qLike] : [];
+      db.get(sql, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row ? row.c : 0);
+      });
+    });
+
+    const items = await new Promise((resolve, reject) => {
+      const whereMovies = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const whereSeries = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const params = [];
+      if (qLike) params.push(qLike);
+      if (qLike) params.push(qLike);
+      const sql = `
+        SELECT tmdb_id, title, year, link, 'movie' AS type, created_at
+        FROM movies ${whereMovies}
+        UNION ALL
+        SELECT tmdb_id, name AS title, first_air_year AS year, link, 'tv' AS type, created_at
+        FROM series ${whereSeries}
+        ORDER BY datetime(created_at) DESC
+        LIMIT ? OFFSET ?
+      `;
+      params.push(limit, offset);
+      db.all(sql, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
     });
 
-    // Fetch series page
-    const series = await new Promise((resolve, reject) => {
-      const where = qParam ? 'WHERE LOWER(name) LIKE ?' : '';
-      const params = qParam ? [qParam, limit, offset] : [limit, offset];
-      db.all(`SELECT tmdb_id, name, first_air_year as year, link FROM series ${where} ORDER BY rowid DESC LIMIT ? OFFSET ?`, params, (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
-      });
-    });
-
-    let items = [
-      ...movies.map(m => ({ type:'movie', ...m })),
-      ...series.map(s => ({ type:'tv', title: s.name, ...s })),
-    ];
-
-    // Apply genre filter using TMDB details if requested
-    if (genre) {
-      const ids = new Set(String(genre).split(',').map(x=>String(x)));
-      for (const it of items){
-        try{
-          if (it.type === 'movie'){
-            it._details = await getTmdbMovieDetails(it.tmdb_id);
-          }else{
-            const d = await getTmdbTvDetails(it.tmdb_id);
-            it._details = { ...d, genres: d.genres };
-          }
-        }catch(_){ it._details = null; }
+    const enriched = await Promise.all(items.map(async (it) => {
+      try{
+        if (it.type === 'tv'){
+          const d = await getTmdbTvDetails(it.tmdb_id);
+          return { ...it, poster_path: d?.poster_path || null, _details: d || null };
+        }else{
+          const d = await getTmdbMovieDetails(it.tmdb_id);
+          return { ...it, poster_path: d?.poster_path || null, _details: d || null };
+        }
+      }catch(_){
+        return { ...it, poster_path: null, _details: null };
       }
-      items = items.filter(it => it._details?.genres?.some(g => ids.has(String(g.id))));
-    }
+    }));
 
-    // Sort by newest row (approx by rowid via union order not guaranteed across tables). Keep current order.
-    res.json({ total: items.length, page: Number(page), pageSize: limit, items });
+    let finalItems = enriched;
+    if (genre) {
+      finalItems = finalItems.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+    }
+    finalItems = finalItems.map(({ _details, ...rest }) => rest);
+
+    res.json({ total, page: Number(page), pageSize: limit, items: finalItems });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo' });
@@ -367,15 +383,44 @@ app.get('/api/movie/:id', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.id);
 
-    const row = await new Promise((resolve, reject) => {
+    const movieRow = await new Promise((resolve, reject) => {
       db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => {
         if (err) return reject(err);
-        resolve(row);
+        resolve(row || null);
       });
     });
 
-    const d = await tmdbGetMovieDetails(tmdbId);
-    res.json({ ...d, link: row ? row.link : null });
+    if (movieRow){
+      const d = await getTmdbMovieDetails(tmdbId);
+      return res.json({ ...d, link: movieRow.link });
+    }
+
+    const seriesRow = await new Promise((resolve, reject) => {
+      db.get('SELECT tmdb_id, name as title, first_air_year as year, link FROM series WHERE tmdb_id = ?', [tmdbId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      });
+    });
+
+    if (seriesRow){
+      const d = await getTmdbTvDetails(tmdbId);
+      return res.json({
+        id: d.id,
+        title: d.name,
+        overview: d.overview,
+        poster_path: d.poster_path,
+        backdrop_path: d.backdrop_path,
+        release_date: d.first_air_date,
+        genres: d.genres,
+        runtime: null,
+        vote_average: d.vote_average,
+        cast: d.cast,
+        link: seriesRow.link
+      });
+    }
+
+    const d = await getTmdbMovieDetails(tmdbId);
+    res.json({ ...d, link: null });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
