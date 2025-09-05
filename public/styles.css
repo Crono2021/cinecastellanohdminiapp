@@ -93,8 +93,6 @@ footer{border-top:1px solid #222;color:#aaa}
   line-height:1;
   pointer-events:none; /* don't block clicks on the card */
 }
-/* --- Serie badge next to year --- */
-.serie-badge{
   display:inline-block;
   margin-left:6px;
   padding:2px 6px;
@@ -105,4 +103,23 @@ footer{border-top:1px solid #222;color:#aaa}
   font-weight:600;
   font-size:.65rem;
   line-height:1;
+}
+
+.card { position: relative; }
+
+
+/* --- Serie badge: absolute bottom-right --- */
+.serie-badge{
+  position:absolute;
+  bottom:8px;
+  right:8px;
+  padding:4px 10px;
+  border:2px solid #22c55e;
+  color:#22c55e;
+  background:transparent;
+  border-radius:9999px;
+  font-weight:700;
+  font-size:.75rem;
+  line-height:1;
+  pointer-events:none;
 }
