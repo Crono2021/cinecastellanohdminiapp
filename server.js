@@ -245,70 +245,94 @@ app.get('/api/catalog', async (req, res) => {
   try {
     const { q, genre, page = 1, pageSize = 24 } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
-    const offset = ((parseInt(page) || 1) - 1) * limit;
+    const pageNum = Math.max(1, parseInt(page) || 1);
 
     const qLike = q ? '%' + String(q).toLowerCase() + '%' : null;
 
-    const total = await new Promise((resolve, reject) => {
-      const whereMovies = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-      const whereSeries = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const sql = `
-        SELECT
-          (SELECT COUNT(*) FROM movies ${whereMovies})
-          +
-          (SELECT COUNT(*) FROM series ${whereSeries})
-          AS c
-      `;
-      const params = qLike ? [qLike, qLike] : [];
-      db.get(sql, params, (err, row) => {
+    const totalMovies = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.get(`SELECT COUNT(*) as c FROM movies ${where}`, params, (err, row) => {
         if (err) return reject(err);
         resolve(row ? row.c : 0);
       });
     });
 
-    const items = await new Promise((resolve, reject) => {
-      const whereMovies = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-      const whereSeries = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const params = [];
-      if (qLike) params.push(qLike);
-      if (qLike) params.push(qLike);
-      const sql = `
-        SELECT tmdb_id, title, year, link, 'movie' AS type, created_at
-        FROM movies ${whereMovies}
-        UNION ALL
-        SELECT tmdb_id, name AS title, first_air_year AS year, link, 'tv' AS type, created_at
-        FROM series ${whereSeries}
-        ORDER BY datetime(created_at) DESC
-        LIMIT ? OFFSET ?
-      `;
-      params.push(limit, offset);
-      db.all(sql, params, (err, rows) => {
+    const totalSeries = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.get(`SELECT COUNT(*) as c FROM series ${where}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row ? row.c : 0);
+      });
+    });
+
+    const total = Number(totalMovies) + Number(totalSeries);
+
+    // Fetch a generous window from both, order by rowid desc to approximate recency
+    const movies = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const params = qLike ? [qLike, 1000] : [1000];
+      db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC LIMIT ?`, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
     });
 
-    const enriched = await Promise.all(items.map(async (it) => {
+    const series = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const params = qLike ? [qLike, 1000] : [1000];
+      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, created_at FROM series ${where} ORDER BY rowid DESC LIMIT ?`, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    let items = [
+      ...movies.map(m => ({ type:'movie', ...m })),
+      ...series.map(s => ({ type:'tv', ...s })),
+    ];
+
+    // Sort by created_at desc (fallback to tmdb_id desc)
+    items.sort((a,b)=>{
+      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dbb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (dbb !== da) return dbb - da;
+      return (b.tmdb_id||0) - (a.tmdb_id||0);
+    });
+
+    // Enrich only the current page to keep it fast
+    const startIdx = (pageNum - 1) * limit;
+    const pageItems = items.slice(startIdx, startIdx + limit);
+
+    const enriched = await Promise.all(pageItems.map(async (it) => {
       try{
         if (it.type === 'tv'){
           const d = await getTmdbTvDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null, _details: d || null };
+          return { ...it, poster_path: d?.poster_path || null };
         }else{
           const d = await getTmdbMovieDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null, _details: d || null };
+          return { ...it, poster_path: d?.poster_path || null };
         }
       }catch(_){
-        return { ...it, poster_path: null, _details: null };
+        return { ...it, poster_path: null };
       }
     }));
 
+    // Optional: genre filtering (applies to current page only to keep performance)
     let finalItems = enriched;
     if (genre) {
-      finalItems = finalItems.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+      const filtered = [];
+      for (const it of enriched){
+        try{
+          const d = it.type === 'tv' ? await getTmdbTvDetails(it.tmdb_id) : await getTmdbMovieDetails(it.tmdb_id);
+          if (d?.genres?.some(g => String(g.id) == String(genre))) filtered.push(it);
+        }catch(_){}
+      }
+      finalItems = filtered;
     }
-    finalItems = finalItems.map(({ _details, ...rest }) => rest);
 
-    res.json({ total, page: Number(page), pageSize: limit, items: finalItems });
+    res.json({ total, page: pageNum, pageSize: limit, items: finalItems });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo' });
