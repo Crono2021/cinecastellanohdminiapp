@@ -43,6 +43,29 @@ db.serialize(() => {
   )`);
 });
 
+
+function normalizeLink(link){
+  try{
+    if (!link) return link;
+    // Force https for t.me
+    if (link.startsWith('http://t.me/')) return 'https' + link.slice(4);
+    if (link.startsWith('https://t.me/')) return link;
+
+    // Convert tg:// or tg:resolve?domain=...&post=...&thread=...
+    if (link.startsWith('tg://') || link.startsWith('tg:')){
+      const raw = link.replace(/^tg:\/\//,'tg:');
+      const qIdx = raw.indexOf('?');
+      const qs = new URLSearchParams(raw.slice(qIdx+1));
+      const domain = qs.get('domain');
+      const post = qs.get('post');
+      const thread = qs.get('thread');
+      if (domain && post){
+        return `https://t.me/${domain}/${post}` + (thread ? `?thread=${thread}` : '');
+      }
+    }
+    return link;
+  }catch(_){ return link; }
+}
 // --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
@@ -416,7 +439,7 @@ app.get('/api/movie/:id', async (req, res) => {
 
     if (movieRow){
       const d = await getTmdbMovieDetails(tmdbId);
-      return res.json({ ...d, link: movieRow.link });
+      return res.json({ ...d, link: normalizeLink(movieRow.link) });
     }
 
     const seriesRow = await new Promise((resolve, reject) => {
@@ -439,7 +462,7 @@ app.get('/api/movie/:id', async (req, res) => {
         runtime: null,
         vote_average: d.vote_average,
         cast: d.cast,
-        link: seriesRow.link
+        link: normalizeLink(seriesRow.link)
       });
     }
 
@@ -500,7 +523,7 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
       await new Promise((resolve, reject)=>{
         const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link) VALUES (?, ?, ?, ?)';
-        db.run(sql, [tv_id, realName || '', realYear || null, link], (err)=> err?reject(err):resolve());
+        db.run(sql, [ tv_id, realName || '', realYear || null, normalizeLink(link) ], (err)=> err?reject(err):resolve());
       });
 
       const d = await getTmdbTvDetails(tv_id);
@@ -524,7 +547,7 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
     await new Promise((resolve, reject) => {
       const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)';
-      db.run(sql, [tmdb_id, realTitle || '', realYear || null, link], (err) => {
+      db.run(sql, [ tmdb_id, realTitle || '', realYear || null, normalizeLink(link) ], (err) => {
         if (err) return reject(err);
         resolve();
       });
