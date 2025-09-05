@@ -89,3 +89,20 @@ footer{border-top:1px solid #222;color:#aaa}
   box-shadow: 0 0 10px rgba(136,136,255,0.7) !important;
 }
 
+
+
+/* ---- Modal actions layout (TVNav tidy) ---- */
+.modal .acciones {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 8px;
+}
+.modal .acciones .btn,
+.modal .acciones a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}

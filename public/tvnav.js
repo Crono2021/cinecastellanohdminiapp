@@ -18,7 +18,7 @@
   }
 
   function getCatalogItems() {
-    const nodes = $all('.movie-item, .card-tile, .catalog-grid .card, .lista .item');
+    const nodes = $all('.movie-item, .card-tile, .catalog-grid .card, .lista .item, .card');
     return nodes.filter(visible);
   }
 
@@ -134,15 +134,6 @@
       if (++tries > 50) clearInterval(t);
     }, 200);
   }
-
-  document.addEventListener('click', function (ev) {
-    const btn = ev.target.closest('.play-external');
-    if (!btn) return;
-    const direct = btn.getAttribute('data-url');
-    if (direct) { window.open(direct, '_blank'); return; }
-    const iframe = document.querySelector('.popup-ficha iframe, .modal.open iframe');
-    if (iframe) iframe.focus();
-  }, true);
 
   window.addEventListener('keydown', onKey, { passive: false });
   if (document.readyState === 'loading') {

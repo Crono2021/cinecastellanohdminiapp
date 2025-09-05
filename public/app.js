@@ -135,7 +135,7 @@ async function openDetails(id){
   else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 
-  // TVNAV PATCH START: make controls focusable & add play-external
+  // TVNAV PATCH START
   try {
     const watch = document.getElementById('watchLink');
     if (watch) {
@@ -145,24 +145,6 @@ async function openDetails(id){
     }
     const closeBtn = document.getElementById('closeModal');
     if (closeBtn) closeBtn.setAttribute('tabindex','0');
-
-    // Ensure a play-external button exists and is focusable (for PixelDrain/iframes)
-    const modalCard = document.querySelector('#modal .modal-card');
-    if (modalCard) {
-      let px = modalCard.querySelector('.play-external');
-      if (!px) {
-        px = document.createElement('button');
-        px.className = 'btn btn-primaria play-external';
-        px.textContent = '▶ Reproducir (externo)';
-        px.setAttribute('tabindex','0');
-        px.setAttribute('data-tvnav','play');
-        modalCard.querySelector('.modal-header')?.insertAdjacentElement('afterend', px);
-      }
-      if (d.link) {
-        const w = toWatchUrl(d.link) || d.link;
-        px.dataset.url = w;
-      }
-    }
   } catch(_e) { /* ignore */ }
   // TVNAV PATCH END
 }
