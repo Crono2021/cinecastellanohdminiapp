@@ -510,6 +510,18 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
       let tv_id = tmdbId;
       let realName = title;
       let realYear = year;
+      // Asegurar nombre/año desde TMDB cuando se aporta solo tmdbId
+      if (tv_id && (!realName || !realYear)) {
+        try {
+          const _d = await getTmdbTvDetails(tv_id);
+          if (!realName) realName = (_d && (_d.name || _d.original_name)) || realName;
+          if (!realYear) {
+            const fa = _d && _d.first_air_date ? _d.first_air_date.slice(0,4) : null;
+            realYear = fa ? parseInt(fa) : realYear || null;
+          }
+        } catch(_e) { /* continuar aunque TMDB falle */ }
+      }
+
 
       if (!tv_id && title){
         const t = await tmdbSearchTv(title, year ? parseInt(year) : undefined);
