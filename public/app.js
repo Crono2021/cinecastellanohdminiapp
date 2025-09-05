@@ -134,6 +134,37 @@ async function openDetails(id){
   if (d.link) { const w = toWatchUrl(d.link); link.href = w || d.link; link.style.display='inline-flex'; }
   else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
+
+  // TVNAV PATCH START: make controls focusable & add play-external
+  try {
+    const watch = document.getElementById('watchLink');
+    if (watch) {
+      watch.setAttribute('tabindex','0');
+      watch.classList.add('play');
+      watch.setAttribute('data-tvnav','primary');
+    }
+    const closeBtn = document.getElementById('closeModal');
+    if (closeBtn) closeBtn.setAttribute('tabindex','0');
+
+    // Ensure a play-external button exists and is focusable (for PixelDrain/iframes)
+    const modalCard = document.querySelector('#modal .modal-card');
+    if (modalCard) {
+      let px = modalCard.querySelector('.play-external');
+      if (!px) {
+        px = document.createElement('button');
+        px.className = 'btn btn-primaria play-external';
+        px.textContent = '▶ Reproducir (externo)';
+        px.setAttribute('tabindex','0');
+        px.setAttribute('data-tvnav','play');
+        modalCard.querySelector('.modal-header')?.insertAdjacentElement('afterend', px);
+      }
+      if (d.link) {
+        const w = toWatchUrl(d.link) || d.link;
+        px.dataset.url = w;
+      }
+    }
+  } catch(_e) { /* ignore */ }
+  // TVNAV PATCH END
 }
 
 function closeModal(){ document.getElementById('modal').classList.remove('open'); }

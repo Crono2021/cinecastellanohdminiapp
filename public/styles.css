@@ -79,3 +79,13 @@ footer{border-top:1px solid #222;color:#aaa}
 @media (prefers-reduced-motion: reduce){
   .link{transition:none}
 }
+
+
+/* TVNav highlight focus */
+.tvnav-focus {
+  outline: 3px solid #88f !important;
+  outline-offset: 2px !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 10px rgba(136,136,255,0.7) !important;
+}
+
