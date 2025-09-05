@@ -612,7 +612,7 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
 // DELETE /api/admin/delete
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
-    const { title, year } = req.body;
+    const { title, year, type } = req.body; const isTv = (type==='tv');
     if (!title) return res.status(400).json({ error: 'Falta título' });
 
     const t = String(title).trim().toLowerCase();
@@ -620,9 +620,12 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 
     // Buscar candidatos por título (case-insensitive) y opcionalmente por año
     const rows = await new Promise((resolve, reject) => {
-      const sql = y
+      const sql = isTv ? (y
+        ? 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ? AND first_air_year = ?'
+        : 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ?')
+        : (y
         ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
-        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?';
+        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?');
       const params = y ? [t, y] : [t];
       db.all(sql, params, (err, rows) => {
         if (err) return reject(err);
@@ -636,7 +639,7 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
     const ids = rows.map(r => r.tmdb_id);
     await new Promise((resolve, reject) => {
       const placeholders = ids.map(()=>'?').join(',');
-      db.run(`DELETE FROM movies WHERE tmdb_id IN (${placeholders})`, ids, function(err){
+      db.run(isTv ? `DELETE FROM series WHERE tmdb_id IN (${placeholders})` : `DELETE FROM movies WHERE tmdb_id IN (${placeholders})`, ids, function(err){
         if (err) return reject(err);
         resolve();
       });
@@ -654,13 +657,13 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 // POST /api/admin/deleteById
 app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   try {
-    const { tmdb_id } = req.body;
+    const { tmdb_id, type } = req.body; const isTv = (type==='tv');
     const id = Number(tmdb_id);
     if (!id || Number.isNaN(id)) return res.status(400).json({ error: 'tmdb_id inválido' });
 
     // Fetch movie info (optional, for UI feedback)
     const movie = await new Promise((resolve, reject) => {
-      db.get('SELECT tmdb_id, title, year FROM movies WHERE tmdb_id = ?', [id], (err, row) => {
+      db.get(isTv ? 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE tmdb_id = ?' : 'SELECT tmdb_id, title, year FROM movies WHERE tmdb_id = ?', [id], (err, row) => {
         if (err) return reject(err);
         resolve(row || null);
       });
@@ -668,7 +671,7 @@ app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
 
     // Delete
     const deleted = await new Promise((resolve, reject) => {
-      db.run('DELETE FROM movies WHERE tmdb_id = ?', [id], function(err){
+      db.run(isTv ? 'DELETE FROM series WHERE tmdb_id = ?' : 'DELETE FROM movies WHERE tmdb_id = ?', [id], function(err){
         if (err) return reject(err);
         resolve(this.changes || 0);
       });
