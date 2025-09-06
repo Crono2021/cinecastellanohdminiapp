@@ -23,6 +23,7 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 state.clientGenreItems = null;
 
 
+
 async function fetchAllPagesForGenre(genreId, maxPages=200){
   const collected = [];
   const seen = new Set();
@@ -35,6 +36,39 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
     effectiveType = String(effectiveGenre).split(':')[1]; // movie|tv
     effectiveGenre = '';
   }
+
+  for (let p=1; p<=maxPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
+    if (effectiveGenre) params.set('genre', effectiveGenre);
+    if (effectiveType) params.set('type', effectiveType);
+
+    const res = await fetch('/api/catalog?' + params.toString());
+    if (!res.ok) break;
+    const data = await res.json();
+    const before = collected.length;
+
+    (data.items || []).forEach(it => {
+      const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
+      if (!seen.has(id)){
+        seen.add(id);
+        collected.push(it);
+      }
+    });
+
+    if ((data.items||[]).length === 0){
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 3) break;
+    } else {
+      consecutiveEmpty = 0;
+    }
+
+    if (p % 5 === 0 && collected.length === before){
+      break;
+    }
+  }
+  return collected;
+}
+
 
   for (let p=1; p<=maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
@@ -138,7 +172,9 @@ if (effectiveGenre && effectiveGenre.startsWith('type:')){
 }
 if (effectiveGenre) params.set('genre', effectiveGenre);
 if (effectiveType) params.set('type', effectiveType);
-const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/catalog?' + params.toString();
+const endpoint = (state.actor && !state.clientGenreItems)
+  ? ('/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString())
+  : ('/api/catalog?' + params.toString());
   const res = await fetch(endpoint);
   const data = await res.json();
 
