@@ -29,6 +29,7 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
 
   for (let p=1; p<=maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
+    if (type==='movie' || type==='tv') params.set('type', type);
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -223,6 +224,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
     document.getElementById('pageInfo').textContent = 'Cargando…';
+    // Prefiere server-side filter + página grande
     state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
     // Mantén el value seleccionado para el UI
     state.genre = val;
@@ -326,8 +328,9 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   let consecutiveEmpty = 0;
 
   for (let p = 1; p <= maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
+    const params = new URLSearchParams({ page: p, pageSize: 200 });
     if (genreId) params.set('genre', genreId);
+    if (type==='movie' || type==='tv') params.set('type', type);
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
