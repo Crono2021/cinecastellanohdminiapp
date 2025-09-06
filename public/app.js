@@ -29,7 +29,6 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
 
   for (let p=1; p<=maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
-    if (type==='movie' || type==='tv') params.set('type', type);
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -161,60 +160,6 @@ document.getElementById('prev').addEventListener('click', ()=>{ if(state.page>1)
 document.getElementById('next').addEventListener('click', ()=>{ state.page++; load(); });
 
 
-
-// === Client cache of full catalog ===
-const CatalogCache = {
-  key: 'catalogCache_v1',
-  async getServerVersion(){
-    try{
-      const r = await fetch('/api/catalog-version');
-      if (!r.ok) return null;
-      return await r.json();
-    }catch(_){ return null; }
-  },
-  read(){
-    try{
-      const s = localStorage.getItem(this.key);
-      if (!s) return null;
-      return JSON.parse(s);
-    }catch(_){ return null; }
-  },
-  write(payload){
-    try{ localStorage.setItem(this.key, JSON.stringify(payload)); }catch(_){}
-  },
-  clear(){ try{ localStorage.removeItem(this.key); }catch(_){ } }
-};
-
-async function tryLoadFromCache(){
-  const cache = CatalogCache.read();
-  if (cache && Array.isArray(cache.items)){
-    // Use cached aggregated items for instant render
-    state.clientGenreItems = cache.items;
-    state.page = 1;
-    const pageInfo = document.getElementById('pageInfo');
-    if (pageInfo) pageInfo.textContent = 'Usando caché local · ' + cache.items.length + ' ítems';
-    // Render immediately
-    render();
-  }
-  // In background, verify server version and refresh cache if needed
-  (async ()=>{
-    const v = await CatalogCache.getServerVersion();
-    const cachedV = (cache && cache.version) || null;
-    if (!v || !v.version) return;
-    if (!cache || cachedV !== v.version){
-      // Recolecta TODO el catálogo enriquecido usando la función existente
-      const all = await fetchAllPagesWithOptionalFilters({});
-      CatalogCache.write({ version: v.version, saved_at: new Date().toISOString(), items: all });
-      // Si el usuario no ha cambiado filtro, actualiza la vista a partir de la nueva caché
-      if (!state.q && !state.actor && (!state.genre || state.genre==='TYPE_MOVIE' || state.genre==='TYPE_TV')){
-        state.clientGenreItems = all;
-        state.page = 1;
-        render();
-      }
-    }
-  })();
-}
-
 // React to genre changes immediately and query the full catalog via the API
 
 
@@ -224,7 +169,6 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
     document.getElementById('pageInfo').textContent = 'Cargando…';
-    // Prefiere server-side filter + página grande
     state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
     // Mantén el value seleccionado para el UI
     state.genre = val;
@@ -242,8 +186,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 
-tryLoadFromCache();
-fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); backgroundPrefetchAllIfNeeded(); });
+fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
 
 
 /* Enter on actor triggers search */
@@ -328,9 +271,8 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   let consecutiveEmpty = 0;
 
   for (let p = 1; p <= maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: 200 });
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
     if (genreId) params.set('genre', genreId);
-    if (type==='movie' || type==='tv') params.set('type', type);
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -360,105 +302,3 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   return collected;
 }
 
-
-
-// === IndexedDB tiny helper ===
-const IDB = {
-  db: null,
-  name: 'cine-cache',
-  store: 'kv',
-  async open(){
-    if (this.db) return this.db;
-    return new Promise((resolve, reject)=>{
-      const req = indexedDB.open(this.name, 1);
-      req.onupgradeneeded = (e)=>{
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(this.store)){
-          db.createObjectStore(this.store);
-        }
-      };
-      req.onsuccess = (e)=>{ this.db = e.target.result; resolve(this.db); };
-      req.onerror = (e)=> reject(e.target.error);
-    });
-  },
-  async get(key){
-    const db = await this.open();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction([this.store], 'readonly');
-      const st = tx.objectStore(this.store);
-      const r = st.get(key);
-      r.onsuccess = ()=> resolve(r.result || null);
-      r.onerror = ()=> reject(r.error);
-    });
-  },
-  async set(key, val){
-    const db = await this.open();
-    return new Promise((resolve, reject)=>{
-      const tx = db.transaction([this.store], 'readwrite');
-      const st = tx.objectStore(this.store);
-      const r = st.put(val, key);
-      r.onsuccess = ()=> resolve(true);
-      r.onerror = ()=> reject(r.error);
-    });
-  }
-};
-
-const FullCatalogKey = 'fullCatalog_v2'; // bump if structure changes
-
-async function backgroundPrefetchAllIfNeeded(){
-  try{
-    const serverV = await CatalogCache.getServerVersion();
-    if (!serverV || !serverV.version) return;
-    const existing = await IDB.get(FullCatalogKey);
-    if (existing && existing.version === serverV.version){
-      // Already up-to-date; also hydrate state for instant filters
-      if (!state.clientGenreItems){
-        state.clientGenreItems = existing.items || [];
-      }
-      return;
-    }
-    // Prefetch both movies and tv in large pages, merging in client
-    async function fetchAllByType(type){
-      const batch = [];
-      const pageSize = 200;
-      for (let p=1; p<=999; p++){
-        const params = new URLSearchParams({ page: p, pageSize, type });
-        const res = await fetch('/api/catalog?' + params.toString());
-        if (!res.ok) break;
-        const data = await res.json();
-        const items = data.items || [];
-        batch.push(...items.map(it => ({ ...it, type })));
-        if (items.length < pageSize) break;
-      }
-      return batch;
-    }
-    const [allMovies, allTv] = await Promise.all([ fetchAllByType('movie'), fetchAllByType('tv') ]);
-    const all = [...allMovies, ...allTv];
-    // Sort similar to server
-    all.sort((a,b)=>{
-      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const db = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (db !== da) return db - da;
-      return (b.tmdb_id||0) - (a.tmdb_id||0);
-    });
-    await IDB.set(FullCatalogKey, { version: serverV.version, saved_at: new Date().toISOString(), items: all });
-    // Si el usuario está en vista global o filtro por tipo, podemos actualizar al vuelo
-    if (!state.q && !state.actor){
-      state.clientGenreItems = all;
-      render();
-    }
-  }catch(e){
-    // silencioso
-  }
-}
-
-// Intentar hidratar desde IndexedDB antes de la caché simple
-(async ()=>{
-  try{
-    const cached = await IDB.get(FullCatalogKey);
-    if (cached && Array.isArray(cached.items)){
-      state.clientGenreItems = cached.items;
-      render();
-    }
-  }catch(_){}
-})();
