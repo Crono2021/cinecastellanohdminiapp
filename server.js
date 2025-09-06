@@ -191,7 +191,7 @@ app.get('/api/genres', async (req, res) => {
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
 app.get('/api/movies/by-actor', async (req, res) => {
   try {
-    const { name, q, genre, page = 1, pageSize = 24 } = req.query;
+    const { name, q, genre, page = 1, pageSize = 24, type } = req.query;
     if (!name || String(name).trim() === '') {
       return res.status(400).json({ error: 'Falta name' });
     }
@@ -315,6 +315,13 @@ app.get('/api/catalog', async (req, res) => {
       ...movies.map(m => ({ type:'movie', ...m })),
       ...series.map(s => ({ type:'tv', ...s })),
     ];
+
+// --- Filter by type (movie or tv) ---
+const typeParam = String(type || '').toLowerCase();
+if (typeParam === 'movie' || typeParam === 'tv') {
+  items = items.filter(it => it.type === typeParam);
+}
+
 
     // Sort by created_at desc (fallback to tmdb_id desc)
     items.sort((a,b)=>{

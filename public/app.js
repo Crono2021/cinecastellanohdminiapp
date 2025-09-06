@@ -17,7 +17,7 @@ function toWatchUrl(link){
 }
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
+let state = {page: 1, pageSize: 24, q: '', actor: '', genre: '', type: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
@@ -62,7 +62,18 @@ async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
   const sel = document.getElementById('genre');
-  sel.innerHTML = '<option value="">Todos los géneros</option>' + data.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+
+  const opts = [];
+  opts.push('<option value="">Todos</option>');
+  opts.push('<option value="type:movie">Películas</option>');
+  opts.push('<option value="type:tv">Series</option>');
+  opts.push('<option value="" disabled>──────────</option>');
+
+  (data || []).forEach(g => {
+    opts.push(`<option value="${g.id}">${g.name}</option>`);
+  });
+
+  sel.innerHTML = opts.join('');
 }
 
 
