@@ -224,12 +224,11 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   document.getElementById('pageInfo').textContent = 'Cargando…';
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
-    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
+    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ type });
     state.genre = val;
   } else if (val){
-    // For TMDB genre filter, aggregate full catalog with genre param
+    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: val });
     state.genre = val;
-    state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
   } else {
     state.clientGenreItems = null;
     state.genre = '';
