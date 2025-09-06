@@ -221,21 +221,11 @@ async function tryLoadFromCache(){
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   const val = (e && e.target && e.target.value) || '';
-  const pageInfo = document.getElementById('pageInfo'); if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
+    document.getElementById('pageInfo').textContent = 'Cargando…';
+    // Prefiere server-side filter + página grande
     state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
-    state.genre = val;
-  } else if (val){
-    // Optimized genre fetch (pageSize=200) to minimize calls
-    state.clientGenreItems = await fetchAllPagesForGenreOptimized(val);
-    state.genre = val;
-  } else {
-    state.clientGenreItems = null;
-    state.genre = '';
-  }
-  load();
-});
     // Mantén el value seleccionado para el UI
     state.genre = val;
   } else {
@@ -244,7 +234,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
     if (state.genre){
       document.getElementById('pageInfo').textContent = 'Cargando…';
       // Usa el agregador original página a página
-      state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+      state.clientGenreItems = await fetchAllPagesForGenreOptimized(state.genre);
     } else {
       state.clientGenreItems = null;
     }
@@ -474,7 +464,7 @@ async function backgroundPrefetchAllIfNeeded(){
 })();
 
 
-// === Optimized genre aggregator: same idea as type-optimized, but for any TMDB genre ===
+// === Optimized genre aggregator: same logic as type-optimized but for any TMDB genre ===
 async function fetchAllPagesForGenreOptimized(genreId, maxPages = 200){
   const collected = [];
   const seen = new Set();
@@ -489,7 +479,7 @@ async function fetchAllPagesForGenreOptimized(genreId, maxPages = 200){
       const id = (it && (it.tmdb_id ?? it.id)) ?? JSON.stringify(it);
       if (!seen.has(id)){ seen.add(id); collected.push(it); }
     }
-    if (items.length < pageSize) break; // last page
+    if (items.length < pageSize) break;
   }
   return collected;
 }
