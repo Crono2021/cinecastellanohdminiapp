@@ -160,6 +160,60 @@ document.getElementById('prev').addEventListener('click', ()=>{ if(state.page>1)
 document.getElementById('next').addEventListener('click', ()=>{ state.page++; load(); });
 
 
+
+// === Client cache of full catalog ===
+const CatalogCache = {
+  key: 'catalogCache_v1',
+  async getServerVersion(){
+    try{
+      const r = await fetch('/api/catalog-version');
+      if (!r.ok) return null;
+      return await r.json();
+    }catch(_){ return null; }
+  },
+  read(){
+    try{
+      const s = localStorage.getItem(this.key);
+      if (!s) return null;
+      return JSON.parse(s);
+    }catch(_){ return null; }
+  },
+  write(payload){
+    try{ localStorage.setItem(this.key, JSON.stringify(payload)); }catch(_){}
+  },
+  clear(){ try{ localStorage.removeItem(this.key); }catch(_){ } }
+};
+
+async function tryLoadFromCache(){
+  const cache = CatalogCache.read();
+  if (cache && Array.isArray(cache.items)){
+    // Use cached aggregated items for instant render
+    state.clientGenreItems = cache.items;
+    state.page = 1;
+    const pageInfo = document.getElementById('pageInfo');
+    if (pageInfo) pageInfo.textContent = 'Usando caché local · ' + cache.items.length + ' ítems';
+    // Render immediately
+    render();
+  }
+  // In background, verify server version and refresh cache if needed
+  (async ()=>{
+    const v = await CatalogCache.getServerVersion();
+    const cachedV = (cache && cache.version) || null;
+    if (!v || !v.version) return;
+    if (!cache || cachedV !== v.version){
+      // Recolecta TODO el catálogo enriquecido usando la función existente
+      const all = await fetchAllPagesWithOptionalFilters({});
+      CatalogCache.write({ version: v.version, saved_at: new Date().toISOString(), items: all });
+      // Si el usuario no ha cambiado filtro, actualiza la vista a partir de la nueva caché
+      if (!state.q && !state.actor && (!state.genre || state.genre==='TYPE_MOVIE' || state.genre==='TYPE_TV')){
+        state.clientGenreItems = all;
+        state.page = 1;
+        render();
+      }
+    }
+  })();
+}
+
 // React to genre changes immediately and query the full catalog via the API
 
 
@@ -186,6 +240,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 
+tryLoadFromCache();
 fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
 
 

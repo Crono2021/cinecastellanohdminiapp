@@ -539,6 +539,7 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
       });
 
       const d = await getTmdbTvDetails(tv_id);
+      bumpCatalogVersion();
       return res.json({ ok:true, type:'tv', tmdb_id: tv_id, title: d.name, year: realYear });
     }
 
@@ -613,6 +614,7 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
       }
     }
 
+    bumpCatalogVersion();
     res.json({ ok: true, imported: out.length, items: out, errors });
   } catch (e) {
     console.error(e);
@@ -645,7 +647,8 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
       });
     });
 
-    if (!rows.length) return res.json({ deleted: 0, matches: [] });
+    if (!rows.length) return bumpCatalogVersion();
+    res.json({ deleted: 0, matches: [] });
 
     // Eliminar todos los matches encontrados
     const ids = rows.map(r => r.tmdb_id);
@@ -689,6 +692,7 @@ app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
       });
     });
 
+    bumpCatalogVersion();
     res.json({ deleted, match: movie });
   } catch (e) {
     console.error(e);
@@ -714,6 +718,29 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
+
+
+// === Catalog versioning for client cache ===
+const fs = require('fs');
+const VERSION_FILE = path.join(__dirname, 'catalog_version.json');
+function readCatalogVersion(){
+  try{
+    const j = JSON.parse(fs.readFileSync(VERSION_FILE,'utf-8'));
+    if (typeof j.version === 'number') return j;
+  }catch(_){}
+  const init = { version: 1, updated_at: new Date().toISOString() };
+  try{ fs.writeFileSync(VERSION_FILE, JSON.stringify(init, null, 2)); }catch(_){}
+  return init;
+}
+let _catalogVersion = readCatalogVersion();
+function bumpCatalogVersion(){
+  _catalogVersion = { version: Number(_catalogVersion.version||0)+1, updated_at: new Date().toISOString() };
+  try{ fs.writeFileSync(VERSION_FILE, JSON.stringify(_catalogVersion, null, 2)); }catch(e){ console.error('No se pudo escribir catalog_version.json', e.message); }
+  return _catalogVersion;
+}
+app.get('/api/catalog-version', (req,res)=>{
+  return res.json(_catalogVersion);
+});
 
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
