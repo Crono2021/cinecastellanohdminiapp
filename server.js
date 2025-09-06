@@ -264,9 +264,8 @@ app.get('/api/movies/by-actor', async (req, res) => {
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 
 // GET /api/catalog -- unified movies + series
-app.get('/api/catalog', async (req, res) => {
-  try {
-    const { q, genre, page = 1, pageSize = 24 } = req.query;
+app.get('/api/catalog', async (req, res) => {try {
+    const { q, genre, page = 1, pageSize = 24, type } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
