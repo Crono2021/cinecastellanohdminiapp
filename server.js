@@ -266,7 +266,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
 // GET /api/catalog -- unified movies + series
 app.get('/api/catalog', async (req, res) => {
   try {
-    const { q, genre, page = 1, pageSize = 24 , type} = req.query;
+    const { q, genre, page = 1, pageSize = 24 } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
@@ -315,14 +315,6 @@ app.get('/api/catalog', async (req, res) => {
       ...movies.map(m => ({ type:'movie', ...m })),
       ...series.map(s => ({ type:'tv', ...s })),
     ];
-// Minimal: filter by requested type (movie/tv) without altering rest
-if (typeof type === 'string') {
-  const t = type.toLowerCase();
-  if (t === 'movie' || t === 'tv') {
-    items = items.filter(it => it.type === t);
-  }
-}
-
 
     // Sort by created_at desc (fallback to tmdb_id desc)
     items.sort((a,b)=>{

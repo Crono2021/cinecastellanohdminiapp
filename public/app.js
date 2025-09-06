@@ -22,26 +22,13 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
 
-
-
 async function fetchAllPagesForGenre(genreId, maxPages=200){
   const collected = [];
   const seen = new Set();
   let consecutiveEmpty = 0;
 
-  let effectiveGenre = genreId || '';
-  let effectiveType = '';
-
-  if (effectiveGenre && String(effectiveGenre).startsWith('type:')){
-    effectiveType = String(effectiveGenre).split(':')[1]; // movie|tv
-    effectiveGenre = '';
-  }
-
   for (let p=1; p<=maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
-    if (effectiveGenre) params.set('genre', effectiveGenre);
-    if (effectiveType) params.set('type', effectiveType);
-
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -57,51 +44,10 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
 
     if ((data.items||[]).length === 0){
       consecutiveEmpty++;
-      if (consecutiveEmpty >= 3) break;
+      if (consecutiveEmpty >= 3) break; // assume we've reached the end
     } else {
       consecutiveEmpty = 0;
     }
-
-    if (p % 5 === 0 && collected.length === before){
-      break;
-    }
-  }
-  return collected;
-}
-
-
-  for (let p=1; p<=maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
-    if (effectiveGenre) params.set('genre', effectiveGenre);
-    if (effectiveType) params.set('type', effectiveType);
-
-    const res = await fetch('/api/catalog?' + params.toString());
-    if (!res.ok) break;
-    const data = await res.json();
-    const before = collected.length;
-
-    (data.items || []).forEach(it => {
-      const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
-      if (!seen.has(id)){
-        seen.add(id);
-        collected.push(it);
-      }
-    });
-
-    if ((data.items||[]).length === 0){
-      consecutiveEmpty++;
-      if (consecutiveEmpty >= 3) break;
-    } else {
-      consecutiveEmpty = 0;
-    }
-
-    if (p % 5 === 0 && collected.length === before){
-      break;
-    }
-  }
-  return collected;
-}
-
 
     // Heuristic: if no new items were added in last 5 pages, stop early
     if (p % 5 === 0 && collected.length === before){
@@ -116,14 +62,7 @@ async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
   const sel = document.getElementById('genre');
-  const top = [
-    '<option value="">Todos los géneros</option>',
-    '<option value="type:movie">Películas</option>',
-    '<option value="type:tv">Series</option>',
-    '<option value="" disabled>──────────</option>'
-  ];
-  const rest = (data || []).map(g => `<option value="${g.id}">${g.name}</option>`);
-  sel.innerHTML = top.concat(rest).join('');
+  sel.innerHTML = '<option value="">Todos los géneros</option>' + data.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
 }
 
 
@@ -163,18 +102,9 @@ async function load(){
 
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
-if (state.actor) params.set('actor', state.actor);
-let effectiveGenre = state.genre || '';
-let effectiveType = '';
-if (effectiveGenre && effectiveGenre.startsWith('type:')){
-  effectiveType = effectiveGenre.split(':')[1];
-  effectiveGenre = '';
-}
-if (effectiveGenre) params.set('genre', effectiveGenre);
-if (effectiveType) params.set('type', effectiveType);
-const endpoint = (state.actor && !state.clientGenreItems)
-  ? ('/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString())
-  : ('/api/catalog?' + params.toString());
+  if (state.actor) params.set('actor', state.actor);
+  if (state.genre) params.set('genre', state.genre);
+    const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/catalog?' + params.toString();
   const res = await fetch(endpoint);
   const data = await res.json();
 
@@ -235,17 +165,19 @@ document.getElementById('next').addEventListener('click', ()=>{ state.page++; lo
 
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
-  const val = e.target.value || '';
-  if (val && val.startsWith('type:')){
-    // type filter
-    state.genre = val; // keep value for UI
+  const val = (e && e.target && e.target.value) || '';
+  if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
+    const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
     document.getElementById('pageInfo').textContent = 'Cargando…';
-    state.clientGenreItems = await fetchAllPagesForGenre(val);
+    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
+    // Mantén el value seleccionado para el UI
+    state.genre = val;
   } else {
-    // numeric TMDB genre id or empty
+    // Comportamiento original para géneros TMDB
     state.genre = val;
     if (state.genre){
       document.getElementById('pageInfo').textContent = 'Cargando…';
+      // Usa el agregador original página a página
       state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
     } else {
       state.clientGenreItems = null;
@@ -254,7 +186,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   load();
 });
 
-fetchGenres().then(load);
+fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
 
 
 /* Enter on actor triggers search */
@@ -303,3 +235,70 @@ fetchGenres().then(load);
     form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
   }
 })();
+
+
+// --- Minimal additions: prepend Películas/Series options & robust client-side aggregator ---
+function prependTypeOptions(){
+  const sel = document.getElementById('genre');
+  if (!sel) return;
+  // Avoid duplicating if already added
+  if ([...sel.options].some(o => o.value === 'TYPE_MOVIE')) return;
+  const frag = document.createDocumentFragment();
+  const optMovie = document.createElement('option');
+  optMovie.value = 'TYPE_MOVIE';
+  optMovie.textContent = 'Películas';
+  const optTV = document.createElement('option');
+  optTV.value = 'TYPE_TV';
+  optTV.textContent = 'Series';
+  const sep = document.createElement('option');
+  sep.value = '';
+  sep.textContent = '──────────';
+  sep.disabled = true;
+  // Insert after the first option ("Todos los géneros") if exists
+  if (sel.firstChild){
+    sel.insertBefore(sep, sel.firstChild.nextSibling || null);
+    sel.insertBefore(optTV, sep);
+    sel.insertBefore(optMovie, optTV);
+  } else {
+    sel.appendChild(optMovie); sel.appendChild(optTV); sel.appendChild(sep);
+  }
+}
+
+// Aggregate across catalog pages optionally filtering by type on client side
+async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPages = 200 }){
+  const collected = [];
+  const seen = new Set();
+  let consecutiveEmpty = 0;
+
+  for (let p = 1; p <= maxPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
+    if (genreId) params.set('genre', genreId);
+    const res = await fetch('/api/catalog?' + params.toString());
+    if (!res.ok) break;
+    const data = await res.json();
+    const pageItems = (data.items || []);
+
+    let filtered = pageItems;
+    if (type === 'movie' || type === 'tv'){
+      filtered = pageItems.filter(it => it && it.type === type);
+    }
+
+    for (const it of filtered){
+      const id = (it && (it.tmdb_id ?? it.id)) ?? JSON.stringify(it);
+      if (!seen.has(id)){ seen.add(id); collected.push(it); }
+    }
+
+    if (pageItems.length === 0){
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 3) break;
+    } else {
+      consecutiveEmpty = 0;
+    }
+
+    if (p % 5 === 0 && filtered.length === 0){
+      break;
+    }
+  }
+  return collected;
+}
+
