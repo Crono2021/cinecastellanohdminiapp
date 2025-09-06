@@ -243,7 +243,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
 });
 
 tryLoadFromCache();
-fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
+fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); backgroundPrefetchAllIfNeeded(); });
 
 
 /* Enter on actor triggers search */
@@ -360,3 +360,105 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   return collected;
 }
 
+
+
+// === IndexedDB tiny helper ===
+const IDB = {
+  db: null,
+  name: 'cine-cache',
+  store: 'kv',
+  async open(){
+    if (this.db) return this.db;
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(this.name, 1);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(this.store)){
+          db.createObjectStore(this.store);
+        }
+      };
+      req.onsuccess = (e)=>{ this.db = e.target.result; resolve(this.db); };
+      req.onerror = (e)=> reject(e.target.error);
+    });
+  },
+  async get(key){
+    const db = await this.open();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction([this.store], 'readonly');
+      const st = tx.objectStore(this.store);
+      const r = st.get(key);
+      r.onsuccess = ()=> resolve(r.result || null);
+      r.onerror = ()=> reject(r.error);
+    });
+  },
+  async set(key, val){
+    const db = await this.open();
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction([this.store], 'readwrite');
+      const st = tx.objectStore(this.store);
+      const r = st.put(val, key);
+      r.onsuccess = ()=> resolve(true);
+      r.onerror = ()=> reject(r.error);
+    });
+  }
+};
+
+const FullCatalogKey = 'fullCatalog_v2'; // bump if structure changes
+
+async function backgroundPrefetchAllIfNeeded(){
+  try{
+    const serverV = await CatalogCache.getServerVersion();
+    if (!serverV || !serverV.version) return;
+    const existing = await IDB.get(FullCatalogKey);
+    if (existing && existing.version === serverV.version){
+      // Already up-to-date; also hydrate state for instant filters
+      if (!state.clientGenreItems){
+        state.clientGenreItems = existing.items || [];
+      }
+      return;
+    }
+    // Prefetch both movies and tv in large pages, merging in client
+    async function fetchAllByType(type){
+      const batch = [];
+      const pageSize = 200;
+      for (let p=1; p<=999; p++){
+        const params = new URLSearchParams({ page: p, pageSize, type });
+        const res = await fetch('/api/catalog?' + params.toString());
+        if (!res.ok) break;
+        const data = await res.json();
+        const items = data.items || [];
+        batch.push(...items.map(it => ({ ...it, type })));
+        if (items.length < pageSize) break;
+      }
+      return batch;
+    }
+    const [allMovies, allTv] = await Promise.all([ fetchAllByType('movie'), fetchAllByType('tv') ]);
+    const all = [...allMovies, ...allTv];
+    // Sort similar to server
+    all.sort((a,b)=>{
+      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (db !== da) return db - da;
+      return (b.tmdb_id||0) - (a.tmdb_id||0);
+    });
+    await IDB.set(FullCatalogKey, { version: serverV.version, saved_at: new Date().toISOString(), items: all });
+    // Si el usuario está en vista global o filtro por tipo, podemos actualizar al vuelo
+    if (!state.q && !state.actor){
+      state.clientGenreItems = all;
+      render();
+    }
+  }catch(e){
+    // silencioso
+  }
+}
+
+// Intentar hidratar desde IndexedDB antes de la caché simple
+(async ()=>{
+  try{
+    const cached = await IDB.get(FullCatalogKey);
+    if (cached && Array.isArray(cached.items)){
+      state.clientGenreItems = cached.items;
+      render();
+    }
+  }catch(_){}
+})();

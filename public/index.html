@@ -60,6 +60,15 @@
   </footer>
 
   <script src="/app.js"></script>
+
+  <script>
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    });
+  }
+  </script>
+
   <script src="back-handler.js"></script>
 </body>
 </html>
