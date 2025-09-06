@@ -332,10 +332,10 @@ app.get('/api/catalog', async (req, res) => {
       try{
         if (it.type === 'tv'){
           const d = await getTmdbTvDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null };
+          return { ...it, poster_path: d?.poster_path || null, genres: d?.genres || [] };
         }else{
           const d = await getTmdbMovieDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null };
+          return { ...it, poster_path: d?.poster_path || null, genres: d?.genres || [] };
         }
       }catch(_){
         return { ...it, poster_path: null };
