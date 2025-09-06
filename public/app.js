@@ -152,7 +152,7 @@ const q = document.getElementById('q');
 const actor = document.getElementById('actor');
 const genre = document.getElementById('genre');
 
-document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.clientGenreItems=null; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); }));
+document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); });
 document.getElementById('resetBtn').addEventListener('click', ()=>{
   state.clientGenreItems = null; state={ page:1, pageSize:24, q:'', actor:'', genre:''}; q.value=''; actor.value=''; genre.value=''; load(); });
 
@@ -300,42 +300,5 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
     }
   }
   return collected;
-}
-
-
-
-// --- Detail cache for client-side genre/actor fallbacks ---
-const detailCache = new Map();
-
-async function getDetailsCached(id){
-  if (detailCache.has(id)) return detailCache.get(id);
-  const res = await fetch(`/api/movie/${id}`);
-  if (!res.ok) return null;
-  const d = await res.json();
-  detailCache.set(id, d);
-  return d;
-}
-
-async function clientFilterByGenre(genreId, maxPages=80){
-  const seen = new Set();
-  const out = [];
-  for (let p=1; p<=maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
-    const res = await fetch('/api/catalog?' + params.toString());
-    if (!res.ok) break;
-    const data = await res.json();
-    const items = data.items || [];
-    if (items.length === 0) break;
-    for (const it of items){
-      const key = it.tmdb_id ?? it.id;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const d = await getDetailsCached(key);
-      if (d && Array.isArray(d.genres) && d.genres.some(g => String(g.id) === String(genreId))){
-        out.push(it);
-      }
-    }
-  }
-  return out;
 }
 
