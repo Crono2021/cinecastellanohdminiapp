@@ -221,13 +221,14 @@ async function tryLoadFromCache(){
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   const val = (e && e.target && e.target.value) || '';
-  document.getElementById('pageInfo').textContent = 'Cargando…';
+  const pageInfo = document.getElementById('pageInfo'); if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
-    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ type });
+    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
     state.genre = val;
   } else if (val){
-    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: val });
+    // Optimized genre fetch (pageSize=200) to minimize calls
+    state.clientGenreItems = await fetchAllPagesForGenreOptimized(val);
     state.genre = val;
   } else {
     state.clientGenreItems = null;
@@ -471,3 +472,24 @@ async function backgroundPrefetchAllIfNeeded(){
     }
   }catch(_){}
 })();
+
+
+// === Optimized genre aggregator: same idea as type-optimized, but for any TMDB genre ===
+async function fetchAllPagesForGenreOptimized(genreId, maxPages = 200){
+  const collected = [];
+  const seen = new Set();
+  const pageSize = 200;
+  for (let p = 1; p <= maxPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize, genre: genreId });
+    const res = await fetch('/api/catalog?' + params.toString());
+    if (!res.ok) break;
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    for (const it of items){
+      const id = (it && (it.tmdb_id ?? it.id)) ?? JSON.stringify(it);
+      if (!seen.has(id)){ seen.add(id); collected.push(it); }
+    }
+    if (items.length < pageSize) break; // last page
+  }
+  return collected;
+}
