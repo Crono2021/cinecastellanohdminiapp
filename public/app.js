@@ -218,60 +218,25 @@ async function tryLoadFromCache(){
 // React to genre changes immediately and query the full catalog via the API
 
 
-
-
-// === Unified dropdown filtering using full-catalog cache ===
-async function getFullCatalogFromCache(){
-  try{
-    const cached = await IDB.get(FullCatalogKey);
-    if (cached && Array.isArray(cached.items)) return cached.items;
-  }catch(_){}
-  // Fallback to in-memory
-  if (Array.isArray(state.clientGenreItems)) return state.clientGenreItems;
-  return null;
-}
-
-async function applyDropdownFilter(val){
-  const all = await getFullCatalogFromCache();
-  if (!all){
-    // Fallback to legacy behavior
-    if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
-      state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ type: (val==='TYPE_MOVIE'?'movie':'tv') });
-      state.genre = val;
-      state.page = 1; render(); return;
-    }
-    // TMDB genres: legacy aggregator
-    if (val){
-      state.clientGenreItems = await fetchAllPagesForGenre(val);
-      state.genre = val;
-      state.page = 1; render(); return;
-    }
-    // No genre: clear aggregated view
-    state.clientGenreItems = null; state.genre = ''; state.page = 1; render(); return;
-  }
-
-  // We have full cached list; filter instantly
-  let filtered = all;
-  if (val === 'TYPE_MOVIE') filtered = all.filter(it => it && it.type === 'movie');
-  else if (val === 'TYPE_TV') filtered = all.filter(it => it && it.type === 'tv');
-  else if (val){ // TMDB genre id
-    filtered = all.filter(it => Array.isArray(it.genres) && it.genres.some(g => String(g.id) === String(val)));
-  } else {
-    filtered = all; // global view
-  }
-
-  state.clientGenreItems = filtered;
-  state.genre = val || '';
-  state.page = 1;
-  render();
-}
-
 document.getElementById('genre').addEventListener('change', async (e)=>{
+  state.page = 1;
   const val = (e && e.target && e.target.value) || '';
-  const pageInfo = document.getElementById('pageInfo'); if (pageInfo) pageInfo.textContent = 'Cargando…';
-  await applyDropdownFilter(val);
+  document.getElementById('pageInfo').textContent = 'Cargando…';
+  if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
+    const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
+    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
+    state.genre = val;
+  } else if (val){
+    // For TMDB genre filter, aggregate full catalog with genre param
+    state.genre = val;
+    state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+  } else {
+    state.clientGenreItems = null;
+    state.genre = '';
+  }
+  load();
 });
-// Mantén el value seleccionado para el UI
+    // Mantén el value seleccionado para el UI
     state.genre = val;
   } else {
     // Comportamiento original para géneros TMDB
