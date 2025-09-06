@@ -234,7 +234,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
     if (state.genre){
       document.getElementById('pageInfo').textContent = 'Cargando…';
       // Usa el agregador original página a página
-      state.clientGenreItems = await fetchAllPagesForGenreOptimized(state.genre);
+      state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
     } else {
       state.clientGenreItems = null;
     }
@@ -462,24 +462,3 @@ async function backgroundPrefetchAllIfNeeded(){
     }
   }catch(_){}
 })();
-
-
-// === Optimized genre aggregator: same logic as type-optimized but for any TMDB genre ===
-async function fetchAllPagesForGenreOptimized(genreId, maxPages = 200){
-  const collected = [];
-  const seen = new Set();
-  const pageSize = 200;
-  for (let p = 1; p <= maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize, genre: genreId });
-    const res = await fetch('/api/catalog?' + params.toString());
-    if (!res.ok) break;
-    const data = await res.json();
-    const items = Array.isArray(data.items) ? data.items : [];
-    for (const it of items){
-      const id = (it && (it.tmdb_id ?? it.id)) ?? JSON.stringify(it);
-      if (!seen.has(id)){ seen.add(id); collected.push(it); }
-    }
-    if (items.length < pageSize) break;
-  }
-  return collected;
-}
