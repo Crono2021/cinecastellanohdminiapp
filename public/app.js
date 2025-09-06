@@ -17,97 +17,85 @@ function toWatchUrl(link){
 }
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
-let state = {page: 1, pageSize: 24, q: '', actor: '', genre: '', type: '' };
+let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
 
-async 
-function fetchAllPagesForGenre(genreId, maxPages=200){
-  return (async () => {
-    const collected = [];
-    const seen = new Set();
-    let consecutiveEmpty = 0;
+async function fetchAllPagesForGenre(genreId, maxPages=200){
+  const collected = [];
+  const seen = new Set();
+  let consecutiveEmpty = 0;
 
-    let effectiveGenre = genreId || '';
-    let effectiveType = state.type || '';
+  for (let p=1; p<=maxPages; p++){
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
+    const res = await fetch('/api/catalog?' + params.toString());
+    if (!res.ok) break;
+    const data = await res.json();
+    const before = collected.length;
 
-    if (!effectiveType && effectiveGenre && String(effectiveGenre).startsWith('type:')){
-      effectiveType = String(effectiveGenre).split(':')[1];
-      effectiveGenre = '';
+    (data.items || []).forEach(it => {
+      const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
+      if (!seen.has(id)){
+        seen.add(id);
+        collected.push(it);
+      }
+    });
+
+    if ((data.items||[]).length === 0){
+      consecutiveEmpty++;
+      if (consecutiveEmpty >= 3) break; // assume we've reached the end
+    } else {
+      consecutiveEmpty = 0;
     }
 
-    for (let p=1; p<=maxPages; p++){
-      const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
-      if (effectiveGenre) params.set('genre', effectiveGenre);
-      if (effectiveType) params.set('type', effectiveType);
-
-      const res = await fetch('/api/catalog?' + params.toString());
-      if (!res.ok) break;
-      const data = await res.json();
-      const before = collected.length;
-
-      (data.items || []).forEach(it => {
-        const id = it.tmdb_id ?? it.id ?? JSON.stringify(it);
-        if (!seen.has(id)){
-          seen.add(id);
-          collected.push(it);
-        }
-      });
-
-      if ((data.items||[]).length === 0){
-        consecutiveEmpty++;
-        if (consecutiveEmpty >= 3) break;
-      } else {
-        consecutiveEmpty = 0;
-      }
-
-      if (p % 5 === 0 && collected.length === before){
-        break;
-      }
+    // Heuristic: if no new items were added in last 5 pages, stop early
+    if (p % 5 === 0 && collected.length === before){
+      break;
     }
-    return collected;
-  })();
+  }
+  return collected;
 }
+
+
 async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
   const sel = document.getElementById('genre');
-
-  const opts = [];
-  opts.push('<option value="">Todos</option>');
-  opts.push('<option value="type:movie">Películas</option>');
-  opts.push('<option value="type:tv">Series</option>');
-  opts.push('<option value="" disabled>──────────</option>');
-
-  (data || []).forEach(g => {
-    opts.push(`<option value="${g.id}">${g.name}</option>`);
-  });
-
-  sel.innerHTML = opts.join('');
+  const top = [
+    '<option value="">Todos los géneros</option>',
+    '<option value="type:movie">Películas</option>',
+    '<option value="type:tv">Series</option>',
+    '<option value="" disabled>──────────</option>'
+  ];
+  const rest = (data || []).map(g => `<option value="${g.id}">${g.name}</option>`);
+  sel.innerHTML = top.concat(rest).join('');
 }
-
 
 
 async function load(){
   const pageInfo = document.getElementById('pageInfo');
   const grid = document.getElementById('grid');
 
-  // If we previously aggregated (client-side) list, render page slice
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
-    const startIdx = (state.page - 1) * state.pageSize;
-    const endIdx = startIdx + state.pageSize;
-    const slice = state.clientGenreItems.slice(startIdx, endIdx);
+    // Client-side paginated render from the aggregated list
+    const start = (state.page - 1) * state.pageSize;
+    const end = start + state.pageSize;
+    const slice = state.clientGenreItems.slice(start, end);
 
     grid.innerHTML = slice.map(item => `
       <div class="card" data-id="${item.tmdb_id}">
+        
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${item.title}</div>
-          <div class="year">${item.year || ''}</div>
-        </div>
+          <div class="year">${item.year || ''} 
         ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
       </div>
+        </div>
+      
+      ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
+    </div>
     `).join('');
 
     document.querySelectorAll('.card').forEach(el => {
@@ -115,39 +103,33 @@ async function load(){
     });
 
     const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
-    if (pageInfo) pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
+    pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
     return;
-  }
-
-  // Build params, interpreting 'type:*' values coming from the <select>
-  let effectiveGenre = state.genre || '';
-  let effectiveType = state.type || '';
-
-  if (!effectiveType && effectiveGenre && effectiveGenre.startsWith('type:')){
-    effectiveType = effectiveGenre.split(':')[1]; // 'movie' | 'tv'
-    effectiveGenre = '';
   }
 
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
-  if (state.actor) params.set('actor', state.actor);
-  if (effectiveGenre) params.set('genre', effectiveGenre);
-  if (effectiveType) params.set('type', effectiveType);
-
-  const res = await fetch('/api/catalog?' + params.toString());
-  if (!res.ok){
-    if (pageInfo) pageInfo.textContent = 'Error cargando catálogo';
-    return;
-  }
+if (state.actor) params.set('actor', state.actor);
+let effectiveGenre = state.genre || '';
+let effectiveType = '';
+if (effectiveGenre && effectiveGenre.startsWith('type:')){
+  effectiveType = effectiveGenre.split(':')[1];
+  effectiveGenre = '';
+}
+if (effectiveGenre) params.set('genre', effectiveGenre);
+if (effectiveType) params.set('type', effectiveType);
+const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/catalog?' + params.toString();
+  const res = await fetch(endpoint);
   const data = await res.json();
 
-  grid.innerHTML = (data.items || []).map(item => `
+  grid.innerHTML = data.items.map(item => `
     <div class="card" data-id="${item.tmdb_id}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${item.title}</div>
-        <div class="year">${item.year || ''}</div>
+        <div class="year">${item.year || ''} </div>
       </div>
+    
       ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
     </div>
   `).join('');
@@ -156,8 +138,9 @@ async function load(){
     el.addEventListener('click', () => openDetails(el.dataset.id));
   });
 
-  if (pageInfo) pageInfo.textContent = `Página ${data.page}`;
+  pageInfo.textContent = `Página ${data.page}`;
 }
+
 async function openDetails(id){
   const res = await fetch(`/api/movie/${id}`);
   const d = await res.json();
@@ -254,19 +237,3 @@ fetchGenres().then(load);
     form.addEventListener('submit', function(e){ e.preventDefault(); triggerSearch(); }, { passive: false });
   }
 })();
-
-
-// Keep type in sync if the select value is one of the synthetic options
-(function(){
-  const sel = document.getElementById('genre');
-  if (!sel) return;
-  sel.addEventListener('change', (e)=>{
-    const v = e.target.value || '';
-    if (v.startsWith('type:')){
-      state.type = v.split(':')[1];   // 'movie' | 'tv'
-    } else {
-      state.type = '';
-    }
-  });
-})();
-

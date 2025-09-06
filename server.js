@@ -191,7 +191,7 @@ app.get('/api/genres', async (req, res) => {
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
 app.get('/api/movies/by-actor', async (req, res) => {
   try {
-    const { name, q, genre, page = 1, pageSize = 24, type } = req.query;
+    const { name, q, genre, page = 1, pageSize = 24 } = req.query;
     if (!name || String(name).trim() === '') {
       return res.status(400).json({ error: 'Falta name' });
     }
@@ -264,8 +264,9 @@ app.get('/api/movies/by-actor', async (req, res) => {
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 
 // GET /api/catalog -- unified movies + series
-app.get('/api/catalog', async (req, res) => {try {
-    const { q, genre, page = 1, pageSize = 24, type } = req.query;
+app.get('/api/catalog', async (req, res) => {
+  try {
+    const { q, genre, page = 1, pageSize = 24 , type} = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
@@ -314,11 +315,12 @@ app.get('/api/catalog', async (req, res) => {try {
       ...movies.map(m => ({ type:'movie', ...m })),
       ...series.map(s => ({ type:'tv', ...s })),
     ];
-
-// --- Filter by type (movie or tv) ---
-const typeParam = String(type || '').toLowerCase();
-if (typeParam === 'movie' || typeParam === 'tv') {
-  items = items.filter(it => it.type === typeParam);
+// Minimal: filter by requested type (movie/tv) without altering rest
+if (typeof type === 'string') {
+  const t = type.toLowerCase();
+  if (t === 'movie' || t === 'tv') {
+    items = items.filter(it => it.type === t);
+  }
 }
 
 
