@@ -22,13 +22,25 @@ let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
 
+
 async function fetchAllPagesForGenre(genreId, maxPages=200){
   const collected = [];
   const seen = new Set();
   let consecutiveEmpty = 0;
 
+  let effectiveGenre = genreId || '';
+  let effectiveType = '';
+
+  if (effectiveGenre && String(effectiveGenre).startsWith('type:')){
+    effectiveType = String(effectiveGenre).split(':')[1]; // movie|tv
+    effectiveGenre = '';
+  }
+
   for (let p=1; p<=maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize, genre: genreId });
+    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
+    if (effectiveGenre) params.set('genre', effectiveGenre);
+    if (effectiveType) params.set('type', effectiveType);
+
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -44,10 +56,18 @@ async function fetchAllPagesForGenre(genreId, maxPages=200){
 
     if ((data.items||[]).length === 0){
       consecutiveEmpty++;
-      if (consecutiveEmpty >= 3) break; // assume we've reached the end
+      if (consecutiveEmpty >= 3) break;
     } else {
       consecutiveEmpty = 0;
     }
+
+    if (p % 5 === 0 && collected.length === before){
+      break;
+    }
+  }
+  return collected;
+}
+
 
     // Heuristic: if no new items were added in last 5 pages, stop early
     if (p % 5 === 0 && collected.length === before){
@@ -176,18 +196,28 @@ document.getElementById('next').addEventListener('click', ()=>{ state.page++; lo
 
 // React to genre changes immediately and query the full catalog via the API
 
+
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
-  state.genre = e.target.value || '';
-  if (state.genre){
-    // Build the aggregated list across all pages
+  const val = e.target.value || '';
+  if (val && val.startsWith('type:')){
+    // type filter
+    state.genre = val; // keep value for UI
     document.getElementById('pageInfo').textContent = 'Cargando…';
-    state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+    state.clientGenreItems = await fetchAllPagesForGenre(val);
   } else {
-    state.clientGenreItems = null;
+    // numeric TMDB genre id or empty
+    state.genre = val;
+    if (state.genre){
+      document.getElementById('pageInfo').textContent = 'Cargando…';
+      state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
+    } else {
+      state.clientGenreItems = null;
+    }
   }
   load();
 });
+
 fetchGenres().then(load);
 
 
