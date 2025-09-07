@@ -123,3 +123,16 @@ footer{border-top:1px solid #222;color:#aaa}
   line-height:1;
   pointer-events:none;
 }
+
+
+/* --- Player modal + Cast button --- */
+.player-card{ max-width: 960px; }
+.player-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.player-actions{ display:flex; align-items:center; gap:10px; }
+.cast-button{ width:36px; height:36px; border:none; background:none; cursor:pointer; }
+.cast-button:focus-visible{ outline:3px solid #3b82f6; outline-offset:3px; border-radius:8px; }
+.ghost{ background:#17181f; color:#ddd; border:1px solid #2b2d36; }
+.danger{ background:#29161a; border-color:#52212a; color:#ffb4c0; }
+.modal.open { display:block; }
+#playerModal{ display:none; }
+#playerModal.open{ display:block; }

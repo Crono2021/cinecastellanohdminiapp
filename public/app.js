@@ -1,4 +1,109 @@
 
+// ======== Chromecast Sender setup ========
+window.__castReady = false;
+function __initCast(){
+  if (window.__castReady) return;
+  try{
+    const context = cast.framework.CastContext.getInstance();
+    context.setOptions({
+      receiverApplicationId: 'CC1AD845', // Default Media Receiver
+      autoJoinPolicy: chrome.cast.AutoJoinPolicy.TAB_AND_ORIGIN_SCOPED
+    });
+    window.__castReady = true;
+  }catch(e){
+    // Cast framework not available yet
+  }
+}
+window.addEventListener('load', __initCast);
+window.__onGCastApiAvailable = function(isAvailable){
+  if (isAvailable) __initCast();
+};
+
+// ======== Simple in-app player ========
+const playerModal = document.getElementById('playerModal');
+const playerVideo = document.getElementById('playerVideo');
+const playerTitle = document.getElementById('playerTitle');
+const castLauncher = document.getElementById('castLauncher');
+const closePlayerBtn = document.getElementById('closePlayer');
+const openExternBtn = document.getElementById('openExtern');
+let currentMedia = null; // {url, title, poster, contentType}
+
+function openPlayerFor(details){
+  // details: { title, link, poster_path }
+  const url = details.link ? (toWatchUrl(details.link) || details.link) : null;
+  if(!url){
+    alert('No hay enlace de reproducción disponible.');
+    return;
+  }
+  currentMedia = {
+    url,
+    title: details.title || 'Reproducción',
+    poster: details.poster_path ? (imgBase + details.poster_path) : undefined,
+    contentType: 'video/mp4'
+  };
+  try{ playerVideo.pause(); }catch(_){}
+  playerVideo.src = currentMedia.url;
+  playerTitle.textContent = currentMedia.title;
+  playerModal.classList.add('open');
+  // autoplay politely
+  setTimeout(()=>{ try{ playerVideo.play().catch(()=>{}); }catch(_){} }, 50);
+}
+
+function closePlayer(){
+  try{ playerVideo.pause(); }catch(_){}
+  playerModal.classList.remove('open');
+}
+closePlayerBtn?.addEventListener('click', closePlayer);
+playerModal?.addEventListener('click', (e)=>{ if(e.target.id==='playerModal') closePlayer(); });
+openExternBtn?.addEventListener('click', ()=>{
+  if (!currentMedia) return;
+  window.open(currentMedia.url, '_blank');
+});
+
+async function castCurrent(){
+  if (!currentMedia) return;
+  __initCast();
+  if (!window.cast || !cast.framework) { alert('Chromecast no disponible en este navegador.'); return; }
+
+  const context = cast.framework.CastContext.getInstance();
+  const session = context.getCurrentSession() || await context.requestSession();
+
+  if (!session) return;
+
+  const mediaInfo = new chrome.cast.media.MediaInfo(currentMedia.url, currentMedia.contentType);
+  mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+  mediaInfo.metadata.title = currentMedia.title;
+  if (currentMedia.poster){
+    mediaInfo.metadata.images = [{ url: currentMedia.poster }];
+  }
+  const request = new chrome.cast.media.LoadRequest(mediaInfo);
+  request.autoplay = true;
+
+  session.loadMedia(request).then(()=>{
+    // Optionally pause the local video when casting
+    try{ playerVideo.pause(); }catch(_){}
+  }).catch(err=>{
+    console.warn('Cast load error', err);
+  });
+}
+
+// Also load if user connects via the cast launcher
+document.addEventListener('readystatechange', ()=>{
+  // Clicking the <google-cast-launcher> shows the chooser; when connected we push current media
+  if (window.cast && cast.framework){
+    cast.framework.CastContext.getInstance().addEventListener(
+      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+      (e)=>{
+        if (e.sessionState === cast.framework.SessionState.SESSION_STARTED && currentMedia){
+          castCurrent();
+        }
+      }
+    );
+  }
+});
+
+
+
 // --- Build direct PixelDrain URL using /api for fullscreen (no server-side proxy) ---
 function toWatchUrl(link){
   if (!link) return null;
@@ -302,3 +407,21 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   return collected;
 }
 
+
+
+// Hook the 'Reproducir' button to open the in-app player
+(function(){
+  const link = document.getElementById('watchLink');
+  if (!link) return;
+  link.removeAttribute('target'); // keep navigation internal
+  link.addEventListener('click', function(ev){
+    ev.preventDefault();
+    if (!window.__lastDetails) {
+      // fallback: open href
+      const href = link.getAttribute('href');
+      if (href) window.open(href, '_blank');
+      return;
+    }
+    openPlayerFor(window.__lastDetails);
+  });
+})();

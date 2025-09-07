@@ -6,6 +6,7 @@
   <title>Cine en Castellano HD</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework"></script>
 </head>
 <body>
   <header>
@@ -52,6 +53,25 @@
       </div>
     </div>
   </div>
+
+  
+  <!-- Player Modal with Cast Launcher -->
+  <div id="playerModal" class="modal">
+    <div class="modal-card player-card">
+      <div class="modal-header player-header">
+        <strong id="playerTitle">Reproduciendo…</strong>
+        <div class="player-actions">
+          <button id="openExtern" class="ghost">Abrir en pestaña</button>
+          <google-cast-launcher id="castLauncher" class="cast-button" aria-label="Enviar al televisor"></google-cast-launcher>
+          <button id="closePlayer" class="danger">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body player-body">
+        <video id="playerVideo" playsinline controls style="width:100%;max-height:70vh;border-radius:12px;background:#000"></video>
+      </div>
+    </div>
+  </div>
+
 
   <footer>
     <div class="container">
