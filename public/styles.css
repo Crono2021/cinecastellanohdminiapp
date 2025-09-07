@@ -14,39 +14,9 @@ button{cursor:pointer;box-shadow:var(--shadow);}
 .year{opacity:.7;font-size:.85rem}
 .badge{display:inline-block;background:#242634;border:1px solid #2f3141;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-right:6px}
 .pagination{display:flex;justify-content:center;gap:8px;margin:12px 0}
-
-.modal {
-  position: fixed;
-  inset: 0;
-  display: none;
-  background: rgba(0,0,0,.6);
-  z-index: 50;
-
-  /* centrado vertical y horizontal */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal.open {
-  display: flex;
-}
-
-.modal-card {
-  background: #1b1c24;
-  border-radius: 16px;
-  padding: 20px;
-  max-width: 90%;
-  max-height: 90%;
-  overflow-y: auto;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  
-  /* sin centrar botones internos */
-  display: block;
-  margin: 0;
-}
-
-
+.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:50}
+.modal.open{display:flex}
+.modal-card{background:#12131a;border:1px solid #2a2c37;border-radius:20px;max-width:900px;width:calc(100% - 24px); overflow:hidden; box-shadow:var(--shadow)}
 .modal-header,.modal-body{padding:16px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
 .poster-lg{width:240px;aspect-ratio:2/3;object-fit:cover;border-radius:12px}
@@ -63,22 +33,7 @@ footer{border-top:1px solid #222;color:#aaa}
 /* Play button overlay on cards */ .card-media{position:relative} .play{position:absolute;right:8px;bottom:8px;border-radius:9999px;padding:10px 12px;border:1px solid #2d7b30;background:#1b5e20;color:#fff;text-decoration:none;font-weight:700} .play:hover{transform:scale(1.05)}
 
 /* ---- Modal scroll fix ---- */
-
-.modal-card {
-  background: #1b1c24;
-  border-radius: 16px;
-  padding: 20px;
-  max-width: 90%;
-  max-height: 90%;
-  overflow-y: auto;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: auto;
-}
-
+.modal-card{max-height:92vh;display:flex;flex-direction:column}
 .modal-header{position:sticky;top:0;background:#12131a;z-index:2}
 .modal-body{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
 /* Optional: prevent background overscroll while modal open */
@@ -168,16 +123,3 @@ footer{border-top:1px solid #222;color:#aaa}
   line-height:1;
   pointer-events:none;
 }
-
-
-/* --- Player modal + Cast button --- */
-.player-card{ max-width: 960px; }
-.player-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.player-actions{ display:flex; align-items:center; gap:10px; }
-.cast-button{ width:36px; height:36px; border:none; background:none; cursor:pointer; }
-.cast-button:focus-visible{ outline:3px solid #3b82f6; outline-offset:3px; border-radius:8px; }
-.ghost{ background:#17181f; color:#ddd; border:1px solid #2b2d36; }
-.danger{ background:#29161a; border-color:#52212a; color:#ffb4c0; }
-.modal.open { display:block; }
-#playerModal{ display:none; }
-#playerModal.open{ display:block; }
