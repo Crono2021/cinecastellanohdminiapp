@@ -14,8 +14,23 @@ button{cursor:pointer;box-shadow:var(--shadow);}
 .year{opacity:.7;font-size:.85rem}
 .badge{display:inline-block;background:#242634;border:1px solid #2f3141;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-right:6px}
 .pagination{display:flex;justify-content:center;gap:8px;margin:12px 0}
-.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:50}
-.modal.open{display:flex}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: rgba(0,0,0,.6);
+  z-index: 50;
+
+  /* centrado vertical y horizontal */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.open {
+  display: flex;
+}
 
 .modal-card {
   background: #1b1c24;
@@ -25,12 +40,12 @@ button{cursor:pointer;box-shadow:var(--shadow);}
   max-height: 90%;
   overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: auto;
+  
+  /* sin centrar botones internos */
+  display: block;
+  margin: 0;
 }
+
 
 .modal-header,.modal-body{padding:16px}
 .modal-header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #222}
