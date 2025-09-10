@@ -123,3 +123,47 @@ footer{border-top:1px solid #222;color:#aaa}
   line-height:1;
   pointer-events:none;
 }
+
+
+/* === Force exactly two columns on phones for catalog/card grids === */
+@media (max-width: 760px){
+  /* Main catalog grid on index.html */
+  .grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  /* Catalog_updated.html list */
+  #movies-list{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap);
+    padding: 16px 0;
+  }
+  #movies-list > *{
+    min-width: 0;
+  }
+  /* Ensure cards fit nicely in their cells */
+  .card, .movie-item{
+    width: 100%;
+  }
+  .poster{
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+  }
+}
+
+
+
+/* === Tablet rules: 2 columns portrait, 4 columns landscape === */
+@media (min-width: 761px) and (max-width: 1024px) and (orientation: portrait){
+  .grid, #movies-list{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (min-width: 761px) and (max-width: 1024px) and (orientation: landscape){
+  .grid, #movies-list{
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
