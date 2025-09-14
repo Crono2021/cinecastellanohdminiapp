@@ -105,7 +105,12 @@ async function load(){
   if (state.actor) params.set('actor', state.actor);
   if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') params.set('genre', state.genre);
     const endpoint = (state.actor && !state.clientGenreItems)
-    ? '/api/movies/by-actor?' + params.toString()
+    ? (function(){
+        const p = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
+        if (state.q) p.set('q', state.q);
+        if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') p.set('genre', state.genre);
+        return '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString();
+      })()
     : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
        : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString() 
           : (state.genre === 'TYPE_TV' ? '/api/series?' + params.toString() : '/api/catalog?' + params.toString())));
