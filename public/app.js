@@ -104,7 +104,10 @@ async function load(){
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
-    const endpoint = (state.actor && !state.clientGenreItems) ? '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + params.toString() : '/api/catalog?' + params.toString();
+    const endpoint = (state.actor && !state.clientGenreItems)
+    ? '/api/movies/by-actor?' + params.toString()
+    : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString()
+    : (state.genre === 'TYPE_TV' ? '/api/series?' + params.toString() : '/api/catalog?' + params.toString()));
   const res = await fetch(endpoint);
   const data = await res.json();
 
@@ -168,9 +171,7 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
   const val = (e && e.target && e.target.value) || '';
   if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
     const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
-    document.getElementById('pageInfo').textContent = 'Cargando…';
-    state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: '', type });
-    // Mantén el value seleccionado para el UI
+    state.clientGenreItems = null;
     state.genre = val;
   } else {
     // Comportamiento original para géneros TMDB

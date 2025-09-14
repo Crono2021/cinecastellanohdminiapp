@@ -8,6 +8,12 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
+// In-memory micro cache
+const microCache = new Map();
+const MC_TTL_MS = 60 * 1000; // 60s
+function mcGet(key){ const v = microCache.get(key); if(!v) return null; if(Date.now()-v.t>MC_TTL_MS){ microCache.delete(key); return null;} return v.d; }
+function mcSet(key, data){ microCache.set(key, {t:Date.now(), d:data}); }
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -25,6 +31,26 @@ if (!TMDB_API_KEY) {
 // --- DB (persistencia opcional vía DB_PATH) ---
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
+
+
+
+// --- SQLite performance tweaks (safe) ---
+db.serialize(() => {
+  try {
+    db.run("PRAGMA journal_mode=WAL");
+    db.run("PRAGMA synchronous=NORMAL");
+    db.run("PRAGMA temp_store=MEMORY");
+    db.run("PRAGMA cache_size=-16000"); // ~16MB cache
+    db.run("PRAGMA foreign_keys=ON");
+  } catch(_){}
+  // Indices to speed up common lookups and filters
+  db.run("CREATE INDEX IF NOT EXISTS idx_movies_tmdb ON movies(tmdb_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_movies_title ON movies(title)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_movies_year ON movies(year)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_series_tmdb ON series(tmdb_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_series_name ON series(name)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_series_year ON series(first_air_year)");
+});
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS movies (
@@ -160,10 +186,16 @@ async function tmdbGetMovieDetails(tmdbId) {
   };
 }
 
+let _genresCache = { data: null, ts: 0 };
 async function tmdbGetGenres() {
+  const now = Date.now();
+  if (_genresCache.data && (now - _genresCache.ts) < 60*60*1000) {
+    return _genresCache.data;
+  }
   const url = `https://api.themoviedb.org/3/genre/movie/list`;
   const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-  return data.genres || [];
+  _genresCache = { data: data.genres || [], ts: Date.now() };
+  return _genresCache.data;
 }
 
 async function tmdbSearchPersonByName(name) {
@@ -265,6 +297,16 @@ app.get('/api/movies/by-actor', async (req, res) => {
 
 // GET /api/catalog -- unified movies + series
 app.get('/api/catalog', async (req, res) => {
+  // micro-cache wrapper
+  const key = req.originalUrl;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+
+  // Intercept res.json to store in cache
+  const _json = res.json.bind(res);
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){
+  } return _json(payload); };
+
   try {
     const { q, genre, page = 1, pageSize = 24 } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
@@ -362,6 +404,72 @@ app.get('/api/catalog', async (req, res) => {
   }
 });
 
+
+app.get('/api/series', async (req, res) => {
+  try {
+    const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
+
+    let where = [];
+    let params = [];
+
+    if (q) {
+      where.push('LOWER(name) LIKE ?');
+      params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const count = await new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as c FROM series ${whereSql}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row.c);
+      });
+    });
+
+    const limit = Math.min(parseInt(pageSize), 60) || 24;
+    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, name as title, first_air_year as year, link FROM series ${whereSql} LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows);
+      });
+    });
+
+    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id)));
+
+    let items = rows.map((r, i) => ({
+      ...r,
+      type: 'tv',
+      poster_path: details[i]?.poster_path || null,
+      backdrop_path: details[i]?.backdrop_path || null,
+      _details: details[i] || null
+    }));
+
+    if (actor) {
+      const person = await tmdbSearchPersonByName(actor);
+      if (person) {
+        const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/tv_credits`;
+        const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
+        items = items.filter(it => ids.has(it.tmdb_id));
+      } else {
+        items = [];
+      }
+    }
+
+    if (genre && /^\d+$/.test(String(genre))) {
+      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+    }
+
+    items = items.map(({ _details, ...rest }) => rest);
+
+    res.json({ total: count, page: Number(page), pageSize: limit, items });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el listado de series' });
+  }
+});
+
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
@@ -377,6 +485,26 @@ app.get('/api/movies', async (req, res) => {
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row.c);
+      });
+
+
+app.get('/api/series', async (req, res) => {
+  try {
+    const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
+
+    let where = [];
+    let params = [];
+
+    if (q) {
+      where.push('LOWER(name) LIKE ?');
+      params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const count = await new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) as c FROM series ${whereSql}`, params, (err, row) => {
         if (err) return reject(err);
         resolve(row.c);
       });
