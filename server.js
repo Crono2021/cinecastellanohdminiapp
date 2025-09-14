@@ -246,7 +246,6 @@ app.get('/api/movies/by-actor', async (req, res) => {
     const placeholders = limited.map(()=>'?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
-    if (year && /^\d{4}$/.test(String(year))) params.push(parseInt(year));
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
@@ -285,7 +284,6 @@ app.get('/api/movies/by-actor', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total, page: Number(page), pageSize: limit, items });
@@ -319,7 +317,6 @@ app.get('/api/series/by-actor', async (req, res) => {
     const placeholders = limited.map(()=>'?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
-    if (year && /^\d{4}$/.test(String(year))) params.push(parseInt(year));
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
@@ -358,7 +355,6 @@ app.get('/api/series/by-actor', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total, page: Number(page), pageSize: limit, items });
@@ -371,7 +367,6 @@ app.get('/api/series/by-actor', async (req, res) => {
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 
 // GET /api/catalog -- unified movies + series
-
 app.get('/api/catalog', async (req, res) => {
   // micro-cache wrapper
   const key = req.originalUrl;
@@ -380,65 +375,103 @@ app.get('/api/catalog', async (req, res) => {
 
   // Intercept res.json to store in cache
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){
+  } return _json(payload); };
 
   try {
-    const { q, genre, year, page = 1, pageSize = 24 } = req.query;
+    const { q, genre, page = 1, pageSize = 24 } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const qLike = q ? String(q).toLowerCase() : null;
 
-    // Build WHEREs
-    let whereMovies = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-    let paramsMovies = qLike ? [qLike] : [];
-    if (year && /^\d{4}$/.test(String(year))) { whereMovies += (whereMovies ? " AND " : " WHERE ") + "year = ?"; paramsMovies.push(parseInt(year)); }
+    const qLike = q ? '%' + String(q).toLowerCase() + '%' : null;
 
-    let whereSeries = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-    let paramsSeries = qLike ? [qLike] : [];
-    if (year && /^\d{4}$/.test(String(year))) { whereSeries += (whereSeries ? " AND " : " WHERE ") + "first_air_year = ?"; paramsSeries.push(parseInt(year)); }
+    const totalMovies = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.get(`SELECT COUNT(*) as c FROM movies ${where}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row ? row.c : 0);
+      });
+    });
 
-    // Fetch rows (oversample a bit; pagination applied after genre filter)
-    const [movieRows, seriesRows] = await Promise.all([
-      new Promise((resolve, reject) => {
-        db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereMovies} ORDER BY rowid DESC LIMIT ?`, [...paramsMovies, limit*3], (err, rows) => {
-          if (err) return reject(err); resolve(rows || []);
-        });
-      }),
-      new Promise((resolve, reject) => {
-        db.all(`SELECT tmdb_id, name as title, first_air_year as year, link FROM series ${whereSeries} ORDER BY rowid DESC LIMIT ?`, [...paramsSeries, limit*3], (err, rows) => {
-          if (err) return reject(err); resolve(rows || []);
-        });
-      })
-    ]);
+    const totalSeries = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.get(`SELECT COUNT(*) as c FROM series ${where}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve(row ? row.c : 0);
+      });
+    });
 
-    const [movieDetails, seriesDetails] = await Promise.all([
-      Promise.all(movieRows.map(r => getTmdbMovieDetails(r.tmdb_id))),
-      Promise.all(seriesRows.map(r => getTmdbTvDetails(r.tmdb_id)))
-    ]);
+    const total = Number(totalMovies) + Number(totalSeries);
+
+    // Fetch a generous window from both, order by rowid desc to approximate recency
+    const movies = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    const series = await new Promise((resolve, reject) => {
+      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      const params = qLike ? [qLike] : [];
+      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, created_at FROM series ${where} ORDER BY rowid DESC`, params, (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
 
     let items = [
-      ...movieRows.map((r,i) => ({ ...r, type:'movie', poster_path: movieDetails[i]?.poster_path || null, backdrop_path: movieDetails[i]?.backdrop_path || null, _genres: movieDetails[i]?.genres || [] })),
-      ...seriesRows.map((r,i) => ({ ...r, type:'tv', poster_path: seriesDetails[i]?.poster_path || null, backdrop_path: seriesDetails[i]?.backdrop_path || null, _genres: seriesDetails[i]?.genres || [] }))
+      ...movies.map(m => ({ type:'movie', ...m })),
+      ...series.map(s => ({ type:'tv', ...s })),
     ];
 
-    // Optional numeric TMDB genre filter
-    const genreId = (genre && /^\d+$/.test(String(genre))) ? String(genre) : null;
-    if (genreId) items = items.filter(it => (it._genres||[]).some(g => String(g.id) === genreId));
+    // Sort by created_at desc (fallback to tmdb_id desc)
+    items.sort((a,b)=>{
+      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dbb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (dbb !== da) return dbb - da;
+      return (b.tmdb_id||0) - (a.tmdb_id||0);
+    });
 
-    const total = items.length;
+    // Enrich only the current page to keep it fast
+    const startIdx = (pageNum - 1) * limit;
+    const pageItems = items.slice(startIdx, startIdx + limit);
 
-    // Sort by DB recency proxy already in each list; preserve current order
-    // Apply pagination
-    const offset = (pageNum - 1) * limit;
-    items = items.slice(offset, offset + limit);
+    const enriched = await Promise.all(pageItems.map(async (it) => {
+      try{
+        if (it.type === 'tv'){
+          const d = await getTmdbTvDetails(it.tmdb_id);
+          return { ...it, poster_path: d?.poster_path || null };
+        }else{
+          const d = await getTmdbMovieDetails(it.tmdb_id);
+          return { ...it, poster_path: d?.poster_path || null };
+        }
+      }catch(_){
+        return { ...it, poster_path: null };
+      }
+    }));
 
-    // Clean auxiliary fields
-    items = items.map(({ _genres, ...rest }) => rest);
+    // Optional: genre filtering (applies to current page only to keep performance)
+    let finalItems = enriched;
+    if (genre) {
+      const filtered = [];
+      for (const it of enriched){
+        try{
+          const d = it.type === 'tv' ? await getTmdbTvDetails(it.tmdb_id) : await getTmdbMovieDetails(it.tmdb_id);
+          if (d?.genres?.some(g => String(g.id) == String(genre))) filtered.push(it);
+        }catch(_){}
+      }
+      finalItems = filtered;
+    }
 
-    return res.json({ total, page: pageNum, pageSize: limit, items });
+    res.json({ total, page: pageNum, pageSize: limit, items: finalItems });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'No se pudo obtener el listado' });
+    res.status(500).json({ error: 'No se pudo obtener el catálogo' });
   }
 });
 
@@ -456,7 +489,6 @@ app.get('/api/series', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { where.push('first_air_year = ?'); params.push(parseInt(year)); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM series ${whereSql}`, params, (err, row) => {
@@ -501,7 +533,6 @@ app.get('/api/series', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total: count, page: Number(page), pageSize: limit, items });
@@ -524,7 +555,6 @@ app.get('/api/movies', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
@@ -569,7 +599,6 @@ app.get('/api/movies', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
-    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total: count, page: Number(page), pageSize: limit, items });
