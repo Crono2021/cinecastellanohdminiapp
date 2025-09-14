@@ -522,45 +522,7 @@ app.get('/api/movie/:id', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
   }
-});
-    });
-
-    if (movieRow){
-      const d = await getTmdbMovieDetails(tmdbId);
-      return res.json({ ...d, link: normalizeLink(movieRow.link) });
-    }
-
-    const seriesRow = await new Promise((resolve, reject) => {
-      db.get('SELECT tmdb_id, name as title, first_air_year as year, link FROM series WHERE tmdb_id = ?', [tmdbId], (err, row) => {
-        if (err) return reject(err);
-        resolve(row || null);
-      });
-    });
-
-    if (seriesRow){
-      const d = await getTmdbTvDetails(tmdbId);
-      return res.json({
-        id: d.id,
-        title: d.name,
-        overview: d.overview,
-        poster_path: d.poster_path,
-        backdrop_path: d.backdrop_path,
-        release_date: d.first_air_date,
-        genres: d.genres,
-        runtime: null,
-        vote_average: d.vote_average,
-        cast: d.cast,
-        link: normalizeLink(seriesRow.link)
-      });
-    }
-
-    const d = await getTmdbMovieDetails(tmdbId);
-    res.json({ ...d, link: null });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'No se pudieron obtener los detalles' });
-  }
-});
+}
 
 async function getTmdbMovieDetails(tmdbId){
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
