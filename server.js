@@ -391,9 +391,8 @@ app.get('/api/catalog', async (req, res) => {
 
     const totalMovies = await new Promise((resolve, reject) => {
       let where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-    let params = qLike ? [qLike] : [];
-    if (year && /^\d{4}$/.test(String(year))) { where += (where?" AND ":"WHERE ") + 'year = ?'; params.push(parseInt(year)); }
-      const params = qLike ? [qLike] : [];
+      let params = qLike ? [qLike] : [];
+      if (year && /^\d{4}$/.test(String(year))) { where += (where ? " AND " : " WHERE ") + 'year = ?'; params.push(parseInt(year)); }
       db.get(`SELECT COUNT(*) as c FROM movies ${where}`, params, (err, row) => {
         if (err) return reject(err);
         resolve(row ? row.c : 0);
@@ -403,10 +402,13 @@ app.get('/api/catalog', async (req, res) => {
     const totalSeries = await new Promise((resolve, reject) => {
       let where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
       let params = qLike ? [qLike] : [];
-      if (year && /^\d{4}$/.test(String(year))) { where += (where?" AND ":" WHERE ") + 'first_air_year = ?'; params.push(parseInt(year)); }
+      if (year && /^\d{4}$/.test(String(year))) { where += (where ? " AND " : " WHERE ") + 'first_air_year = ?'; params.push(parseInt(year)); }
       db.get(`SELECT COUNT(*) as c FROM series ${where}`, params, (err, row) => {
+        if (err) return reject(err);
         resolve(row ? row.c : 0);
       });
+    });
+
     });
 
     const total = Number(totalMovies) + Number(totalSeries);
