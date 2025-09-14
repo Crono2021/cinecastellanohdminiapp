@@ -103,7 +103,7 @@ async function load(){
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
-  if (state.genre) params.set('genre', state.genre);
+  if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') params.set('genre', state.genre);
     const endpoint = (state.actor && !state.clientGenreItems)
     ? '/api/movies/by-actor?' + params.toString()
     : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString()
