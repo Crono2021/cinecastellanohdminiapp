@@ -77,7 +77,7 @@ async function load(){
     const slice = state.clientGenreItems.slice(start, end);
 
     grid.innerHTML = slice.map(item => `
-      <div class="card" data-id="${item.tmdb_id}">
+      <div class="card" data-id="${item.tmdb_id}" data-type="${item.type||'movie'}">
         
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
@@ -92,7 +92,7 @@ async function load(){
     `).join('');
 
     document.querySelectorAll('.card').forEach(el => {
-      el.addEventListener('click', () => openDetails(el.dataset.id));
+      el.addEventListener('click', () => openDetails(el.dataset.id, el.dataset.type));
     });
 
     const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
@@ -109,7 +109,7 @@ async function load(){
   const data = await res.json();
 
   grid.innerHTML = data.items.map(item => `
-    <div class="card" data-id="${item.tmdb_id}">
+    <div class="card" data-id="${item.tmdb_id}" data-type="${item.type||'movie'}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${item.title}</div>
@@ -121,20 +121,23 @@ async function load(){
   `).join('');
 
   document.querySelectorAll('.card').forEach(el => {
-    el.addEventListener('click', () => openDetails(el.dataset.id));
+    el.addEventListener('click', () => openDetails(el.dataset.id, el.dataset.type));
   });
 
   pageInfo.textContent = `Página ${data.page}`;
 }
 
-async function openDetails(id){
-  const res = await fetch(`/api/movie/${id}`);
+async function openDetails(id, type){
+  const res = await fetch(`/api/movie/${id}?type=${encodeURIComponent(type||'')}`);
   const d = await res.json();
-  document.getElementById('modalTitle').textContent = `${d.title} ${d.release_date ? '('+d.release_date.slice(0,4)+')':''}`;
+  const displayTitle = d.title || d.name || '';
+  const year = (d.release_date||d.first_air_date||'').slice(0,4);
+  document.getElementById('modalTitle').textContent = `${displayTitle} ${year? '('+year+')':''}`;
+  +d.release_date.slice(0,4)+')':''}`;
   const poster = document.getElementById('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
   document.getElementById('modalOverview').textContent = d.overview || 'Sin sinopsis disponible.';
-  document.getElementById('modalMeta').textContent = `${d.runtime ? d.runtime+' min · ':''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
+  document.getElementById('modalMeta').textContent = `${(d.runtime|| (Array.isArray(d.episode_run_time)&&d.episode_run_time[0]) || '') ? ((d.runtime||d.episode_run_time?.[0]) + ' min · ') : ''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
