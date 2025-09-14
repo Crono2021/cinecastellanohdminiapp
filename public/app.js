@@ -128,16 +128,13 @@ async function load(){
 }
 
 async function openDetails(id, type){
-  const res = await fetch(`/api/movie/${id}?type=${encodeURIComponent(type||'')}`);
+  const res = await fetch(type==='tv' ? `/api/tv/${id}` : `/api/movie/${id}`);
   const d = await res.json();
-  const displayTitle = d.title || d.name || '';
-  const year = (d.release_date||d.first_air_date||'').slice(0,4);
-  document.getElementById('modalTitle').textContent = `${displayTitle} ${year? '('+year+')':''}`;
-  +d.release_date.slice(0,4)+')':''}`;
+  document.getElementById('modalTitle').textContent = `${(d.title||d.name||'')} ${d.release_date ? '('+d.release_date.slice(0,4)+')':''}`;
   const poster = document.getElementById('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
   document.getElementById('modalOverview').textContent = d.overview || 'Sin sinopsis disponible.';
-  document.getElementById('modalMeta').textContent = `${(d.runtime|| (Array.isArray(d.episode_run_time)&&d.episode_run_time[0]) || '') ? ((d.runtime||d.episode_run_time?.[0]) + ' min · ') : ''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
+  document.getElementById('modalMeta').textContent = `${d.runtime ? d.runtime+' min · ':''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');

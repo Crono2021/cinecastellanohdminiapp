@@ -7,43 +7,6 @@ const helmet = require('helmet');
 const cors = require('cors');
 require('dotenv').config();
 
-function normalizeDetails(d, type){
-  if (type === 'tv'){
-    const year = d.first_air_date ? d.first_air_date.slice(0,4) : null;
-    return {
-      id: d.id,
-      type: 'tv',
-      title: d.name || d.original_name || '',
-      name: d.name,
-      overview: d.overview,
-      poster_path: d.poster_path,
-      backdrop_path: d.backdrop_path,
-      release_date: d.first_air_date, // keep for UI compatibility
-      first_air_date: d.first_air_date,
-      genres: d.genres,
-      runtime: (Array.isArray(d.episode_run_time) && d.episode_run_time.length) ? d.episode_run_time[0] : null,
-      vote_average: d.vote_average,
-      cast: d.cast || []
-    };
-  } else {
-    const year = d.release_date ? d.release_date.slice(0,4) : null;
-    return {
-      id: d.id,
-      type: 'movie',
-      title: d.title || d.original_title || '',
-      overview: d.overview,
-      poster_path: d.poster_path,
-      backdrop_path: d.backdrop_path,
-      release_date: d.release_date,
-      genres: d.genres,
-      runtime: d.runtime,
-      vote_average: d.vote_average,
-      cast: d.cast || []
-    };
-  }
-}
-
-
 const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
@@ -464,60 +427,83 @@ app.get('/api/movies', async (req, res) => {
 
 // GET /api/movie/:id
 
-app.get('/api/movie/:id', async (req, res) => {
+// Minimal TV details endpoint to avoid type mixups
+app.get('/api/tv/:id', async (req, res) => {
   try {
     const tmdbId = parseInt(req.params.id);
-    const forcedType = (req.query.type || '').toLowerCase();
 
-    // Helper to respond with normalized payload
-    const respondMovie = async (link) => {
-      const d = await getTmdbMovieDetails(tmdbId);
-      res.json({ ...normalizeDetails(d, 'movie'), link: normalizeLink(link) || null });
-    };
-    const respondTV = async (link) => {
-      const d = await getTmdbTvDetails(tmdbId);
-      res.json({ ...normalizeDetails(d, 'tv'), link: normalizeLink(link) || null });
-    };
-
-    if (forcedType === 'tv'){
-      // Prefer series row if exists
-      const seriesRow = await new Promise((resolve, reject) => {
-        db.get('SELECT tmdb_id, name, first_air_year, link FROM series WHERE tmdb_id = ?', [tmdbId], (err, row) => {
-          if (err) return reject(err);
-          resolve(row || null);
-        });
-      });
-      return await respondTV(seriesRow ? seriesRow.link : null);
-    }
-    if (forcedType === 'movie'){
-      const movieRow = await new Promise((resolve, reject) => {
-        db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => {
-          if (err) return reject(err);
-          resolve(row || null);
-        });
-      });
-      return await respondMovie(movieRow ? movieRow.link : null);
-    }
-
-    // No forced type: try to detect by DB presence; fall back to movie
-    const movieRow = await new Promise((resolve, reject) => {
-      db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => {
-        if (err) return reject(err);
-        resolve(row || null);
-      });
-    });
-    if (movieRow) return await respondMovie(movieRow.link);
-
+    // Try DB 'series' table for link, but always fetch TMDB TV details
     const seriesRow = await new Promise((resolve, reject) => {
       db.get('SELECT tmdb_id, name, first_air_year, link FROM series WHERE tmdb_id = ?', [tmdbId], (err, row) => {
         if (err) return reject(err);
         resolve(row || null);
       });
     });
-    if (seriesRow) return await respondTV(seriesRow.link);
 
-    // Fallback: assume movie
-    return await respondMovie(null);
+    const d = await getTmdbTvDetails(tmdbId);
+    // Return same shape fields server already uses in TV branch of /api/movie/:id
+    return res.json({
+      id: d.id,
+      title: d.name, // keep 'title' for UI
+      original_title: d.original_name,
+      overview: d.overview,
+      poster_path: d.poster_path,
+      backdrop_path: d.backdrop_path,
+      release_date: d.first_air_date,
+      genres: d.genres,
+      runtime: null,
+      vote_average: d.vote_average,
+      cast: d.cast,
+      link: seriesRow ? normalizeLink(seriesRow.link) : null
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron obtener los detalles (tv)' });
+  }
+});
+
+app.get('/api/movie/:id', async (req, res) => {
+  try {
+    const tmdbId = parseInt(req.params.id);
+
+    const movieRow = await new Promise((resolve, reject) => {
+      db.get('SELECT tmdb_id, title, year, link FROM movies WHERE tmdb_id = ?', [tmdbId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      });
+    });
+
+    if (movieRow){
+      const d = await getTmdbMovieDetails(tmdbId);
+      return res.json({ ...d, link: normalizeLink(movieRow.link) });
+    }
+
+    const seriesRow = await new Promise((resolve, reject) => {
+      db.get('SELECT tmdb_id, name as title, first_air_year as year, link FROM series WHERE tmdb_id = ?', [tmdbId], (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      });
+    });
+
+    if (seriesRow){
+      const d = await getTmdbTvDetails(tmdbId);
+      return res.json({
+        id: d.id,
+        title: d.name,
+        overview: d.overview,
+        poster_path: d.poster_path,
+        backdrop_path: d.backdrop_path,
+        release_date: d.first_air_date,
+        genres: d.genres,
+        runtime: null,
+        vote_average: d.vote_average,
+        cast: d.cast,
+        link: normalizeLink(seriesRow.link)
+      });
+    }
+
+    const d = await getTmdbMovieDetails(tmdbId);
+    res.json({ ...d, link: null });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
