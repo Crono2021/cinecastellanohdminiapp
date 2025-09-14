@@ -167,3 +167,11 @@ footer{border-top:1px solid #222;color:#aaa}
   }
 }
 
+
+
+/* Forzar 4 columnas en móviles al girar horizontal */
+@media (max-width: 760px) and (orientation: landscape) {
+  .grid, #movies-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
