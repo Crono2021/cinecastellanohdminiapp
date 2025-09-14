@@ -174,15 +174,10 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
     state.clientGenreItems = null;
     state.genre = val;
   } else {
-    // Comportamiento original para géneros TMDB
+    // Comportamiento original para géneros TMDB (optimizado: sin agregador cliente)
     state.genre = val;
-    if (state.genre){
-      document.getElementById('pageInfo').textContent = 'Cargando…';
-      // Usa el agregador original página a página
-      state.clientGenreItems = await fetchAllPagesForGenre(state.genre);
-    } else {
-      state.clientGenreItems = null;
-    }
+    // Delega en backend paginado (movies/series/catalog según selección)
+    state.clientGenreItems = null;
   }
   load();
 });
