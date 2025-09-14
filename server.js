@@ -405,6 +405,7 @@ app.get('/api/catalog', async (req, res) => {
 });
 
 
+
 app.get('/api/series', async (req, res) => {
   try {
     const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
@@ -457,7 +458,7 @@ app.get('/api/series', async (req, res) => {
       }
     }
 
-    if (genre && /^\d+$/.test(String(genre))) {
+    if (genre) {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
@@ -469,6 +470,7 @@ app.get('/api/series', async (req, res) => {
     res.status(500).json({ error: 'No se pudo obtener el listado de series' });
   }
 });
+
 
 app.get('/api/movies', async (req, res) => {
   try {
@@ -488,43 +490,25 @@ app.get('/api/movies', async (req, res) => {
         if (err) return reject(err);
         resolve(row.c);
       });
-
-
-app.get('/api/series', async (req, res) => {
-  try {
-    const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
-
-    let where = [];
-    let params = [];
-
-    if (q) {
-      where.push('LOWER(name) LIKE ?');
-      params.push('%' + String(q).toLowerCase() + '%');
-    }
-
-    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const count = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) as c FROM series ${whereSql}`, params, (err, row) => {
-        if (err) return reject(err);
-        resolve(row.c);
-      });
     });
 
     const limit = Math.min(parseInt(pageSize), 60) || 24;
     const offset = (Math.max(parseInt(page), 1) - 1) * limit;
 
     const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
+      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
         if (err) return reject(err);
         resolve(rows);
       });
     });
 
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
+    const details = await Promise.all(rows.map(r => getTmdbMovieDetails(r.tmdb_id)));
 
     let items = rows.map((r, i) => ({
       ...r,
+      type: 'movie',
       poster_path: details[i]?.poster_path || null,
+      backdrop_path: details[i]?.backdrop_path || null,
       _details: details[i] || null
     }));
 
