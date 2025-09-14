@@ -17,7 +17,7 @@ function toWatchUrl(link){
 }
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
+let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', year: '' };
 
 // --- Client-side aggregation for full-catalog genre filtering ---
 state.clientGenreItems = null;
@@ -103,6 +103,7 @@ async function load(){
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
+  if (state.year && /^\d{4}$/.test(state.year)) params.set('year', state.year);
   if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') params.set('genre', state.genre);
     const endpoint = (state.actor && !state.clientGenreItems)
     ? (function(){
@@ -159,6 +160,7 @@ document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target.id
 
 const q = document.getElementById('q');
 const actor = document.getElementById('actor');
+const year = document.getElementById('year');
 const genre = document.getElementById('genre');
 
 document.getElementById('searchBtn').addEventListener('click', ()=>{ state.page=1; state.q=q.value.trim(); state.actor=actor.value.trim(); state.genre=genre.value; load(); });
@@ -205,6 +207,7 @@ fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
 (function(){
   const qEl = document.getElementById('q');
   const actorEl = document.getElementById('actor');
+  const yearEl = document.getElementById('year');
   const genreEl = document.getElementById('genre');
   const btn = document.getElementById('searchBtn');
 
@@ -213,7 +216,7 @@ fetchGenres().then(()=>{ try{ prependTypeOptions(); }catch(_){} load(); });
     // Mirror the search click behavior
     state.page = 1;
     state.q = qEl ? qEl.value.trim() : '';
-    state.actor = actorEl ? actorEl.value.trim() : '';
+    state.actor = actorEl ? actorEl.value.trim() : ''; state.year = yearEl ? yearEl.value.trim() : '';
     state.genre = genreEl ? genreEl.value : (state.genre||'');
     state.clientGenreItems = null; // rely on backend pagination when doing a search
     btn.click ? btn.click() : load();

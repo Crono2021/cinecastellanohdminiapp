@@ -246,6 +246,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
     const placeholders = limited.map(()=>'?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
+    if (year && /^\d{4}$/.test(String(year))) params.push(parseInt(year));
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
@@ -284,6 +285,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total, page: Number(page), pageSize: limit, items });
@@ -317,6 +319,7 @@ app.get('/api/series/by-actor', async (req, res) => {
     const placeholders = limited.map(()=>'?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
+    if (year && /^\d{4}$/.test(String(year))) params.push(parseInt(year));
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
@@ -355,6 +358,7 @@ app.get('/api/series/by-actor', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total, page: Number(page), pageSize: limit, items });
@@ -379,14 +383,16 @@ app.get('/api/catalog', async (req, res) => {
   } return _json(payload); };
 
   try {
-    const { q, genre, page = 1, pageSize = 24 } = req.query;
+    const { q, genre, year, page = 1, pageSize = 24 } = req.query;
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
     const qLike = q ? '%' + String(q).toLowerCase() + '%' : null;
 
     const totalMovies = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      let where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+    let params = qLike ? [qLike] : [];
+    if (year && /^\d{4}$/.test(String(year))) { where += (where?" AND ":"WHERE ") + 'year = ?'; params.push(parseInt(year)); }
       const params = qLike ? [qLike] : [];
       db.get(`SELECT COUNT(*) as c FROM movies ${where}`, params, (err, row) => {
         if (err) return reject(err);
@@ -407,7 +413,9 @@ app.get('/api/catalog', async (req, res) => {
 
     // Fetch a generous window from both, order by rowid desc to approximate recency
     const movies = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+      let where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
+    let params = qLike ? [qLike] : [];
+    if (year && /^\d{4}$/.test(String(year))) { where += (where?" AND ":"WHERE ") + 'year = ?'; params.push(parseInt(year)); }
       const params = qLike ? [qLike] : [];
       db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
         if (err) return reject(err);
@@ -489,6 +497,7 @@ app.get('/api/series', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { where.push('first_air_year = ?'); params.push(parseInt(year)); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM series ${whereSql}`, params, (err, row) => {
@@ -533,6 +542,7 @@ app.get('/api/series', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total: count, page: Number(page), pageSize: limit, items });
@@ -555,6 +565,7 @@ app.get('/api/movies', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { where.push('year = ?'); params.push(parseInt(year)); }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const count = await new Promise((resolve, reject) => {
       db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
@@ -599,6 +610,7 @@ app.get('/api/movies', async (req, res) => {
       items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
     }
 
+    if (year && /^\d{4}$/.test(String(year))) { items = items.filter(it => (it.year||it.first_air_year||it.release_date||'').toString().startsWith(String(year))); }
     items = items.map(({ _details, ...rest }) => rest);
 
     res.json({ total: count, page: Number(page), pageSize: limit, items });
