@@ -522,7 +522,7 @@ app.get('/api/movie/:id', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los detalles' });
   }
-}
+});
 
 async function getTmdbMovieDetails(tmdbId){
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
