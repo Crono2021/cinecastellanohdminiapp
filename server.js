@@ -401,10 +401,10 @@ app.get('/api/catalog', async (req, res) => {
     });
 
     const totalSeries = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const params = qLike ? [qLike] : [];
+      let where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
+      let params = qLike ? [qLike] : [];
+      if (year && /^\d{4}$/.test(String(year))) { where += (where?" AND ":" WHERE ") + 'first_air_year = ?'; params.push(parseInt(year)); }
       db.get(`SELECT COUNT(*) as c FROM series ${where}`, params, (err, row) => {
-        if (err) return reject(err);
         resolve(row ? row.c : 0);
       });
     });
