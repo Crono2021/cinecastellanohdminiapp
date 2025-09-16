@@ -156,7 +156,6 @@ async function openDetails(id, type){
 } else {
   link.style.display = 'none';
 }
-  else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
 
