@@ -1,0 +1,7 @@
+# Enviar al televisor (Chromecast + AirPlay)
+
+Se añadió `public/player.html` como reproductor con botón de Google Cast y AirPlay.
+El botón flotante se oculta automáticamente en pantalla completa.
+
+El botón “Reproducir” ya abre `player.html` con `src`, `title` y `poster`.
+Se guardó copia como `public/app.js.bak` antes del cambio.

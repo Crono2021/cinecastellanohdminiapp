@@ -147,15 +147,7 @@ async function openDetails(id, type){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
-  if (d.link){
-  const w = toWatchUrl(d.link) || d.link;
-  const poster = d.poster_path ? (imgBase + d.poster_path) : '';
-  const title  = (d.title || d.name || '').trim();
-  link.href = `/player.html?src=${encodeURIComponent(w)}&title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}`;
-  link.style.display = 'inline-flex';
-} else {
-  link.style.display = 'none';
-}
+  if (d.link) { const w = toWatchUrl(d.link); link.href = w || d.link; link.style.display='inline-flex'; }
   else { link.style.display='none'; }
   document.getElementById('modal').classList.add('open');
 }
