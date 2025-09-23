@@ -11,42 +11,6 @@ const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
 
-// --- Reconocimiento de enlace (Pixeldrain / Telegram público) ---
-function isPixeldrainLink(link){
-  try{
-    const u = new URL(link);
-    return /(^|\.)pixeldrain\.(net|com)$/i.test((u.hostname||'').replace(/^www\./,''));
-  }catch(_){ return false; }
-}
-
-function parseTelegramPost(link){
-  try{
-    const u = new URL(link);
-    const host = (u.hostname||'').replace(/^www\./,'');
-    if (host !== 't.me') return null;
-    const parts = (u.pathname||'').split('/').filter(Boolean);
-    if (parts.length >= 2 && /^\d+$/.test(parts[1])){
-      return parts[0] + '/' + parts[1];
-    }
-    return null;
-  }catch(_){ return null; }
-}
-
-function updateLinkBadge(){
-  const el = document.getElementById('link');
-  const badge = document.getElementById('linkBadge');
-  if (!badge) return;
-  const v = (el.value||'').trim();
-  if (!v){ badge.textContent=''; badge.style.display='none'; return; }
-  badge.style.display='inline-block';
-  if (parseTelegramPost(v)){ badge.textContent = 'Telegram (post público)'; }
-  else if (isPixeldrainLink(v)){ badge.textContent = 'Pixeldrain'; }
-  else { badge.textContent = 'Otro'; }
-}
-
-document.getElementById('link').addEventListener('input', updateLinkBadge);
-setTimeout(updateLinkBadge, 0);
-
 async function post(url, body){
   const res = await fetch(url, {
     method: 'POST',

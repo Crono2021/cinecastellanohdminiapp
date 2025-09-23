@@ -455,18 +455,34 @@ app.get('/api/catalog', async (req, res) => {
       }
     }));
 
-    // Optional: genre filtering (applies to current page only to keep performance)
+    
+    // Genre filtering that respects pagination without aggregating all pages
     let finalItems = enriched;
     if (genre) {
+      const targetCount = pageNum * limit;
       const filtered = [];
-      for (const it of enriched){
-        try{
+      let scanned = 0;
+      // Iterate through the full (sorted) list and fetch details lazily until we have enough matches
+      for (const it of items) {
+        if (filtered.length >= targetCount) break;
+        // Only enrich candidates as we scan
+        try {
           const d = it.type === 'tv' ? await getTmdbTvDetails(it.tmdb_id) : await getTmdbMovieDetails(it.tmdb_id);
-          if (d?.genres?.some(g => String(g.id) == String(genre))) filtered.push(it);
-        }catch(_){}
+          if (d?.genres?.some(g => String(g.id) == String(genre))) {
+            filtered.push({
+              ...it,
+              poster_path: d?.poster_path || null,
+              backdrop_path: d?.backdrop_path || null,
+            });
+          }
+        } catch(_) {}
+        scanned++;
+        // Small safety to avoid pathological scans; if we scanned a lot with no results, continue anyway
       }
-      finalItems = filtered;
+      const startIdxG = (pageNum - 1) * limit;
+      finalItems = filtered.slice(startIdxG, startIdxG + limit);
     }
+
 
     res.json({ total, page: pageNum, pageSize: limit, items: finalItems });
   } catch (e) {
