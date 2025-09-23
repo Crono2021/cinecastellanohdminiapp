@@ -92,46 +92,6 @@ function normalizeLink(link){
     return link;
   }catch(_){ return link; }
 }
-
-// Ensure the in-memory index has enough items for a given genre to fill requested pages
-async function ensureCoverageForGenre(gId, neededTotal){
-  try{
-    const arrM = giGet('movie', gId);
-    const arrT = giGet('tv', gId);
-    let total = (arrM ? arrM.length : 0) + (arrT ? arrT.length : 0);
-    if (total >= neededTotal) return;
-
-    const rowsM = await dbAll(`SELECT tmdb_id FROM movies`);
-    const rowsT = await dbAll(`SELECT tmdb_id FROM series`);
-    const setMIndexed = new Set(arrM || []);
-    const setTIndexed = new Set(arrT || []);
-
-    // Helper to process a list of IDs for a type
-    async function process(list, type, setIndexed){
-      for (const r of list){
-        const id = r.tmdb_id;
-        if (setIndexed.has(id)) continue;
-        let c = await getCachedDetailsRow(id);
-        if (!c){
-          await fetchDetailsAndCache(id, type);
-          c = await getCachedDetailsRow(id);
-        }
-        if (c && hasGenre(c, gId)){
-          giAdd(type, gId, id);
-          setIndexed.add(id);
-          total++;
-          if (total >= neededTotal) return true;
-        }
-      }
-      return false;
-    }
-
-    // Prefer to scan movies y luego series (o al revés según prefieras)
-    if (await process(rowsM, 'movie', setMIndexed)) return;
-    await process(rowsT, 'tv', setTIndexed);
-    giSortAll();
-  }catch(e){ console.warn('[GENRE] ensureCoverageForGenre error', e); }
-}
 // --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
@@ -232,9 +192,16 @@ async function tmdbGetGenres() {
   if (_genresCache.data && (now - _genresCache.ts) < 60*60*1000) {
     return _genresCache.data;
   }
-  const url = `https://api.themoviedb.org/3/genre/movie/list`;
-  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-  _genresCache = { data: data.genres || [], ts: Date.now() };
+  const urlM = `https://api.themoviedb.org/3/genre/movie/list`;
+  const urlT = `https://api.themoviedb.org/3/genre/tv/list`;
+  const [m, t] = await Promise.all([
+    axios.get(urlM, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } }),
+    axios.get(urlT, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } })
+  ]);
+  const byId = new Map();
+  for (const g of (m.data.genres||[])) byId.set(g.id, g);
+  for (const g of (t.data.genres||[])) if (!byId.has(g.id)) byId.set(g.id, g);
+  _genresCache = { data: Array.from(byId.values()), ts: Date.now() };
   return _genresCache.data;
 }
 
