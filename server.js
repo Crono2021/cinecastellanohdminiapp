@@ -9,102 +9,6 @@ require('dotenv').config();
 
 const app = express();
 
-
-// === In-memory GENRE INDEX (fast filters like /api/movies & /api/series) ===
-const GENRE_INDEX = { movie: new Map(), tv: new Map() }; // genreId -> sorted array of tmdb_ids
-let GENRE_INDEX_READY = false;
-function giAdd(kind, genreId, id){
-  const m = GENRE_INDEX[kind];
-  if (!m.has(genreId)) m.set(genreId, []);
-  const arr = m.get(genreId);
-  if (arr[arr.length-1] !== id) arr.push(id);
-}
-function giSortAll(){
-  for (const k of ['movie','tv']) for (const [g, arr] of GENRE_INDEX[k].entries()) GENRE_INDEX[k].set(g, Array.from(new Set(arr)));
-}
-function giGet(kind, genreId){ return GENRE_INDEX[kind].get(genreId) || []; }
-
-function dbGet(sql, params=[]) { return new Promise((resolve, reject)=>db.get(sql, params, (e,row)=> e?reject(e):resolve(row))); }
-function dbAll(sql, params=[]) { return new Promise((resolve, reject)=>db.all(sql, params, (e,rows)=> e?reject(e):resolve(rows))); }
-
-async function getCachedDetailsRow(id){ return await dbGet(`SELECT tmdb_id, type, genres_json, poster_path FROM details WHERE tmdb_id = ?`, [id]); }
-async function upsertDetailsRow({tmdb_id, type, genres, poster_path}){
-  const genres_json = JSON.stringify(genres || []);
-  await new Promise((resolve,reject)=>db.run(
-    `INSERT INTO details (tmdb_id, type, genres_json, poster_path, updated_at)
-     VALUES (?,?,?,?,datetime('now'))
-     ON CONFLICT(tmdb_id) DO UPDATE SET type=excluded.type, genres_json=excluded.genres_json, poster_path=excluded.poster_path, updated_at=datetime('now')`,
-     [tmdb_id, type, genres_json, poster_path], (e)=> e?reject(e):resolve()
-  ));
-}
-
-async function fetchDetailsAndCache(id, type){
-  try{
-    const d = type==='tv' ? await getTmdbTvDetails(id) : await tmdbGetMovieDetails(id);
-    if (d) await upsertDetailsRow({ tmdb_id:id, type, genres: d.genres || [], poster_path: d.poster_path || null });
-  } catch(_){}
-}
-
-function hasGenre(cached, gId){
-  try{
-    const arr = JSON.parse((cached && cached.genres_json) || '[]');
-    return Array.isArray(arr) && arr.some(g => String(g.id) === String(gId));
-  }catch(_){ return false; }
-}
-
-// Build index from cached details intersected with our catalog
-async function buildGenreIndex(){
-  GENRE_INDEX.movie.clear(); GENRE_INDEX.tv.clear();
-  const mIds = await dbAll(`SELECT tmdb_id FROM movies`);
-  const tIds = await dbAll(`SELECT tmdb_id FROM series`);
-  const movieSet = new Set(mIds.map(x=>x.tmdb_id));
-  const tvSet = new Set(tIds.map(x=>x.tmdb_id));
-
-  const cached = await dbAll(`SELECT tmdb_id, type, genres_json FROM details`);
-  for (const r of cached){
-    const type = (r.type==='tv') ? 'tv' : 'movie';
-    if (type==='movie' && !movieSet.has(r.tmdb_id)) continue;
-    if (type==='tv' && !tvSet.has(r.tmdb_id)) continue;
-    let arr = [];
-    try{ arr = JSON.parse(r.genres_json || '[]'); }catch(_){ arr = []; }
-    for (const g of (arr||[])){
-      const gid = Number(g.id);
-      if (!Number.isFinite(gid)) continue;
-      giAdd(type, gid, r.tmdb_id);
-    }
-  }
-  giSortAll();
-  GENRE_INDEX_READY = true;
-}
-
-// Warm any missing details (low concurrency), update index incrementally
-async function warmMissingDetails(){
-  const mIds = (await dbAll(`SELECT tmdb_id FROM movies`)).map(x=>({id:x.tmdb_id, type:'movie'}));
-  const tIds = (await dbAll(`SELECT tmdb_id FROM series`)).map(x=>({id:x.tmdb_id, type:'tv'}));
-  const all = mIds.concat(tIds);
-  const concurrency = 6;
-  let i = 0;
-  async function worker(){
-    while (true){
-      const cur = i++;
-      if (cur >= all.length) break;
-      const {id, type} = all[cur];
-      const c = await getCachedDetailsRow(id);
-      if (!c){
-        await fetchDetailsAndCache(id, type);
-        const c2 = await getCachedDetailsRow(id);
-        if (c2){
-          try{
-            const arr = JSON.parse(c2.genres_json || '[]');
-            for (const g of arr){ const gid = Number(g.id); if (Number.isFinite(gid)) giAdd(type, gid, id); }
-          }catch(_){}
-        }
-      }
-    }
-  }
-  await Promise.all(Array.from({length:concurrency}).map(()=>worker()));
-  giSortAll();
-}
 // In-memory micro cache
 const microCache = new Map();
 const MC_TTL_MS = 60 * 1000; // 60s
@@ -164,14 +68,6 @@ db.serialize(() => {
     created_at TEXT DEFAULT (datetime('now'))
   )`);
 });
-  db.run(`CREATE TABLE IF NOT EXISTS details (
-    tmdb_id INTEGER PRIMARY KEY,
-    type TEXT NOT NULL, -- 'movie' or 'tv'
-    genres_json TEXT,
-    poster_path TEXT,
-    updated_at TEXT DEFAULT (datetime('now'))
-  )`);
-
 
 
 function normalizeLink(link){
@@ -195,6 +91,46 @@ function normalizeLink(link){
     }
     return link;
   }catch(_){ return link; }
+}
+
+// Ensure the in-memory index has enough items for a given genre to fill requested pages
+async function ensureCoverageForGenre(gId, neededTotal){
+  try{
+    const arrM = giGet('movie', gId);
+    const arrT = giGet('tv', gId);
+    let total = (arrM ? arrM.length : 0) + (arrT ? arrT.length : 0);
+    if (total >= neededTotal) return;
+
+    const rowsM = await dbAll(`SELECT tmdb_id FROM movies`);
+    const rowsT = await dbAll(`SELECT tmdb_id FROM series`);
+    const setMIndexed = new Set(arrM || []);
+    const setTIndexed = new Set(arrT || []);
+
+    // Helper to process a list of IDs for a type
+    async function process(list, type, setIndexed){
+      for (const r of list){
+        const id = r.tmdb_id;
+        if (setIndexed.has(id)) continue;
+        let c = await getCachedDetailsRow(id);
+        if (!c){
+          await fetchDetailsAndCache(id, type);
+          c = await getCachedDetailsRow(id);
+        }
+        if (c && hasGenre(c, gId)){
+          giAdd(type, gId, id);
+          setIndexed.add(id);
+          total++;
+          if (total >= neededTotal) return true;
+        }
+      }
+      return false;
+    }
+
+    // Prefer to scan movies y luego series (o al revés según prefieras)
+    if (await process(rowsM, 'movie', setMIndexed)) return;
+    await process(rowsT, 'tv', setTIndexed);
+    giSortAll();
+  }catch(e){ console.warn('[GENRE] ensureCoverageForGenre error', e); }
 }
 // --- Helpers ---
 function adminGuard(req, res, next) {
@@ -1037,11 +973,6 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
-
-buildGenreIndex().then(()=>{
-  console.log('[GENRE] Índice construido desde caché');
-  warmMissingDetails().then(()=>console.log('[GENRE] Caché de detalles calentada')).catch(()=>{});
-}).catch(e=>console.warn('[GENRE] Error al construir índice', e));
 
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
