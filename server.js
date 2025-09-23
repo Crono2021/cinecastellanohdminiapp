@@ -143,22 +143,6 @@ async function ensureCoverageForGenre(gId, neededTotal){
     giSortAll();
   }catch(e){ console.warn('[GENRE] ensureCoverageForGenre error', e); }
 }
-        if (c && hasGenre(c, gId)){
-          giAdd(type, gId, id);
-          setIndexed.add(id);
-          total++;
-          if (total >= neededTotal) return true;
-        }
-      }
-      return false;
-    }
-
-    // Prefer to scan movies y luego series (o al revés según prefieras)
-    if (await process(rowsM, 'movie', setMIndexed)) return;
-    await process(rowsT, 'tv', setTIndexed);
-    giSortAll();
-  }catch(e){ console.warn('[GENRE] ensureCoverageForGenre error', e); }
-}
 // --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
