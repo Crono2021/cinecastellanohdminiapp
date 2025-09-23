@@ -180,10 +180,10 @@ document.getElementById('genre').addEventListener('change', async (e)=>{
     state.clientGenreItems = null;
     state.genre = val;
   } else {
-    // Usar paginación del backend para géneros TMDB (no agregamos todas las páginas)
-    state.clientGenreItems = null;
+    // Comportamiento original para géneros TMDB
+    document.getElementById('pageInfo').textContent = 'Cargando…';
+    state.clientGenreItems = await fetchAllPagesForGenre(val);
     state.genre = val;
-    load();
   }
   load();
 });
