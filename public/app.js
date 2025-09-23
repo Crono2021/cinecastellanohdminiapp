@@ -112,8 +112,8 @@ async function load(){
         return '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString();
       })()
     : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
-       : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString()
-          : (state.genre === 'TYPE_TV' ? '/api/series?' + params.toString() : (state.genre ? '/api/catalog2?' + params.toString() : '/api/catalog?' + params.toString()))));
+       : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString() 
+          : (state.genre === 'TYPE_TV' ? '/api/series?' + params.toString() : '/api/catalog?' + params.toString())));
   const res = await fetch(endpoint);
   const data = await res.json();
 
@@ -172,12 +172,20 @@ document.getElementById('next').addEventListener('click', ()=>{ state.page++; lo
 // React to genre changes immediately and query the full catalog via the API
 
 
+let debounceTimer;
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   const val = (e && e.target && e.target.value) || '';
-  document.getElementById('pageInfo').textContent = 'Cargando…';
-  state.clientGenreItems = null;
-  state.genre = val; // '' | TYPE_MOVIE | TYPE_TV | <genreId>
+  if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
+    const type = (val === 'TYPE_MOVIE') ? 'movie' : 'tv';
+    state.clientGenreItems = null;
+    state.genre = val;
+  } else {
+    // Comportamiento original para géneros TMDB
+    document.getElementById('pageInfo').textContent = 'Cargando…';
+    state.clientGenreItems = await fetchAllPagesForGenre(val);
+    state.genre = val;
+  }
   load();
 });
 
