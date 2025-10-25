@@ -12,7 +12,7 @@ function toWatchUrl(link){
     if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
     if (!id && segs.length) id = segs[segs.length-1];
     if (!id) return null;
-    return `https://${host}/api/file/${id}`;
+    return `https://${host}/u/${id}`;
   }catch(_){ return null; }
 }
 
