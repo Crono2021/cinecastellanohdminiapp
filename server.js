@@ -230,8 +230,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
 
     // Find person in TMDB
     const person = await tmdbSearchPersonByName(String(name).trim());
-    if (!person) return 
-res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
+    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
@@ -286,12 +285,6 @@ res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items
     }
 
     items = items.map(({ _details, ...rest }) => rest);
-    items = items.map(it => ({
-      ...it,
-      link: (it.link && it.link.includes('pixeldrain.com/api/'))
-        ? it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/')
-        : it.link
-    }));  // fix Pixeldrain link only for movies
 
     res.json({ total, page: Number(page), pageSize: limit, items });
   } catch (e) {
@@ -378,14 +371,7 @@ app.get('/api/catalog', async (req, res) => {
   // micro-cache wrapper
   const key = req.originalUrl;
   const cached = mcGet(key);
-  if (cached) return 
-items = items?.map(it => {
-  if (it.link && it.link.includes('pixeldrain.com/api/')) {
-    it.link = it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/');
-  }
-  return it;
-}); // Pixeldrain fix
-res.json(cached);
+  if (cached) return res.json(cached);
 
   // Intercept res.json to store in cache
   const _json = res.json.bind(res);
@@ -614,15 +600,8 @@ app.get('/api/movies', async (req, res) => {
     }
 
     items = items.map(({ _details, ...rest }) => rest);
-    items = items.map(it => ({
-      ...it,
-      link: (it.link && it.link.includes('pixeldrain.com/api/'))
-        ? it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/')
-        : it.link
-    }));  // fix Pixeldrain link only for movies
 
-    
-res.json({ total: count, page: Number(page), pageSize: limit, items });
+    res.json({ total: count, page: Number(page), pageSize: limit, items });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
@@ -945,13 +924,7 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
         resolve(rows);
       });
     });
-    rows = rows.map(item => {
-  if (item.link && item.link.includes('pixeldrain.com/api/')) {
-    item.link = item.link.replace('/api/', '/u/');
-  }
-  return item;
-});
-res.json({ count: rows.length, items: rows });
+    res.json({ count: rows.length, items: rows });
   } catch (e) {
     res.status(500).json({ error: 'No se pudo exportar' });
   }
