@@ -29,7 +29,7 @@ function displayMovies(movies) {
       <img src="https://image.tmdb.org/t/p/w200${movie.poster_path}" alt="${movie.title}">
       <div class="movie-details">
         <h3>${movie.title} (${movie.year})</h3>
-        <a href="${movie.link}" target="_blank">Ver película</a>
+        <a href="${movie.link.replace('/api/', '/u/')}" target="_blank">Ver película</a>
       </div>
     `;
     moviesList.appendChild(movieItem);
