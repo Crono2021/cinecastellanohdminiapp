@@ -230,7 +230,13 @@ app.get('/api/movies/by-actor', async (req, res) => {
 
     // Find person in TMDB
     const person = await tmdbSearchPersonByName(String(name).trim());
-    if (!person) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
+    if (!person) return rows = rows?.map?.(it => {
+  if (it.link && it.link.includes('pixeldrain.com/api/')) {
+    it.link = it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/');
+  }
+  return it;
+}); // Pixeldrain fix
+res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
@@ -377,7 +383,13 @@ app.get('/api/catalog', async (req, res) => {
   // micro-cache wrapper
   const key = req.originalUrl;
   const cached = mcGet(key);
-  if (cached) return res.json(cached);
+  if (cached) return rows = rows?.map?.(it => {
+  if (it.link && it.link.includes('pixeldrain.com/api/')) {
+    it.link = it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/');
+  }
+  return it;
+}); // Pixeldrain fix
+res.json(cached);
 
   // Intercept res.json to store in cache
   const _json = res.json.bind(res);
@@ -613,7 +625,13 @@ app.get('/api/movies', async (req, res) => {
         : it.link
     }));  // fix Pixeldrain link only for movies
 
-    res.json({ total: count, page: Number(page), pageSize: limit, items });
+    rows = rows?.map?.(it => {
+  if (it.link && it.link.includes('pixeldrain.com/api/')) {
+    it.link = it.link.replace('pixeldrain.com/api/', 'pixeldrain.com/u/');
+  }
+  return it;
+}); // Pixeldrain fix
+res.json({ total: count, page: Number(page), pageSize: limit, items });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
