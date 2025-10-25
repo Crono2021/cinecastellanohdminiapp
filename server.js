@@ -5,13 +5,9 @@ const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
 const helmet = require('helmet');
 const cors = require('cors');
-const compression = require('compression');
 require('dotenv').config();
 
 const app = express();
-
-// Enable gzip/deflate compression
-app.use(compression({ threshold: 0 }));
 
 // In-memory micro cache
 const microCache = new Map();
@@ -95,53 +91,6 @@ function normalizeLink(link){
     }
     return link;
   }catch(_){ return link; }
-}
-
-// Ensure the in-memory index has enough items for a given genre to fill requested pages
-async function ensureCoverageForGenre(gId, neededTotal){
-  try{
-    const arrM = giGet('movie', gId);
-    const arrT = giGet('tv', gId);
-    let total = (arrM ? arrM.length : 0) + (arrT ? arrT.length : 0);
-    if (total >= neededTotal) return;
-
-    const rowsM = await dbAll(`SELECT tmdb_id FROM movies`);
-    const rowsT = await dbAll(`SELECT tmdb_id FROM series`);
-    const setMIndexed = new Set(arrM || []);
-    const setTIndexed = new Set(arrT || []);
-
-    const all = rowsM.map(r=>({id:r.tmdb_id, type:'movie'})).concat(rowsT.map(r=>({id:r.tmdb_id, type:'tv'})));
-    const CONC = 12;
-    let idx = 0;
-    let stop = false;
-
-    async function worker(){
-      while (!stop){
-        const cur = idx++;
-        if (cur >= all.length) break;
-        const {id, type} = all[cur];
-        if ((type==='movie' && setMIndexed.has(id)) || (type==='tv' && setTIndexed.has(id))) continue;
-        let c = await getCachedDetailsRow(id);
-        if (!c){
-          await fetchDetailsAndCache(id, type);
-          c = await getCachedDetailsRow(id);
-        }
-        if (c){
-          try{
-            const arr = JSON.parse(c.genres_json || '[]');
-            if (Array.isArray(arr) && arr.some(g => String(g.id) === String(gId))){
-              giAdd(type, gId, id);
-              if (type==='movie') setMIndexed.add(id); else setTIndexed.add(id);
-              total++;
-              if (total >= neededTotal){ stop = true; break; }
-            }
-          }catch(_){}
-        }
-      }
-    }
-    await Promise.all(Array.from({length:CONC}).map(()=>worker()));
-    giSortAll();
-  }catch(e){ console.warn('[GENRE] ensureCoverageForGenre error', e); }
 }
 // --- Helpers ---
 function adminGuard(req, res, next) {
