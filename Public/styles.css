@@ -79,3 +79,99 @@ footer{border-top:1px solid #222;color:#aaa}
 @media (prefers-reduced-motion: reduce){
   .link{transition:none}
 }
+
+.card{ position: relative; }
+  position:absolute;
+  top:8px; left:8px;
+  padding:4px 10px;
+  border:2px solid #22c55e; /* green outline */
+  color:#22c55e;
+  background:transparent; /* transparent fill */
+  border-radius:9999px; /* full circle/pill */
+  font-weight:700;
+  font-size:.75rem;
+  line-height:1;
+  pointer-events:none; /* don't block clicks on the card */
+}
+  display:inline-block;
+  margin-left:6px;
+  padding:2px 6px;
+  border:2px solid #22c55e;
+  color:#22c55e;
+  background:transparent;
+  border-radius:9999px;
+  font-weight:600;
+  font-size:.65rem;
+  line-height:1;
+}
+
+.card { position: relative; }
+
+
+/* --- Serie badge: absolute bottom-right --- */
+.serie-badge{
+  position:absolute;
+  bottom:8px;
+  right:8px;
+  padding:4px 10px;
+  border:2px solid #22c55e;
+  color:#22c55e;
+  background:transparent;
+  border-radius:9999px;
+  font-weight:700;
+  font-size:.75rem;
+  line-height:1;
+  pointer-events:none;
+}
+
+
+/* === Force exactly two columns on phones for catalog/card grids === */
+@media (max-width: 760px){
+  /* Main catalog grid on index.html */
+  .grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  /* Catalog_updated.html list */
+  #movies-list{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap);
+    padding: 16px 0;
+  }
+  #movies-list > *{
+    min-width: 0;
+  }
+  /* Ensure cards fit nicely in their cells */
+  .card, .movie-item{
+    width: 100%;
+  }
+  .poster{
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+  }
+}
+
+
+
+/* === Tablet rules: 2 columns portrait, 4 columns landscape === */
+@media (min-width: 761px) and (max-width: 1024px) and (orientation: portrait){
+  .grid, #movies-list{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (min-width: 761px) and (max-width: 1024px) and (orientation: landscape){
+  .grid, #movies-list{
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+
+
+/* Forzar 4 columnas en móviles al girar horizontal */
+@media (max-width: 760px) and (orientation: landscape) {
+  .grid, #movies-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}

@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cine Castellano HD</title>
+  <title>Cine en Castellano HD</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <header>
     <div class="container hstack">
-      <h2 style="margin:0">🎬 Cine Castellano HD</h2>
+      <h2 style="margin:0">🎬 Cine en Castellano HD</h2>
+      <div style="font-size:0.8em; color:#aaa; margin-top:2px;">Por Crono2021</div>
       <input id="q" placeholder="Buscar por título..." style="flex:1" />
       <input id="actor" placeholder="...o por actor/actriz" />
       <select id="genre"></select>
@@ -44,7 +45,7 @@
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
             <p>
-              <a id="watchLink" class="link" target="_blank">▶ Ver en Pixeldrain</a>
+              <a id="watchLink" class="link" target="_blank">▶ Reproducir</a>
             </p>
           </div>
         </div>
@@ -59,5 +60,6 @@
   </footer>
 
   <script src="/app.js"></script>
+  <script src="back-handler.js"></script>
 </body>
 </html>

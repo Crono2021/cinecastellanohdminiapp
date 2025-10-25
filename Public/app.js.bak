@@ -172,7 +172,6 @@ document.getElementById('next').addEventListener('click', ()=>{ state.page++; lo
 // React to genre changes immediately and query the full catalog via the API
 
 
-let debounceTimer;
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   const val = (e && e.target && e.target.value) || '';
