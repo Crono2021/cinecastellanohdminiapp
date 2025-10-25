@@ -29,7 +29,7 @@ function displayMovies(movies) {
       <img src="https://image.tmdb.org/t/p/w200${movie.poster_path}" alt="${movie.title}">
       <div class="movie-details">
         <h3>${movie.title} (${movie.year})</h3>
-        <button class="play-button" data-link="${movie.link}">Ver película</button>
+        <a href="${movie.link}" target="_blank">Ver película</a>
       </div>
     `;
     moviesList.appendChild(movieItem);
@@ -39,17 +39,6 @@ function displayMovies(movies) {
 document.getElementById('genreSelect').addEventListener('change', function() {
   const selectedGenre = this.value;
   fetchMovies(selectedGenre);
-});
-
-document.addEventListener('click', function(e) {
-  if (e.target.classList.contains('play-button')) {
-    const link = e.target.dataset.link;
-    if (window.Telegram?.WebApp) {
-      Telegram.WebApp.openLink(link);
-    } else {
-      window.location.href = link;
-    }
-  }
 });
 
 // Initial load of genres and movies
