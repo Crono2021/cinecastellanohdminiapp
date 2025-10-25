@@ -1,5 +1,5 @@
 
-// --- Build direct PixelDrain URL using /api for fullscreen (no server-side proxy) ---
+// --- Build canonical PixelDrain page URL (no API redirect) ---
 function toWatchUrl(link){
   if (!link) return null;
   try{
@@ -12,8 +12,10 @@ function toWatchUrl(link){
     if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
     if (!id && segs.length) id = segs[segs.length-1];
     if (!id) return null;
-    return `https://${host}/api/file/${id}`;
+    // Return the human/web link (view page) instead of the API endpoint
+    return `https://${host}/u/${id}`;
   }catch(_){ return null; }
+}
 }
 
 // --- Telegram helpers (public posts only) ---
