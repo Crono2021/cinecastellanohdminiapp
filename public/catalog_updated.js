@@ -29,12 +29,18 @@ function displayMovies(movies) {
       <img src="https://image.tmdb.org/t/p/w200${movie.poster_path}" alt="${movie.title}">
       <div class="movie-details">
         <h3>${movie.title} (${movie.year})</h3>
-        <a href="${movie.link}" target="_blank" onclick="event.preventDefault(); window.open(movie.link.replace('/api/file/', '/u/'), '_blank');">Ver película</a>
+        <a href="${movie.link}" target="_blank" class="reproducir-btn">Reproducir</a>
       </div>
     `;
+    const playBtn = movieItem.querySelector('.reproducir-btn');
+    playBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      const realLink = movie.link.replace('/api/file/', '/u/');
+      window.open(realLink, '_blank');
+    }); // Pixeldrain redirect fix for Reproducir
     moviesList.appendChild(movieItem);
   });
-}
+})
 
 document.getElementById('genreSelect').addEventListener('change', function() {
   const selectedGenre = this.value;
