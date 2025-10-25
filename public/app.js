@@ -16,6 +16,43 @@ function toWatchUrl(link){
   }catch(_){ return null; }
 }
 
+// --- Telegram helpers (public posts only) ---
+function parseTelegramPost(link){
+  try{
+    if(!link) return null;
+    const u = new URL(link);
+    const host = (u.hostname||'').replace(/^www\./,'');
+    if (host !== 't.me') return null;
+    const segs = (u.pathname||'').split('/').filter(Boolean);
+    // Format: /<channel>/<postId>
+    if (segs.length >= 2 && /^\d+$/.test(segs[1])){
+      return segs[0] + '/' + segs[1];
+    }
+    return null;
+  }catch(_){ return null; }
+}
+
+function renderTelegramEmbed(container, tmeUrl){
+  const post = parseTelegramPost(tmeUrl);
+  if (!post) return false;
+  container.innerHTML = '';
+  const bq = document.createElement('blockquote');
+  bq.className = 'telegram-post';
+  bq.setAttribute('data-telegram-post', post);
+  bq.setAttribute('data-width', '100%');
+
+  const s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://telegram.org/js/telegram-widget.js?22';
+  s.setAttribute('data-telegram-post', post);
+  s.setAttribute('data-width', '100%');
+
+  container.appendChild(bq);
+  container.appendChild(s);
+  return true;
+}
+
+
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 
@@ -147,8 +184,22 @@ async function openDetails(id, type){
   document.getElementById('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${g.name}</span>`).join('');
   document.getElementById('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${p.name}</span>`).join('');
   const link = document.getElementById('watchLink');
-  if (d.link) { const w = toWatchUrl(d.link); link.href = w || d.link; link.style.display='inline-flex'; }
-  else { link.style.display='none'; }
+  const embed = document.getElementById('embedContainer');
+  if (embed) embed.innerHTML = '';
+  if (d.link) {
+    // Telegram public post? render embed and disable external link
+    if (parseTelegramPost(d.link)){
+      link.style.display='none';
+      if (embed) renderTelegramEmbed(embed, d.link);
+    } else {
+      const w = toWatchUrl(d.link);
+      link.href = w || d.link;
+      link.style.display='inline-flex';
+    }
+  } else {
+    link.style.display='none';
+    if (embed) embed.innerHTML = '';
+  }
   document.getElementById('modal').classList.add('open');
 }
 
@@ -172,7 +223,6 @@ document.getElementById('next').addEventListener('click', ()=>{ state.page++; lo
 // React to genre changes immediately and query the full catalog via the API
 
 
-let debounceTimer;
 document.getElementById('genre').addEventListener('change', async (e)=>{
   state.page = 1;
   const val = (e && e.target && e.target.value) || '';
