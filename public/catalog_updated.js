@@ -50,3 +50,18 @@ document.getElementById('genreSelect').addEventListener('change', function() {
 // Initial load of genres and movies
 fetchGenres();
 fetchMovies();
+
+// --- Pixeldrain redirect (movies only) ---
+document.addEventListener('click', function (e) {
+  const anchor = e.target && e.target.closest && e.target.closest('#movies-list a');
+  if (!anchor) return;
+  try {
+    const href = anchor.getAttribute('href') || '';
+    if (href.includes('pixeldrain.com/') && href.includes('/api/file/')) {
+      e.preventDefault();
+      const real = href.replace('/api/file/', '/u/');
+      window.open(real, '_blank');
+    }
+  } catch (_) { /* noop */ }
+});
+// --- end Pixeldrain redirect ---
