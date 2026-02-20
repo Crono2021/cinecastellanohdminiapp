@@ -93,7 +93,7 @@ function wireRowButtons(){
     btn.addEventListener('click', () => {
       const row = btn.dataset.row;
       const dir = parseInt(btn.dataset.dir || '1', 10);
-      const target = row === 'top' ? el('topRow') : (row === 'recent' ? el('recentRow') : null);
+      const target = row === 'top' ? el('topRow') : (row === 'premieres' ? el('premieresRow') : (row === 'recent' ? el('recentRow') : null));
       if (!target) return;
       const amount = Math.floor(target.clientWidth * 0.85) * dir;
       target.scrollBy({ left: amount, behavior: 'smooth' });
@@ -196,6 +196,13 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
     }
   }
   return collected;
+}
+
+async function loadPremieresRow(){
+  const res = await fetch('/api/estrenos?' + new URLSearchParams({ limit: 30 }).toString());
+  const data = await res.json();
+  const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
+  renderRow(el('premieresRow'), movies);
 }
 
 async function loadRecentRow(){
@@ -418,9 +425,11 @@ function wireEvents(){
   await fetchGenres();
   wireEvents();
   enableDragScroll(el('topRow'));
+  enableDragScroll(el('premieresRow'));
   enableDragScroll(el('recentRow'));
   await Promise.all([
     loadTopRow(),
+    loadPremieresRow(),
     loadRecentRow(),
     loadExplore(),
   ]);

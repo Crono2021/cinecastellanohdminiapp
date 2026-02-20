@@ -182,6 +182,13 @@ async function tmdbSearchMovie(title, year) {
   return data.results[0];
 }
 
+
+async function tmdbDiscoverMovies(params){
+  const url = 'https://api.themoviedb.org/3/discover/movie';
+  const resp = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES', ...params } });
+  return resp.data;
+}
+
 async function tmdbGetMovieDetails(tmdbId) {
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
   const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
@@ -799,6 +806,85 @@ async function getTmdbMovieDetails(tmdbId){
 }
 
 // POST /api/admin/add
+
+
+// GET /api/estrenos?limit=30
+// Devuelve SOLO películas del catálogo que hayan tenido estreno (cine) en España (ES) en los últimos 365 días,
+// ordenadas por la fecha regional de estreno (desc).
+app.get('/api/estrenos', async (req, res) => {
+  const key = req.originalUrl;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+  const _json = res.json.bind(res);
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+
+  try{
+    const limit = Math.min(parseInt(req.query.limit) || 30, 60);
+
+    // Todas las películas disponibles en el catálogo (con link)
+    const catalogIds = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, link, created_at FROM movies`, [], (err, rows) => {
+        if (err) return reject(err);
+        const map = new Map();
+        (rows||[]).forEach(r => map.set(Number(r.tmdb_id), { link: r.link, created_at: r.created_at }));
+        resolve(map);
+      });
+    });
+
+    const today = new Date();
+    const lte = ymdLocal(today);
+    const from = new Date(today.getTime() - 365*24*60*60*1000);
+    const gte = ymdLocal(from);
+
+    const collected = [];
+    let page = 1;
+
+    // Recorremos páginas de TMDB Discover (región ES + estreno en cines) y nos quedamos con los que existen en nuestro catálogo
+    while (collected.length < limit && page <= 8){
+      const data = await tmdbDiscoverMovies({
+        page,
+        region: 'ES',
+        sort_by: 'release_date.desc',
+        'release_date.gte': gte,
+        'release_date.lte': lte,
+        with_release_type: 3, // theatrical
+        include_adult: false,
+      });
+
+      const results = (data && data.results) ? data.results : [];
+      if (!results.length) break;
+
+      for (const r of results){
+        const id = Number(r.id);
+        if (!catalogIds.has(id)) continue;
+
+        // Enriquecemos con detalles/credits (para tener poster/overview/cast en la ficha)
+        const meta = await getTmdbMovieDetails(id);
+        collected.push({
+          type: 'movie',
+          tmdb_id: id,
+          id,
+          title: meta.title || r.title,
+          year: (meta.release_date || r.release_date || '').slice(0,4) ? Number((meta.release_date || r.release_date).slice(0,4)) : null,
+          poster_path: meta.poster_path || r.poster_path,
+          overview: meta.overview || r.overview,
+          cast: meta.cast || [],
+          link: catalogIds.get(id).link,
+          estreno_es: r.release_date || meta.release_date || null,
+        });
+
+        if (collected.length >= limit) break;
+      }
+
+      page += 1;
+    }
+
+    res.json({ items: collected, gte, lte });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron obtener los estrenos' });
+  }
+});
 
 app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
