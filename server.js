@@ -105,9 +105,20 @@ db.serialize(() => {
 });
 
 // Lightweight schema migrations for older DBs
+// NOTE: sqlite3 errors from db.run are async (they won't be caught by try/catch).
+// We must check PRAGMA table_info first to avoid "duplicate column name" crashes.
+function ensureColumn(table, column, typeSql){
+  db.all(`PRAGMA table_info(${table})`, (err, rows) => {
+    if (err || !Array.isArray(rows)) return;
+    const exists = rows.some(r => r && r.name === column);
+    if (exists) return;
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`, () => {});
+  });
+}
+
 db.serialize(() => {
-  try{ db.run('ALTER TABLE movies ADD COLUMN genre_ids TEXT'); }catch(_){ }
-  try{ db.run('ALTER TABLE series ADD COLUMN genre_ids TEXT'); }catch(_){ }
+  ensureColumn('movies', 'genre_ids', 'TEXT');
+  ensureColumn('series', 'genre_ids', 'TEXT');
 });
 
 function ymdLocal(d = new Date()){
