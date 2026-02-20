@@ -52,11 +52,13 @@ function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<'
 
 function renderRow(container, items, { top10 = false } = {}){
   if (!container) return;
-  container.innerHTML = (items || []).map((it, idx) => {
+  // Ocultamos series: solo mostramos películas
+  const moviesOnly = (items || []).filter(it => (it?.type || 'movie') !== 'tv');
+  container.innerHTML = moviesOnly.map((it, idx) => {
     const title = esc(it.title || it.name || '');
     const year = it.year || (it.release_date ? String(it.release_date).slice(0,4) : '');
     const poster = it.poster_path ? `${imgBase}${it.poster_path}` : '';
-    const type = it.type || 'movie';
+    const type = 'movie';
     const id = it.tmdb_id || it.id;
 
     return `
@@ -65,7 +67,7 @@ function renderRow(container, items, { top10 = false } = {}){
         <img class="row-poster" src="${poster}" onerror="this.src='';this.style.background='#222'" />
         <div class="row-meta">
           <div class="row-title">${title}</div>
-          <div class="row-sub">${year || ''}${type==='tv' ? ' · SERIE' : ''}</div>
+          <div class="row-sub">${year || ''}</div>
         </div>
       </div>
     `;
@@ -156,31 +158,6 @@ async function fetchGenres(){
   const data = await res.json();
   const sel = el('genre');
   sel.innerHTML = '<option value="">Todos los géneros</option>' + data.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
-  prependTypeOptions();
-}
-
-// Minimal additions: prepend Películas/Series options
-function prependTypeOptions(){
-  const sel = el('genre');
-  if (!sel) return;
-  if ([...sel.options].some(o => o.value === 'TYPE_MOVIE')) return;
-  const optMovie = document.createElement('option');
-  optMovie.value = 'TYPE_MOVIE';
-  optMovie.textContent = 'Películas';
-  const optTV = document.createElement('option');
-  optTV.value = 'TYPE_TV';
-  optTV.textContent = 'Series';
-  const sep = document.createElement('option');
-  sep.value = '';
-  sep.textContent = '──────────';
-  sep.disabled = true;
-  if (sel.firstChild){
-    sel.insertBefore(sep, sel.firstChild.nextSibling || null);
-    sel.insertBefore(optTV, sep);
-    sel.insertBefore(optMovie, optTV);
-  } else {
-    sel.appendChild(optMovie); sel.appendChild(optTV); sel.appendChild(sep);
-  }
 }
 
 // Aggregate across catalog pages optionally filtering by type on client side
@@ -224,11 +201,14 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
 async function loadRecentRow(){
   const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
   const data = await res.json();
-  renderRow(el('recentRow'), data.items || []);
+  const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
+  renderRow(el('recentRow'), movies);
 }
 
 async function loadTopRow(){
-  const top = await fetchTopToday(10);
+  // Pedimos más y luego filtramos para quedarnos SOLO con películas
+  const topRaw = await fetchTopToday(50);
+  const top = topRaw.filter(t => (t?.type || 'movie') !== 'tv').slice(0, 10);
   const empty = el('topEmpty');
   const row = el('topRow');
 
@@ -243,8 +223,8 @@ async function loadTopRow(){
   const items = await Promise.all(top.map(async (t) => {
     try{
       const id = t.id || t.tmdb_id;
-      const type = (t.type === 'tv') ? 'tv' : 'movie';
-      const r = await fetch(type === 'tv' ? `/api/tv/${id}` : `/api/movie/${id}`);
+      const type = 'movie';
+      const r = await fetch(`/api/movie/${id}`);
       const d = await r.json();
       return {
         id: d.id,
@@ -256,7 +236,7 @@ async function loadTopRow(){
       };
     }catch(_){
       const id = t.id || t.tmdb_id;
-      return { tmdb_id: id, id, type: t.type, title: `#${id}`, poster_path: null, year:'' };
+      return { tmdb_id: id, id, type: 'movie', title: `#${id}`, poster_path: null, year:'' };
     }
   }));
 
@@ -271,16 +251,15 @@ async function loadExplore(){
   if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
     const start = (state.page - 1) * state.pageSize;
     const end = start + state.pageSize;
-    const slice = state.clientGenreItems.slice(start, end);
+    const slice = state.clientGenreItems.slice(start, end).filter(item => (item?.type || 'movie') !== 'tv');
 
     grid.innerHTML = slice.map(item => `
-      <div class="card" data-id="${item.tmdb_id}" data-type="${item.type||'movie'}">
+      <div class="card" data-id="${item.tmdb_id}" data-type="movie">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${esc(item.title)}</div>
           <div class="year">${item.year || ''}</div>
         </div>
-        ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
       </div>
     `).join('');
 
@@ -288,38 +267,37 @@ async function loadExplore(){
       elc.addEventListener('click', () => openDetails(elc.dataset.id, elc.dataset.type));
     });
 
-    const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
-    if (pageInfo) pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
+    const totalPages = Math.max(1, Math.ceil(slice.length / state.pageSize));
+    if (pageInfo) pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${slice.length} resultados`;
     return;
   }
 
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
-  if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') params.set('genre', state.genre);
+  if (state.genre) params.set('genre', state.genre);
 
   const endpoint = (state.actor && !state.clientGenreItems)
     ? (function(){
         const p = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
         if (state.q) p.set('q', state.q);
-        if (state.genre && state.genre !== 'TYPE_MOVIE' && state.genre !== 'TYPE_TV') p.set('genre', state.genre);
+        if (state.genre) p.set('genre', state.genre);
         return '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString();
       })()
     : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
-       : (state.genre === 'TYPE_MOVIE' ? '/api/movies?' + params.toString()
-          : (state.genre === 'TYPE_TV' ? '/api/series?' + params.toString() : '/api/catalog?' + params.toString())));
+       : '/api/movies?' + params.toString());
 
   const res = await fetch(endpoint);
   const data = await res.json();
 
-  grid.innerHTML = (data.items || []).map(item => `
-    <div class="card" data-id="${item.tmdb_id}" data-type="${item.type||'movie'}">
+  const movies = (data.items || []).filter(item => (item?.type || 'movie') !== 'tv');
+  grid.innerHTML = movies.map(item => `
+    <div class="card" data-id="${item.tmdb_id}" data-type="movie">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${esc(item.title)}</div>
         <div class="year">${item.year || ''}</div>
       </div>
-      ${item.type === 'tv' ? '<span class="serie-badge">SERIE</span>' : ''}
     </div>
   `).join('');
 
@@ -334,9 +312,10 @@ async function loadExplore(){
 async function openDetails(id, type){
   // Opening the ficha should NOT count as a view.
   // We only count a view when the user presses "Reproducir".
-  currentDetail = { id: String(id), type: type || 'movie' };
+  // Esta app ahora muestra SOLO películas
+  currentDetail = { id: String(id), type: 'movie' };
 
-  const res = await fetch(type==='tv' ? `/api/tv/${id}` : `/api/movie/${id}`);
+  const res = await fetch(`/api/movie/${id}`);
   const d = await res.json();
 
   el('modalTitle').textContent = `${(d.title||d.name||'')} ${d.release_date ? '('+String(d.release_date).slice(0,4)+')':''}`;
@@ -372,7 +351,7 @@ function wireEvents(){
     watch.__trackBound = true;
     watch.addEventListener('click', () => {
       if (!currentDetail?.id) return;
-      trackView(currentDetail.id, currentDetail.type);
+      trackView(currentDetail.id, 'movie');
       // Refresh the Top row shortly after the play is recorded
       setTimeout(() => { try{ loadTopRow(); }catch(_){ } }, 250);
     });
@@ -409,10 +388,7 @@ function wireEvents(){
   genre.addEventListener('change', async (e)=>{
     state.page = 1;
     const val = (e && e.target && e.target.value) || '';
-    if (val === 'TYPE_MOVIE' || val === 'TYPE_TV'){
-      state.clientGenreItems = null;
-      state.genre = val;
-    } else if (val){
+    if (val){
       el('pageInfo').textContent = 'Cargando…';
       state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: val });
       state.genre = val;
