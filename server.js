@@ -77,6 +77,7 @@ db.serialize(() => {
     title TEXT NOT NULL,
     year INTEGER,
     link TEXT NOT NULL,
+    genre_ids TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS series (
@@ -84,6 +85,7 @@ db.serialize(() => {
     name TEXT NOT NULL,
     first_air_year INTEGER,
     link TEXT NOT NULL,
+    genre_ids TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   )`);
 
@@ -100,6 +102,12 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date ON views_daily(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date_count ON views_daily(date, count)`);
+});
+
+// Lightweight schema migrations for older DBs
+db.serialize(() => {
+  try{ db.run('ALTER TABLE movies ADD COLUMN genre_ids TEXT'); }catch(_){ }
+  try{ db.run('ALTER TABLE series ADD COLUMN genre_ids TEXT'); }catch(_){ }
 });
 
 function ymdLocal(d = new Date()){
@@ -131,6 +139,81 @@ function normalizeLink(link){
     }
     return link;
   }catch(_){ return link; }
+}
+
+// --- TMDB micro-cache (to avoid repeated calls when filtering by genre) ---
+const tmdbMetaCache = new Map();
+const TMDB_META_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+function metaGet(key){
+  const v = tmdbMetaCache.get(key);
+  if (!v) return null;
+  if (Date.now() - v.t > TMDB_META_TTL_MS){ tmdbMetaCache.delete(key); return null; }
+  return v.d;
+}
+function metaSet(key, data){ tmdbMetaCache.set(key, { t: Date.now(), d: data }); }
+
+async function getMovieMetaFast(tmdbId){
+  const key = `m:${tmdbId}`;
+  const cached = metaGet(key);
+  if (cached) return cached;
+  const d = await getTmdbMovieDetails(tmdbId);
+  const meta = {
+    poster_path: d?.poster_path || null,
+    backdrop_path: d?.backdrop_path || null,
+    genres: Array.isArray(d?.genres) ? d.genres : [],
+  };
+  metaSet(key, meta);
+  return meta;
+}
+
+async function getTvMetaFast(tmdbId){
+  const key = `t:${tmdbId}`;
+  const cached = metaGet(key);
+  if (cached) return cached;
+  const d = await getTmdbTvDetails(tmdbId);
+  const meta = {
+    poster_path: d?.poster_path || null,
+    backdrop_path: d?.backdrop_path || null,
+    genres: Array.isArray(d?.genres) ? d.genres : [],
+  };
+  metaSet(key, meta);
+  return meta;
+}
+
+function encodeGenreIds(genres){
+  const ids = (genres || []).map(g => Number(g && g.id)).filter(n => Number.isFinite(n) && n > 0);
+  // comma delimited with leading/trailing comma to allow LIKE matching: ",16,35,"
+  return ids.length ? (',' + ids.join(',') + ',') : ',';
+}
+
+async function ensureGenreIdsForRow(row){
+  // Returns { genre_ids: string, meta: {poster_path, genres} } with lazy DB update
+  const isTv = row.type === 'tv';
+  const tmdbId = Number(row.tmdb_id);
+  if (!tmdbId) return { genre_ids: ',', meta: { poster_path: null, backdrop_path: null, genres: [] } };
+
+  if (row.genre_ids && String(row.genre_ids).trim()){
+    try{
+      const meta = isTv ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
+      return { genre_ids: row.genre_ids, meta };
+    }catch(_){
+      return { genre_ids: row.genre_ids, meta: { poster_path: null, backdrop_path: null, genres: [] } };
+    }
+  }
+
+  try{
+    const meta = isTv ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
+    const enc = encodeGenreIds(meta.genres);
+    await new Promise((resolve) => {
+      const sql = isTv
+        ? 'UPDATE series SET genre_ids = ? WHERE tmdb_id = ?'
+        : 'UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?';
+      db.run(sql, [enc, tmdbId], ()=> resolve());
+    });
+    return { genre_ids: enc, meta };
+  }catch(_){
+    return { genre_ids: ',', meta: { poster_path: null, backdrop_path: null, genres: [] } };
+  }
 }
 // --- Helpers ---
 function adminGuard(req, res, next) {
@@ -538,13 +621,13 @@ app.get('/api/catalog', async (req, res) => {
       });
     });
 
-    const total = Number(totalMovies) + Number(totalSeries);
+    let total = Number(totalMovies) + Number(totalSeries);
 
     // Fetch a generous window from both, order by rowid desc to approximate recency
     const movies = await new Promise((resolve, reject) => {
       const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
       const params = qLike ? [qLike] : [];
-      db.all(`SELECT tmdb_id, title, year, link, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
+      db.all(`SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
@@ -553,7 +636,7 @@ app.get('/api/catalog', async (req, res) => {
     const series = await new Promise((resolve, reject) => {
       const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
       const params = qLike ? [qLike] : [];
-      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, created_at FROM series ${where} ORDER BY rowid DESC`, params, (err, rows) => {
+      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, genre_ids, created_at FROM series ${where} ORDER BY rowid DESC`, params, (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
@@ -572,38 +655,40 @@ app.get('/api/catalog', async (req, res) => {
       return (b.tmdb_id||0) - (a.tmdb_id||0);
     });
 
+    const wantedGenre = genre ? String(genre) : '';
+
+    // If genre filter is requested, filter BEFORE paginating so it works across the full catalog.
+    let filteredItems = items;
+    if (wantedGenre){
+      const out = [];
+      for (const it of items){
+        const { genre_ids } = await ensureGenreIdsForRow({ ...it, genre_ids: it.genre_ids });
+        if (String(genre_ids || '').includes(`,${wantedGenre},`)) out.push(it);
+      }
+      filteredItems = out;
+      total = filteredItems.length;
+    }
+
     // Enrich only the current page to keep it fast
     const startIdx = (pageNum - 1) * limit;
-    const pageItems = items.slice(startIdx, startIdx + limit);
+    const pageItems = filteredItems.slice(startIdx, startIdx + limit);
 
     const enriched = await Promise.all(pageItems.map(async (it) => {
       try{
         if (it.type === 'tv'){
-          const d = await getTmdbTvDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null };
+          const meta = await getTvMetaFast(it.tmdb_id);
+          return { ...it, poster_path: meta?.poster_path || null };
         }else{
-          const d = await getTmdbMovieDetails(it.tmdb_id);
-          return { ...it, poster_path: d?.poster_path || null };
+          const meta = await getMovieMetaFast(it.tmdb_id);
+          return { ...it, poster_path: meta?.poster_path || null };
         }
       }catch(_){
         return { ...it, poster_path: null };
       }
     }));
 
-    // Optional: genre filtering (applies to current page only to keep performance)
-    let finalItems = enriched;
-    if (genre) {
-      const filtered = [];
-      for (const it of enriched){
-        try{
-          const d = it.type === 'tv' ? await getTmdbTvDetails(it.tmdb_id) : await getTmdbMovieDetails(it.tmdb_id);
-          if (d?.genres?.some(g => String(g.id) == String(genre))) filtered.push(it);
-        }catch(_){}
-      }
-      finalItems = filtered;
-    }
-
-    res.json({ total, page: pageNum, pageSize: limit, items: finalItems });
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    res.json({ total, totalPages, page: pageNum, pageSize: limit, items: enriched });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo' });
@@ -756,52 +841,71 @@ app.get('/api/movies', async (req, res) => {
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const count = await new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) as c FROM movies ${whereSql}`, params, (err, row) => {
-        if (err) return reject(err);
-        resolve(row.c);
-      });
-    });
 
+    // For correctness (genre/actor filters), we build the filtered list first and then paginate.
+    // We lazily cache genre_ids in SQLite to avoid repeated TMDB lookups.
     const limit = Math.min(parseInt(pageSize), 60) || 24;
-    const offset = (Math.max(parseInt(page), 1) - 1) * limit;
+    const pageNum = Math.max(parseInt(page) || 1, 1);
+    const offset = (pageNum - 1) * limit;
 
-    const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, title, year, link FROM movies ${whereSql} LIMIT ? OFFSET ?`, [...params, limit, offset], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows);
-      });
+    const baseRows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${whereSql} ORDER BY datetime(created_at) DESC, rowid DESC`,
+        params,
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        }
+      );
     });
 
-    const details = await Promise.all(rows.map(r => getTmdbMovieDetails(r.tmdb_id)));
-
-    let items = rows.map((r, i) => ({
-      ...r,
-      type: 'movie',
-      poster_path: details[i]?.poster_path || null,
-      backdrop_path: details[i]?.backdrop_path || null,
-      _details: details[i] || null
-    }));
-
+    let actorIds = null;
     if (actor) {
       const person = await tmdbSearchPersonByName(actor);
       if (person) {
         const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
         const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-        const ids = new Set((data.cast || []).concat(data.crew || []).map(m => m.id));
-        items = items.filter(it => ids.has(it.tmdb_id));
+        actorIds = new Set((data.cast || []).concat(data.crew || []).map(m => m && m.id).filter(Boolean));
       } else {
-        items = [];
+        actorIds = new Set();
       }
     }
 
-    if (genre) {
-      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
+    const wantedGenre = genre ? String(genre) : '';
+    const matched = [];
+    for (const r of baseRows) {
+      if (actorIds && !actorIds.has(Number(r.tmdb_id))) continue;
+
+      if (wantedGenre) {
+        const { genre_ids } = await ensureGenreIdsForRow({ ...r, type: 'movie' });
+        if (!String(genre_ids || '').includes(`,${wantedGenre},`)) continue;
+      }
+      matched.push(r);
     }
 
-    items = items.map(({ _details, ...rest }) => rest);
+    const total = matched.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const slice = matched.slice(offset, offset + limit);
 
-    res.json({ total: count, page: Number(page), pageSize: limit, items });
+    // Enrich with poster_path (cached)
+    const items = await Promise.all(slice.map(async (r) => {
+      try{
+        const meta = await getMovieMetaFast(r.tmdb_id);
+        return {
+          tmdb_id: r.tmdb_id,
+          title: r.title,
+          year: r.year,
+          link: r.link,
+          type: 'movie',
+          poster_path: meta.poster_path,
+          backdrop_path: meta.backdrop_path,
+        };
+      }catch(_){
+        return { tmdb_id: r.tmdb_id, title: r.title, year: r.year, link: r.link, type:'movie', poster_path:null, backdrop_path:null };
+      }
+    }));
+
+    res.json({ total, totalPages, page: pageNum, pageSize: limit, items });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
@@ -1039,11 +1143,16 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
       if (!tv_id) return res.status(400).json({ error: 'Falta tmdbId o title para series' });
 
       await new Promise((resolve, reject)=>{
-        const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link) VALUES (?, ?, ?, ?)';
-        db.run(sql, [ tv_id, realName || '', realYear || null, normalizeLink(link) ], (err)=> err?reject(err):resolve());
+        const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, genre_ids) VALUES (?, ?, ?, ?, ?)';
+        // attempt to store genres from TMDB (best-effort)
+        db.run(sql, [ tv_id, realName || '', realYear || null, normalizeLink(link), null ], (err)=> err?reject(err):resolve());
       });
 
       const d = await getTmdbTvDetails(tv_id);
+      try{
+        const enc = encodeGenreIds(d?.genres || []);
+        db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], ()=>{});
+      }catch(_){ }
       return res.json({ ok:true, type:'tv', tmdb_id: tv_id, title: d.name, year: realYear });
     }
 
@@ -1063,14 +1172,18 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
     if (!tmdb_id) return res.status(400).json({ error: 'Falta tmdbId o title' });
 
     await new Promise((resolve, reject) => {
-      const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)';
-      db.run(sql, [ tmdb_id, realTitle || '', realYear || null, normalizeLink(link) ], (err) => {
+      const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, genre_ids) VALUES (?, ?, ?, ?, ?)';
+      db.run(sql, [ tmdb_id, realTitle || '', realYear || null, normalizeLink(link), null ], (err) => {
         if (err) return reject(err);
         resolve();
       });
     });
 
     const d = await getTmdbMovieDetails(tmdb_id);
+    try{
+      const enc = encodeGenreIds(d?.genres || []);
+      db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, tmdb_id], ()=>{});
+    }catch(_){ }
     res.json({ ok: true, type:'movie', tmdb_id, title: d.title, year: realYear });
   } catch (e) {
     console.error(e);
@@ -1106,11 +1219,22 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
           continue;
         }
         await new Promise((resolve, reject) => {
-          db.run('INSERT OR REPLACE INTO movies (tmdb_id, title, year, link) VALUES (?, ?, ?, ?)', [m.id, m.title, t.year, t.link], function (err) {
-            if (err) return reject(err);
-            resolve();
-          });
+          db.run(
+            'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, genre_ids) VALUES (?, ?, ?, ?, ?)',
+            [m.id, m.title, t.year, t.link, null],
+            function (err) {
+              if (err) return reject(err);
+              resolve();
+            }
+          );
         });
+
+        // Store genres best-effort (so category filter works immediately)
+        try{
+          const meta = await getMovieMetaFast(m.id);
+          const enc = encodeGenreIds(meta.genres);
+          db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, m.id], ()=>{});
+        }catch(_){ }
         out.push({ tmdb_id: m.id, title: m.title, year: t.year });
       } catch (e) {
         console.error('Import error', t, e.message);

@@ -21,7 +21,8 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 
 // Explore state (grid)
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', letter: '' };
-state.clientGenreItems = null; // (kept for compatibility with genre aggregator)
+state.genres = [];
+state.clientGenreItems = null; // legacy (no longer used)
 state.totalPages = 1;
 
 // Current modal context (used to track "reproducir" as a real view)
@@ -157,8 +158,40 @@ function enableDragScroll(scroller){
 async function fetchGenres(){
   const res = await fetch('/api/genres');
   const data = await res.json();
-  const sel = el('genre');
-  sel.innerHTML = '<option value="">Todos los géneros</option>' + data.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  state.genres = Array.isArray(data) ? data : [];
+  buildGenreMenu();
+}
+
+function buildGenreMenu(){
+  const menu = el('genreMenu');
+  if (!menu) return;
+
+  const items = [{ id: '', name: 'Todas las categorías' }, ...(state.genres || [])];
+  menu.innerHTML = `
+    <input id="genreSearch" class="menu-search" type="search" placeholder="Buscar categoría…" />
+    <div class="menu-divider"></div>
+    <div id="genreItems"></div>
+  `;
+
+  const itemsWrap = menu.querySelector('#genreItems');
+  const search = menu.querySelector('#genreSearch');
+
+  function render(filterText){
+    const ft = String(filterText || '').trim().toLowerCase();
+    const visible = items.filter(g => {
+      if (!ft) return true;
+      return String(g.name || '').toLowerCase().includes(ft);
+    });
+    itemsWrap.innerHTML = visible.map(g => {
+      const active = String(state.genre || '') === String(g.id || '');
+      return `<button type="button" class="menu-item ${active ? 'active' : ''}" data-genre="${esc(g.id)}" role="menuitem">${esc(g.name)}</button>`;
+    }).join('');
+  }
+
+  render('');
+  if (search){
+    search.addEventListener('input', ()=> render(search.value));
+  }
 }
 
 // Aggregate across catalog pages optionally filtering by type on client side
@@ -290,31 +323,7 @@ async function loadExplore(){
     return;
   }
 
-  // Client-side paginated render from aggregated list (genre mode)
-  if (state.clientGenreItems && Array.isArray(state.clientGenreItems)){
-    const start = (state.page - 1) * state.pageSize;
-    const end = start + state.pageSize;
-    const slice = state.clientGenreItems.slice(start, end).filter(item => (item?.type || 'movie') !== 'tv');
-
-    grid.innerHTML = slice.map(item => `
-      <div class="card" data-id="${item.tmdb_id}" data-type="movie">
-        <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
-        <div class="meta">
-          <div class="title">${esc(item.title)}</div>
-          <div class="year">${item.year || ''}</div>
-        </div>
-      </div>
-    `).join('');
-
-    grid.querySelectorAll('.card').forEach(elc => {
-      elc.addEventListener('click', () => openDetails(elc.dataset.id, elc.dataset.type));
-    });
-
-    const totalPages = Math.max(1, Math.ceil(state.clientGenreItems.length / state.pageSize));
-    state.totalPages = totalPages;
-    if (pageInfo) pageInfo.textContent = `Página ${state.page} de ${totalPages} · ${state.clientGenreItems.length} resultados`;
-    return;
-  }
+  // (legacy client-side genre mode removed: now server-side for correctness)
 
   const params = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
   if (state.q) params.set('q', state.q);
@@ -349,8 +358,21 @@ async function loadExplore(){
     elc.addEventListener('click', () => openDetails(elc.dataset.id, elc.dataset.type));
   });
 
-  if (pageInfo) pageInfo.textContent = `Página ${data.page || state.page}`;
-  state.totalPages = 9999; // unknown in this mode (keep Next enabled)
+  const total = Number(data.total || 0);
+  const totalPages = Math.max(1, Number(data.totalPages) || Math.ceil(total / state.pageSize) || 1);
+  state.totalPages = totalPages;
+  state.page = Math.min(Math.max(1, Number(data.page) || state.page), totalPages);
+  if (pageInfo){
+    const parts = [];
+    if (state.genre){
+      const g = (state.genres || []).find(x => String(x.id) === String(state.genre));
+      parts.push(g ? `Categoría: ${g.name}` : 'Categoría');
+    }
+    if (state.q) parts.push(`Búsqueda: “${state.q}”`);
+    if (state.actor) parts.push(`Actor: ${state.actor}`);
+    const prefix = parts.length ? (parts.join(' · ') + ' · ') : '';
+    pageInfo.textContent = `${prefix}Página ${state.page} de ${totalPages} · ${total} resultados`;
+  }
 }
 
 function buildLetterMenu(){
@@ -372,10 +394,10 @@ function setLetterFilter(letter){
   state.clientGenreItems = null;
   const q = el('q');
   const actor = el('actor');
-  const genre = el('genre');
   if (q) q.value = '';
   if (actor) actor.value = '';
-  if (genre) genre.value = '';
+  const gbtn = el('genreBtn');
+  if (gbtn) gbtn.textContent = 'Categorías';
   if (btn){
     btn.textContent = state.letter ? `Filtrar letra: ${state.letter}` : 'Filtrar letra';
   }
@@ -440,17 +462,18 @@ function wireEvents(){
 
   const q = el('q');
   const actor = el('actor');
-  const genre = el('genre');
+  const genreBtn = el('genreBtn');
+  const genreMenu = el('genreMenu');
 
   el('searchBtn').addEventListener('click', ()=>{
     state.page = 1;
     state.q = q.value.trim();
     state.actor = actor.value.trim();
-    state.genre = genre.value;
+    // state.genre is managed by the Categorías dropdown
     state.letter = '';
     state.pageSize = 24;
     state.clientGenreItems = null;
-    state.totalPages = 9999;
+    state.totalPages = 1;
     const lbtn2 = el('letterFilterBtn');
     if (lbtn2) lbtn2.textContent = 'Filtrar letra';
     // Scroll to Explore on search
@@ -459,8 +482,11 @@ function wireEvents(){
   });
 
   el('resetBtn').addEventListener('click', ()=>{
+    const keepGenres = state.genres || [];
     state = { page:1, pageSize:24, q:'', actor:'', genre:'', letter:'', clientGenreItems: null, totalPages: 1 };
-    q.value=''; actor.value=''; genre.value='';
+    state.genres = keepGenres;
+    q.value=''; actor.value='';
+    if (genreBtn) genreBtn.textContent = 'Categorías';
     const lbtn = el('letterFilterBtn');
     if (lbtn) lbtn.textContent = 'Filtrar letra';
     loadTopRow();
@@ -514,25 +540,49 @@ function wireEvents(){
   });
   document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeLetterMenu(); });
 
-  // Genre change: keep previous smart behavior
-  genre.addEventListener('change', async (e)=>{
-    state.page = 1;
-    state.letter = '';
-    state.pageSize = 24;
-    const val = (e && e.target && e.target.value) || '';
-    if (val){
-      el('pageInfo').textContent = 'Cargando…';
-      state.clientGenreItems = await fetchAllPagesWithOptionalFilters({ genreId: val });
-      state.genre = val;
-    } else {
-      state.clientGenreItems = null;
-      state.genre = '';
+  // Categorías dropdown (TMDB genres)
+  function closeGenreMenu(){
+    if (!genreMenu || !genreBtn) return;
+    genreMenu.classList.remove('open');
+    genreBtn.setAttribute('aria-expanded', 'false');
+  }
+  function toggleGenreMenu(){
+    if (!genreMenu || !genreBtn) return;
+    const open = !genreMenu.classList.contains('open');
+    genreMenu.classList.toggle('open', open);
+    genreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open){
+      const s = genreMenu.querySelector('#genreSearch');
+      setTimeout(()=>{ try{ s && s.focus(); }catch(_){ } }, 0);
     }
-    const lbtn3 = el('letterFilterBtn');
-    if (lbtn3) lbtn3.textContent = 'Filtrar letra';
-    try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
-    loadExplore();
+  }
+  if (genreBtn){
+    genreBtn.addEventListener('click', (e)=>{ e.preventDefault(); toggleGenreMenu(); });
+  }
+  if (genreMenu){
+    genreMenu.addEventListener('click', (e)=>{
+      const b = e.target?.closest?.('.menu-item');
+      if (!b) return;
+      const val = b.dataset.genre || '';
+      state.page = 1;
+      state.pageSize = 24;
+      state.letter = '';
+      state.clientGenreItems = null;
+      state.genre = val;
+      const g = (state.genres || []).find(x => String(x.id) === String(val));
+      if (genreBtn) genreBtn.textContent = val ? `Categorías: ${g ? g.name : 'Seleccionada'}` : 'Categorías';
+      const lbtn3 = el('letterFilterBtn');
+      if (lbtn3) lbtn3.textContent = 'Filtrar letra';
+      closeGenreMenu();
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
+  document.addEventListener('click', (e)=>{
+    if (!genreMenu || !genreBtn) return;
+    if (genreMenu.classList.contains('open') && !genreMenu.contains(e.target) && !genreBtn.contains(e.target)) closeGenreMenu();
   });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeGenreMenu(); });
 
   // Enter-to-search helper
   function onEnter(e){

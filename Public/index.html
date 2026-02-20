@@ -18,7 +18,10 @@
         <div class="searchbar">
           <input id="q" placeholder="Buscar por título..." />
           <input id="actor" placeholder="Actor/actriz" />
-          <select id="genre"></select>
+          <div class="genre-wrap">
+            <button id="genreBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Categorías</button>
+            <div id="genreMenu" class="dropdown-menu" role="menu" aria-label="Categorías"></div>
+          </div>
           <button id="searchBtn">Buscar</button>
           <button id="resetBtn" class="ghost">Inicio</button>
         </div>
