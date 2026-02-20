@@ -66,7 +66,15 @@
       <section class="row-section" id="rowExplore">
         <div class="row-head">
           <h3>Explorar catálogo</h3>
-          <small class="mute" id="pageInfo"></small>
+          <div class="row-tools">
+            <small class="mute" id="pageInfo"></small>
+            <div class="filter-wrap">
+              <button id="letterFilterBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Filtrar letra</button>
+              <div id="letterMenu" class="letter-menu" role="menu" aria-label="Filtrar por letra">
+                <!-- Buttons injected by app.js -->
+              </div>
+            </div>
+          </div>
         </div>
         <div id="grid" class="grid"></div>
         <div class="pagination">

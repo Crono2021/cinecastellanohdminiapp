@@ -24,6 +24,25 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
 const PORT = process.env.PORT || 3000;
 
+// --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
+function normalizeForLetters(input){
+  // Remove accent marks, but keep Ñ/ñ as a distinct letter.
+  let s = String(input || '').trim();
+  if (!s) return '';
+  s = s.replace(/ñ/g, '__ENYE__').replace(/Ñ/g, '__ENYE__');
+  s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  s = s.replace(/__ENYE__/g, 'Ñ');
+  return s.toUpperCase();
+}
+
+function firstBucketLetter(title){
+  const t = normalizeForLetters(title);
+  if (!t) return '#';
+  const ch = t[0];
+  // A-Z -> that letter, everything else -> '#'
+  return (ch >= 'A' && ch <= 'Z') ? ch : '#';
+}
+
 if (!TMDB_API_KEY) {
   console.warn('[AVISO] TMDB_API_KEY no está definido. Ponlo en .env');
 }
@@ -588,6 +607,71 @@ app.get('/api/catalog', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo' });
+  }
+});
+
+// GET /api/catalog/by-letter?letter=A|B|...|Z|#&page=1&pageSize=30
+// Returns ONLY movies, sorted alphabetically (accent-insensitive).
+app.get('/api/catalog/by-letter', async (req, res) => {
+  const key = req.originalUrl;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+
+  const _json = res.json.bind(res);
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+
+  try{
+    const letterRaw = String(req.query.letter || '').trim();
+    const letter = (letterRaw === '#' ? '#' : normalizeForLetters(letterRaw).slice(0,1));
+    const pageNum = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(parseInt(req.query.pageSize) || 30, 100);
+
+    // Load minimal movie fields (fast), then filter/sort in JS.
+    const rows = await new Promise((resolve, reject) => {
+      db.all('SELECT tmdb_id, title, year, link, created_at FROM movies', [], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    const filtered = rows.filter(r => {
+      const b = firstBucketLetter(r.title);
+      return letter === '#' ? b === '#' : b === letter;
+    });
+
+    // Alphabetical sort by normalized title (accent-insensitive), then year, then tmdb_id.
+    filtered.sort((a,b) => {
+      const na = normalizeForLetters(a.title);
+      const nb = normalizeForLetters(b.title);
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      const ya = Number(a.year) || 0;
+      const yb = Number(b.year) || 0;
+      if (ya !== yb) return ya - yb;
+      return (a.tmdb_id||0) - (b.tmdb_id||0);
+    });
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(pageNum, totalPages);
+
+    const startIdx = (safePage - 1) * limit;
+    const pageItems = filtered.slice(startIdx, startIdx + limit);
+
+    // Enrich posters only for the current page.
+    const enriched = await Promise.all(pageItems.map(async (it) => {
+      try{
+        const d = await getTmdbMovieDetails(it.tmdb_id);
+        return { type: 'movie', ...it, poster_path: d?.poster_path || null };
+      }catch(_){
+        return { type: 'movie', ...it, poster_path: null };
+      }
+    }));
+
+    res.json({ total, page: safePage, pageSize: limit, totalPages, letter, items: enriched });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo filtrar el catálogo por letra' });
   }
 });
 

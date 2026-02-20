@@ -181,6 +181,30 @@ header{background:#0b0c10cc}
 .row-section{margin-top:18px}
 .row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px}
 .row-head h3{margin:0;font-size:1.1rem}
+
+/* Right-side tools (page info + letter filter) */
+.row-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.filter-wrap{position:relative;display:inline-flex}
+
+/* Letter dropdown */
+.letter-menu{display:none;position:absolute;right:0;top:calc(100% + 8px);
+  width:190px;max-height:70vh;overflow:auto;
+  background:#12131a;border:1px solid #2a2c37;border-radius:14px;
+  padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.45);z-index:40;}
+.letter-menu.open{display:block;}
+.letter-menu .letter-item{width:100%;display:block;text-align:left;
+  padding:10px 12px;margin:0;border-radius:12px;
+  background:transparent;border:1px solid transparent;color:inherit;
+  font-weight:700;}
+.letter-menu .letter-item:hover{background:#171823;border-color:#2a2c37;}
+.letter-menu .letter-item.active{background:#1a1b26;border-color:#3a3c49;}
+
+@media (max-width:760px){
+  .row-head{align-items:flex-start}
+  .row-tools{width:100%;justify-content:space-between}
+  /* On mobile, make the dropdown feel like a tidy vertical column */
+  .letter-menu{position:fixed;left:12px;right:12px;top:92px;width:auto;max-height:72vh;}
+}
 .row-ctrl{display:flex;gap:8px}
 .row-btn{width:38px;height:34px;padding:0;border-radius:12px;background:#12131a;border:1px solid #2a2c37;box-shadow:none}
 .row-btn:hover{transform:translateY(-1px)}
