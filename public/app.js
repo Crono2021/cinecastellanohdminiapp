@@ -23,6 +23,9 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 state.clientGenreItems = null; // (kept for compatibility with genre aggregator)
 
+// Current modal context (used to track "reproducir" as a real view)
+let currentDetail = { id: null, type: 'movie' };
+
 // --- "Más vistas hoy" (global, server-side) ---
 function trackView(id, type){
   // Fire & forget (shared by all users)
@@ -71,12 +74,16 @@ function renderRow(container, items, { top10 = false } = {}){
   // Avoid native image drag on desktop
   container.querySelectorAll('img').forEach(img => img.setAttribute('draggable','false'));
 
-  container.querySelectorAll('.row-card').forEach(card => {
-    card.addEventListener('click', () => {
+  // Click handling via event delegation (works even when the scroller is handling pointer events)
+  if (!container.__rowClickBound){
+    container.__rowClickBound = true;
+    container.addEventListener('click', (e) => {
       if (container.__justDragged) return;
+      const card = e.target?.closest?.('.row-card');
+      if (!card || !container.contains(card)) return;
       openDetails(card.dataset.id, card.dataset.type);
     });
-  });
+  }
 }
 
 function wireRowButtons(){
@@ -110,7 +117,6 @@ function enableDragScroll(scroller){
     moved = 0;
     startX = e.clientX;
     startLeft = scroller.scrollLeft;
-    scroller.setPointerCapture?.(e.pointerId);
     scroller.classList.add('dragging');
   }
 
@@ -326,10 +332,9 @@ async function loadExplore(){
 
 // --- Modal details ---
 async function openDetails(id, type){
-  // Track view as soon as the user opens the ficha
-  trackView(id, type);
-  // Refresh Top row (fast enough)
-  try{ loadTopRow(); }catch(_){ }
+  // Opening the ficha should NOT count as a view.
+  // We only count a view when the user presses "Reproducir".
+  currentDetail = { id: String(id), type: type || 'movie' };
 
   const res = await fetch(type==='tv' ? `/api/tv/${id}` : `/api/movie/${id}`);
   const d = await res.json();
@@ -360,6 +365,18 @@ function closeModal(){ el('modal').classList.remove('open'); }
 function wireEvents(){
   el('closeModal').addEventListener('click', closeModal);
   el('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
+
+  // Count a "view" only when the user clicks "Reproducir"
+  const watch = el('watchLink');
+  if (watch && !watch.__trackBound){
+    watch.__trackBound = true;
+    watch.addEventListener('click', () => {
+      if (!currentDetail?.id) return;
+      trackView(currentDetail.id, currentDetail.type);
+      // Refresh the Top row shortly after the play is recorded
+      setTimeout(() => { try{ loadTopRow(); }catch(_){ } }, 250);
+    });
+  }
 
   const q = el('q');
   const actor = el('actor');
