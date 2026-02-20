@@ -214,6 +214,34 @@ async function tmdbGetMovieDetails(tmdbId) {
   };
 }
 
+// Movie details + credits + release_dates (single request via append_to_response)
+async function tmdbGetMovieDetailsWithReleaseDates(tmdbId){
+  const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
+  const { data: d } = await axios.get(url, {
+    params: {
+      api_key: TMDB_API_KEY,
+      language: 'es-ES',
+      append_to_response: 'credits,release_dates'
+    }
+  });
+  const c = d.credits || {};
+  return {
+    id: d.id,
+    title: d.title,
+    original_title: d.original_title,
+    overview: d.overview,
+    poster_path: d.poster_path,
+    backdrop_path: d.backdrop_path,
+    release_date: d.release_date,
+    genres: d.genres,
+    runtime: d.runtime,
+    vote_average: d.vote_average,
+    cast: (c.cast || []).slice(0, 10),
+    crew: (c.crew || []).slice(0, 10),
+    release_dates: d.release_dates || null,
+  };
+}
+
 let _genresCache = { data: null, ts: 0 };
 async function tmdbGetGenres() {
   const now = Date.now();
@@ -809,8 +837,9 @@ async function getTmdbMovieDetails(tmdbId){
 
 
 // GET /api/estrenos?limit=30
-// Devuelve SOLO películas del catálogo que hayan tenido estreno (cine) en España (ES) en los últimos 365 días,
-// ordenadas por la fecha regional de estreno (desc).
+// Devuelve SOLO películas del catálogo que hayan tenido estreno (cine) en España (ES) en los últimos 365 días.
+// Importante: se ordenan por *añadidas al catálogo* (created_at desc) para que los estrenos recién añadidos
+// no queden atrás.
 app.get('/api/estrenos', async (req, res) => {
   const key = req.originalUrl;
   const cached = mcGet(key);
@@ -821,62 +850,68 @@ app.get('/api/estrenos', async (req, res) => {
   try{
     const limit = Math.min(parseInt(req.query.limit) || 30, 60);
 
-    // Todas las películas disponibles en el catálogo (con link)
-    const catalogIds = await new Promise((resolve, reject) => {
-      db.all(`SELECT tmdb_id, link, created_at FROM movies`, [], (err, rows) => {
-        if (err) return reject(err);
-        const map = new Map();
-        (rows||[]).forEach(r => map.set(Number(r.tmdb_id), { link: r.link, created_at: r.created_at }));
-        resolve(map);
-      });
+    // Cogemos una ventana de películas añadidas recientemente (por si hay muchas entradas)
+    // y filtramos por estrenos en ES en el último año.
+    const recentCatalog = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT tmdb_id, link, created_at FROM movies ORDER BY datetime(created_at) DESC LIMIT 500`,
+        [],
+        (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        }
+      );
     });
 
     const today = new Date();
     const lte = ymdLocal(today);
     const from = new Date(today.getTime() - 365*24*60*60*1000);
     const gte = ymdLocal(from);
+    const gteTs = new Date(gte + 'T00:00:00').getTime();
+    const lteTs = new Date(lte + 'T23:59:59').getTime();
+
+    function pickSpainTheatricalDate(releaseDatesObj){
+      try{
+        const results = releaseDatesObj?.results || [];
+        const es = results.find(x => x && x.iso_3166_1 === 'ES');
+        const dates = (es?.release_dates || [])
+          .filter(x => x && (x.type === 3) && x.release_date)
+          .map(x => String(x.release_date).slice(0,10));
+        if (!dates.length) return null;
+        // fecha de estreno (primera fecha de estreno en cines)
+        dates.sort();
+        return dates[0];
+      }catch(_){
+        return null;
+      }
+    }
 
     const collected = [];
-    let page = 1;
+    for (const row of recentCatalog){
+      if (collected.length >= limit) break;
+      const id = Number(row.tmdb_id);
+      if (!id) continue;
 
-    // Recorremos páginas de TMDB Discover (región ES + estreno en cines) y nos quedamos con los que existen en nuestro catálogo
-    while (collected.length < limit && page <= 8){
-      const data = await tmdbDiscoverMovies({
-        page,
-        region: 'ES',
-        sort_by: 'release_date.desc',
-        'release_date.gte': gte,
-        'release_date.lte': lte,
-        with_release_type: 3, // theatrical
-        include_adult: false,
+      // Detalles + release_dates en una sola llamada
+      const meta = await tmdbGetMovieDetailsWithReleaseDates(id);
+      const estreno_es = pickSpainTheatricalDate(meta.release_dates) || (meta.release_date ? String(meta.release_date).slice(0,10) : null);
+      if (!estreno_es) continue;
+      const ts = new Date(estreno_es + 'T00:00:00').getTime();
+      if (!(ts >= gteTs && ts <= lteTs)) continue;
+
+      collected.push({
+        type: 'movie',
+        tmdb_id: id,
+        id,
+        title: meta.title,
+        year: (meta.release_date || '').slice(0,4) ? Number(String(meta.release_date).slice(0,4)) : null,
+        poster_path: meta.poster_path,
+        overview: meta.overview,
+        cast: (meta.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character })),
+        link: row.link,
+        estreno_es,
+        created_at: row.created_at,
       });
-
-      const results = (data && data.results) ? data.results : [];
-      if (!results.length) break;
-
-      for (const r of results){
-        const id = Number(r.id);
-        if (!catalogIds.has(id)) continue;
-
-        // Enriquecemos con detalles/credits (para tener poster/overview/cast en la ficha)
-        const meta = await getTmdbMovieDetails(id);
-        collected.push({
-          type: 'movie',
-          tmdb_id: id,
-          id,
-          title: meta.title || r.title,
-          year: (meta.release_date || r.release_date || '').slice(0,4) ? Number((meta.release_date || r.release_date).slice(0,4)) : null,
-          poster_path: meta.poster_path || r.poster_path,
-          overview: meta.overview || r.overview,
-          cast: meta.cast || [],
-          link: catalogIds.get(id).link,
-          estreno_es: r.release_date || meta.release_date || null,
-        });
-
-        if (collected.length >= limit) break;
-      }
-
-      page += 1;
     }
 
     res.json({ items: collected, gte, lte });
