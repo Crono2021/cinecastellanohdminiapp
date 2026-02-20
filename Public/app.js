@@ -20,7 +20,8 @@ function toWatchUrl(link){
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
 // Explore state (grid)
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', letter: '' };
+// "random" is used for the Home explore grid so users see new titles every time.
+let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', letter: '', random: true };
 state.genres = [];
 state.clientGenreItems = null; // legacy (no longer used)
 state.totalPages = 1;
@@ -288,6 +289,9 @@ async function loadExplore(){
   const pageInfo = el('pageInfo');
   const grid = el('grid');
 
+  // Show/hide carousels depending on filters
+  updateHomeVisibility();
+
   // Immediate feedback so the UI doesn't look "stuck"
   if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (grid) grid.innerHTML = '';
@@ -333,6 +337,12 @@ async function loadExplore(){
   if (state.q) params.set('q', state.q);
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
+
+  // Home: show random movies by default so the grid always feels fresh
+  const isHomeNoFilters = !state.q && !state.actor && !state.genre && !state.letter;
+  if (isHomeNoFilters && state.random){
+    params.set('random', '1');
+  }
 
   const endpoint = (state.actor && !state.clientGenreItems)
     ? (function(){
@@ -390,9 +400,15 @@ async function loadExplore(){
 function buildLetterMenu(){
   const menu = el('letterMenu');
   if (!menu) return;
-  const letters = ['#'];
+  // "Todas" clears the letter filter and returns to the general catalog.
+  const letters = [''];
+  // # bucket for titles that start with numbers/symbols
+  letters.push('#');
   for (let i=65;i<=90;i++) letters.push(String.fromCharCode(i));
-  menu.innerHTML = letters.map(ch => `<button class="letter-item" type="button" data-letter="${ch}" role="menuitem">${ch}</button>`).join('');
+  menu.innerHTML = letters.map(ch => {
+    const label = ch === '' ? 'Todas' : ch;
+    return `<button class="letter-item" type="button" data-letter="${ch}" role="menuitem">${label}</button>`;
+  }).join('');
 }
 
 function setLetterFilter(letter){
@@ -400,6 +416,8 @@ function setLetterFilter(letter){
   state.letter = String(letter || '').trim();
   state.page = 1;
   state.pageSize = 30;
+  // If user picks "Todas", return to Home-style explore (random titles)
+  state.random = state.letter ? false : true;
   state.q = '';
   state.actor = '';
   state.genre = '';
@@ -421,6 +439,17 @@ function setLetterFilter(letter){
     });
   }
   loadExplore();
+}
+
+function updateHomeVisibility(){
+  const hasFilter = !!(state.genre || state.letter || state.q || state.actor);
+  const show = !hasFilter;
+  const top = el('rowTop');
+  const prem = el('rowPremieres');
+  const rec = el('rowRecent');
+  if (top) top.style.display = show ? '' : 'none';
+  if (prem) prem.style.display = show ? '' : 'none';
+  if (rec) rec.style.display = show ? '' : 'none';
 }
 
 // --- Modal details ---
@@ -483,6 +512,7 @@ function wireEvents(){
     state.actor = actor.value.trim();
     // state.genre is managed by the Categorías dropdown
     state.letter = '';
+    state.random = false;
     state.pageSize = 24;
     state.clientGenreItems = null;
     state.totalPages = 1;
@@ -495,7 +525,7 @@ function wireEvents(){
 
   el('resetBtn').addEventListener('click', ()=>{
     const keepGenres = state.genres || [];
-    state = { page:1, pageSize:24, q:'', actor:'', genre:'', letter:'', clientGenreItems: null, totalPages: 1 };
+    state = { page:1, pageSize:24, q:'', actor:'', genre:'', letter:'', random: true, clientGenreItems: null, totalPages: 1 };
     state.genres = keepGenres;
     q.value=''; actor.value='';
     if (genreBtn) genreBtn.textContent = 'Categorías';
@@ -581,6 +611,7 @@ function wireEvents(){
       state.letter = '';
       state.clientGenreItems = null;
       state.genre = val;
+      state.random = val ? false : true;
       const g = (state.genres || []).find(x => String(x.id) === String(val));
       if (genreBtn) genreBtn.textContent = val ? `Categorías: ${g ? g.name : 'Seleccionada'}` : 'Categorías';
       const lbtn3 = el('letterFilterBtn');

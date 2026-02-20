@@ -900,7 +900,7 @@ app.get('/api/series', async (req, res) => {
 
 app.get('/api/movies', async (req, res) => {
   try {
-    const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
+    const { q, genre, actor, random, page = 1, pageSize = 24 } = req.query;
 
     let where = [];
     let params = [];
@@ -931,9 +931,13 @@ app.get('/api/movies', async (req, res) => {
       );
     });
 
+    const orderSql = String(random || '') === '1'
+      ? 'ORDER BY RANDOM()'
+      : 'ORDER BY datetime(created_at) DESC, rowid DESC';
+
     const baseRows = await new Promise((resolve, reject) => {
       db.all(
-        `SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${whereSql} ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?`,
+        `SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${whereSql} ${orderSql} LIMIT ? OFFSET ?`,
         [...params, limit, offset],
         (err, rows) => {
           if (err) return reject(err);
