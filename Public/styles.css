@@ -160,7 +160,7 @@ footer{border-top:1px solid #222;color:#aaa}
 header{background:#0b0c10cc}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .brand{display:flex;flex-direction:column;gap:2px}
-.logo{font-weight:900;letter-spacing:.6px;font-size:1.05rem;color:#e50914}
+.logo{font-weight:900;letter-spacing:.6px;font-size:1.05rem;color:#fff}
 .tag{font-size:.75rem;opacity:.7}
 
 .searchbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -211,6 +211,9 @@ header{background:#0b0c10cc}
 
 @media (max-width:760px){
   .searchbar input{min-width:140px}
+  /* En móvil: título + actor en la misma fila */
+  .searchbar #q,
+  .searchbar #actor{flex:1 1 calc(50% - 6px); min-width:0}
   .hero h1{font-size:1.35rem}
   .row-poster{width:132px}
   .row-meta{max-width:132px}
