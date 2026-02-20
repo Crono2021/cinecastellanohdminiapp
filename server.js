@@ -5,6 +5,9 @@ const sqlite3 = require('sqlite3').verbose();
 const axios = require('axios');
 const helmet = require('helmet');
 const cors = require('cors');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const app = express();
@@ -14,6 +17,18 @@ const microCache = new Map();
 const MC_TTL_MS = 60 * 1000; // 60s
 function mcGet(key){ const v = microCache.get(key); if(!v) return null; if(Date.now()-v.t>MC_TTL_MS){ microCache.delete(key); return null;} return v.d; }
 function mcSet(key, data){ microCache.set(key, {t:Date.now(), d:data}); }
+
+// Per-user recommendations cache (kept separate from microCache)
+const recCache = new Map();
+const REC_TTL_MS = 15 * 60 * 1000; // 15 min
+function recGet(userId){
+  const v = recCache.get(String(userId));
+  if (!v) return null;
+  if (Date.now() - v.t > REC_TTL_MS){ recCache.delete(String(userId)); return null; }
+  return v.d;
+}
+function recSet(userId, data){ recCache.set(String(userId), { t: Date.now(), d: data }); }
+function recDel(userId){ try{ recCache.delete(String(userId)); }catch(_){ } }
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -50,6 +65,22 @@ if (!TMDB_API_KEY) {
 // --- DB (persistencia opcional vía DB_PATH) ---
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db.sqlite');
 const db = new sqlite3.Database(DB_PATH);
+
+// --- Auth (sessions) ---
+// For Railway/Reverse proxies: trust proxy so secure cookies work behind HTTPS.
+app.set('trust proxy', 1);
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.sqlite', dir: path.dirname(DB_PATH) }),
+  secret: process.env.SESSION_SECRET || 'cchd-session-secret-cambialo',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days
+  }
+}));
 
 
 
@@ -102,6 +133,26 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date ON views_daily(date)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date_count ON views_daily(date, count)`);
+
+  // --- Users & Ratings ---
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    tmdb_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(user_id, tmdb_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_tmdb ON ratings(tmdb_id)`);
 });
 
 // Lightweight schema migrations for older DBs
@@ -126,6 +177,18 @@ function ymdLocal(d = new Date()){
   const m = String(d.getMonth()+1).padStart(2,'0');
   const day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
+}
+
+function getSessionUser(req){
+  const u = req?.session?.user;
+  if (!u || !u.id) return null;
+  return u;
+}
+
+function requireAuth(req, res, next){
+  const u = getSessionUser(req);
+  if (!u) return res.status(401).json({ error: 'NO_AUTH' });
+  next();
 }
 
 
@@ -435,6 +498,201 @@ async function tmdbSearchPersonByName(name) {
 
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --------------------
+// Auth
+// --------------------
+app.get('/api/auth/me', (req, res) => {
+  const u = getSessionUser(req);
+  if (!u) return res.json({ ok: true, user: null });
+  res.json({ ok: true, user: { id: u.id, username: u.username } });
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  try{
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'USERNAME_INVALID' });
+    if (password.length < 6 || password.length > 72) return res.status(400).json({ error: 'PASSWORD_INVALID' });
+    const hash = await bcrypt.hash(password, 10);
+    db.run('INSERT INTO users (username, password_hash) VALUES (?, ?)', [username, hash], function(err){
+      if (err){
+        if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: 'USERNAME_TAKEN' });
+        return res.status(500).json({ error: 'DB_ERROR' });
+      }
+      req.session.user = { id: this.lastID, username };
+      res.json({ ok: true, user: { id: this.lastID, username } });
+    });
+  }catch(_){
+    res.status(500).json({ error: 'SERVER_ERROR' });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  if (!username || !password) return res.status(400).json({ error: 'BAD_REQUEST' });
+  db.get('SELECT id, username, password_hash FROM users WHERE username = ?', [username], async (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    if (!row) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    try{
+      const ok = await bcrypt.compare(password, row.password_hash);
+      if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+      req.session.user = { id: row.id, username: row.username };
+      res.json({ ok: true, user: { id: row.id, username: row.username } });
+    }catch(_){
+      res.status(500).json({ error: 'SERVER_ERROR' });
+    }
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+// --------------------
+// Ratings & Recomendaciones (movies)
+// --------------------
+
+app.get('/api/ratings/:tmdb_id', requireAuth, (req, res) => {
+  const user = getSessionUser(req);
+  const tmdbId = Number(req.params.tmdb_id);
+  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
+  db.get('SELECT rating FROM ratings WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    res.json({ ok: true, rating: row ? Number(row.rating) : null });
+  });
+});
+
+app.post('/api/ratings', requireAuth, (req, res) => {
+  const user = getSessionUser(req);
+  const tmdbId = Number(req.body?.tmdb_id);
+  const rating = Number(req.body?.rating);
+  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
+  if (!Number.isFinite(rating) || rating < 1 || rating > 10) return res.status(400).json({ error: 'BAD_RATING' });
+  const sql = `INSERT INTO ratings (user_id, tmdb_id, rating) VALUES (?, ?, ?)
+               ON CONFLICT(user_id, tmdb_id) DO UPDATE SET rating = excluded.rating, updated_at = datetime('now')`;
+  db.run(sql, [user.id, tmdbId, Math.round(rating)], (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    recDel(user.id);
+    res.json({ ok: true });
+  });
+});
+
+app.delete('/api/ratings/:tmdb_id', requireAuth, (req, res) => {
+  const user = getSessionUser(req);
+  const tmdbId = Number(req.params.tmdb_id);
+  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
+  db.run('DELETE FROM ratings WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    recDel(user.id);
+    res.json({ ok: true });
+  });
+});
+
+app.get('/api/my-ratings', requireAuth, (req, res) => {
+  const user = getSessionUser(req);
+  const page = Math.max(1, parseInt(req.query.page || '1', 10));
+  const pageSize = Math.min(60, Math.max(1, parseInt(req.query.pageSize || '30', 10)));
+  const offset = (page - 1) * pageSize;
+
+  db.get('SELECT COUNT(1) as c FROM ratings WHERE user_id = ?', [user.id], (err, rowCount) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    const total = Number(rowCount?.c || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const sql = `SELECT r.tmdb_id, r.rating, r.updated_at,
+                       m.title as title, m.year as year, m.link as link
+                FROM ratings r
+                LEFT JOIN movies m ON m.tmdb_id = r.tmdb_id
+                WHERE r.user_id = ?
+                ORDER BY r.updated_at DESC
+                LIMIT ? OFFSET ?`;
+    db.all(sql, [user.id, pageSize, offset], async (err2, rows) => {
+      if (err2) return res.status(500).json({ error: 'DB_ERROR' });
+      const out = [];
+      for (const r of (rows||[])){
+        let meta = { poster_path: null };
+        try{ meta = await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        out.push({
+          type: 'movie',
+          tmdb_id: r.tmdb_id,
+          title: r.title || '',
+          year: r.year || null,
+          link: r.link || null,
+          poster_path: meta.poster_path || null,
+          user_rating: Number(r.rating)
+        });
+      }
+      res.json({ ok: true, page, pageSize, totalPages, totalResults: total, results: out });
+    });
+  });
+});
+
+async function fetchTmdbRecommendationsForMovie(tmdbId){
+  const url = `https://api.themoviedb.org/3/movie/${tmdbId}/recommendations`;
+  const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES', page: 1 } });
+  return Array.isArray(data?.results) ? data.results : [];
+}
+
+app.get('/api/recommended', requireAuth, async (req, res) => {
+  const user = getSessionUser(req);
+  const page = Math.max(1, parseInt(req.query.page || '1', 10));
+  const pageSize = Math.min(60, Math.max(1, parseInt(req.query.pageSize || '30', 10)));
+
+  const cached = recGet(user.id);
+  if (cached){
+    const start = (page - 1) * pageSize;
+    const slice = cached.results.slice(start, start + pageSize);
+    const totalPages = Math.max(1, Math.ceil(cached.results.length / pageSize));
+    return res.json({ ok: true, page, pageSize, totalPages, totalResults: cached.results.length, results: slice });
+  }
+
+  try{
+    const rated = await new Promise((resolve) => {
+      db.all('SELECT tmdb_id, rating FROM ratings WHERE user_id = ? AND rating >= 8 ORDER BY updated_at DESC LIMIT 10', [user.id], (e, rows) => resolve(rows || []));
+    });
+    const ratedIds = new Set(rated.map(r => Number(r.tmdb_id)));
+    if (!rated.length) return res.json({ ok:true, page, pageSize, totalPages: 1, totalResults: 0, results: [] });
+
+    const pool = new Map();
+    for (const r of rated.slice(0, 5)){
+      const recs = await fetchTmdbRecommendationsForMovie(r.tmdb_id);
+      for (const it of recs){
+        const id = Number(it?.id);
+        if (!id || ratedIds.has(id)) continue;
+        const base = (it?.popularity || 0) * 0.02 + (it?.vote_average || 0);
+        const bump = Number(r.rating) >= 10 ? 2 : (Number(r.rating) >= 9 ? 1 : 0);
+        const prev = pool.get(id) || 0;
+        pool.set(id, prev + base + bump + 3);
+      }
+    }
+
+    const idsSorted = Array.from(pool.entries()).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+    const results = [];
+    for (const id of idsSorted.slice(0, 240)){
+      try{
+        const d = await getTmdbMovieDetails(id);
+        results.push({
+          type: 'movie',
+          tmdb_id: id,
+          title: d?.title || '',
+          year: d?.release_date ? Number(String(d.release_date).slice(0,4)) : null,
+          link: null,
+          poster_path: d?.poster_path || null
+        });
+      }catch(_){ }
+    }
+
+    recSet(user.id, { results });
+    const start = (page - 1) * pageSize;
+    const slice = results.slice(start, start + pageSize);
+    const totalPages = Math.max(1, Math.ceil(results.length / pageSize));
+    res.json({ ok:true, page, pageSize, totalPages, totalResults: results.length, results: slice });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'RECS_ERROR' });
+  }
+});
 
 // GET /api/genres
 app.get('/api/genres', async (req, res) => {

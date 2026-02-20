@@ -30,6 +30,18 @@ footer{border-top:1px solid #222;color:#aaa}
   .detail{grid-template-columns:1fr}
   .poster-lg{width:100%}
 }
+
+/* --- Auth + rating --- */
+.auth-tabs{ display:flex; gap:8px; margin-bottom:12px; }
+.auth-tabs .tab{ flex:1; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:transparent; color:inherit; }
+.auth-tabs .tab.active{ background:rgba(255,255,255,.10); }
+.auth-form{ display:flex; flex-direction:column; gap:10px; }
+.auth-form input{ padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.25); color:inherit; }
+
+.user-rating{ margin-top:12px; }
+.stars{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 4px; }
+.star{ width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(0,0,0,.25); cursor:pointer; user-select:none; }
+.star.active{ background:rgba(255,255,255,.12); }
 /* Play button overlay on cards */ .card-media{position:relative} .play{position:absolute;right:8px;bottom:8px;border-radius:9999px;padding:10px 12px;border:1px solid #2d7b30;background:#1b5e20;color:#fff;text-decoration:none;font-weight:700} .play:hover{transform:scale(1.05)}
 
 /* ---- Modal scroll fix ---- */

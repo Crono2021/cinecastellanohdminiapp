@@ -24,6 +24,9 @@
           </div>
           <button id="searchBtn">Buscar</button>
           <button id="resetBtn" class="ghost">Inicio</button>
+          <button id="recommendedBtn" class="ghost">Recomendado para ti</button>
+          <button id="myRatingsBtn" class="ghost">Mis valoraciones</button>
+          <button id="authBtn" class="ghost">Entrar</button>
         </div>
       </div>
     </div>
@@ -101,12 +104,41 @@
             <p id="modalOverview"></p>
             <p><small class="mute" id="modalMeta"></small></p>
             <div id="modalGenres"></div>
+
+            <div id="userRatingBox" class="user-rating" style="display:none">
+              <h4>Tu valoración</h4>
+              <div id="starRow" class="stars" aria-label="Valorar del 1 al 10"></div>
+              <small id="ratingHint" class="mute"></small>
+            </div>
+
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
             <p>
               <a id="watchLink" class="link" target="_blank">▶ Reproducir</a>
             </p>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth modal -->
+  <div id="authModal" class="modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <strong id="authTitle">Cuenta</strong>
+        <button id="closeAuth">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-tabs">
+          <button id="tabLogin" class="tab active" type="button">Entrar</button>
+          <button id="tabRegister" class="tab" type="button">Crear cuenta</button>
+        </div>
+        <div class="auth-form">
+          <input id="authUser" placeholder="Usuario" autocomplete="username" />
+          <input id="authPass" placeholder="Contraseña" type="password" autocomplete="current-password" />
+          <button id="authSubmit">Entrar</button>
+          <div><small id="authMsg" class="mute"></small></div>
         </div>
       </div>
     </div>

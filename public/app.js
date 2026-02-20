@@ -21,10 +21,13 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 
 // Explore state (grid)
 // "random" is used for the Home explore grid so users see new titles every time.
-let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '', letter: '', random: true };
+let state = { page: 1, pageSize: 30, q: '', actor: '', genre: '', letter: '', random: true, view: 'home' };
 state.genres = [];
 state.clientGenreItems = null; // legacy (no longer used)
 state.totalPages = 1;
+
+// Auth state
+let auth = { user: null };
 
 // Current modal context (used to track "reproducir" as a real view)
 let currentDetail = { id: null, type: 'movie' };
@@ -52,6 +55,30 @@ async function fetchTopToday(limit = 10){
 // --- UI helpers ---
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+async function apiJson(url, opts){
+  const r = await fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw Object.assign(new Error(j?.error || 'API_ERROR'), { status: r.status, payload: j });
+  return j;
+}
+
+async function refreshMe(){
+  try{
+    const j = await apiJson('/api/auth/me');
+    auth.user = j?.user || null;
+  }catch(_){ auth.user = null; }
+  syncAuthUi();
+}
+
+function syncAuthUi(){
+  const btn = el('authBtn');
+  const my = el('myRatingsBtn');
+  const rec = el('recommendedBtn');
+  if (btn) btn.textContent = auth.user ? `Salir (${auth.user.username})` : 'Entrar';
+  if (my) my.style.display = auth.user ? '' : 'none';
+  if (rec) rec.style.display = auth.user ? '' : 'none';
+}
 
 function renderRow(container, items, { top10 = false } = {}){
   if (!container) return;
@@ -296,6 +323,38 @@ async function loadExplore(){
   if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (grid) grid.innerHTML = '';
 
+  // Special views: Recommended / My Ratings
+  if (state.view === 'recommended' || state.view === 'myratings'){
+    updateHomeVisibility();
+    const params = new URLSearchParams({ page: String(state.page), pageSize: String(state.pageSize || 30) });
+    const endpoint = state.view === 'recommended' ? ('/api/recommended?' + params.toString()) : ('/api/my-ratings?' + params.toString());
+    try{
+      const data = await apiJson(endpoint, { method:'GET', headers: {} });
+      const items = data?.results || [];
+      grid.innerHTML = items.map(item => {
+        const extra = (state.view === 'myratings' && item.user_rating) ? `<div class="year">Tu nota: ${item.user_rating}/10</div>` : `<div class="year">${item.year || ''}</div>`;
+        return `
+          <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+            <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+            <div class="meta">
+              <div class="title">${esc(item.title)}</div>
+              ${extra}
+            </div>
+          </div>
+        `;
+      }).join('');
+      grid.querySelectorAll('.card').forEach(elc => elc.addEventListener('click', () => openDetails(elc.dataset.id, 'movie')));
+      state.totalPages = Math.max(1, Number(data.totalPages) || 1);
+      if (pageInfo){
+        const label = state.view === 'recommended' ? 'Recomendado para ti' : 'Mis valoraciones';
+        pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
+      }
+    }catch(e){
+      if (pageInfo) pageInfo.textContent = 'Error cargando la lista';
+    }
+    return;
+  }
+
   // Letter filter mode (server-side, alphabetic, 30 per page)
   if (state.letter){
     const params = new URLSearchParams({
@@ -416,6 +475,7 @@ function setLetterFilter(letter){
   state.letter = String(letter || '').trim();
   state.page = 1;
   state.pageSize = 30;
+  state.view = 'home';
   // If user picks "Todas", return to Home-style explore (random titles)
   state.random = state.letter ? false : true;
   state.q = '';
@@ -443,13 +503,62 @@ function setLetterFilter(letter){
 
 function updateHomeVisibility(){
   const hasFilter = !!(state.genre || state.letter || state.q || state.actor);
-  const show = !hasFilter;
+  const show = !hasFilter && (state.view === 'home');
   const top = el('rowTop');
   const prem = el('rowPremieres');
   const rec = el('rowRecent');
   if (top) top.style.display = show ? '' : 'none';
   if (prem) prem.style.display = show ? '' : 'none';
   if (rec) rec.style.display = show ? '' : 'none';
+}
+
+function renderStars(current){
+  const starRow = el('starRow');
+  if (!starRow) return;
+  starRow.innerHTML = '';
+  for (let i=1;i<=10;i++){
+    const b = document.createElement('button');
+    b.className = 'star' + (i <= (current||0) ? ' active' : '');
+    b.type = 'button';
+    b.textContent = '★';
+    b.dataset.val = String(i);
+    starRow.appendChild(b);
+  }
+}
+
+async function loadUserRatingIntoModal(tmdbId){
+  const box = el('userRatingBox');
+  const hint = el('ratingHint');
+  if (!box) return;
+  if (!auth.user){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = '';
+  hint.textContent = 'Pulsa una estrella para valorar del 1 al 10.';
+  let current = 0;
+  try{
+    const j = await apiJson(`/api/ratings/${tmdbId}`);
+    current = j?.rating || 0;
+  }catch(_){ }
+  renderStars(current);
+  const starRow = el('starRow');
+  if (starRow && !starRow.__bound){
+    starRow.__bound = true;
+    starRow.addEventListener('click', async (e) => {
+      const btn = e.target?.closest?.('.star');
+      if (!btn) return;
+      const val = Number(btn.dataset.val);
+      if (!Number.isFinite(val)) return;
+      try{
+        await apiJson('/api/ratings', { method:'POST', body: JSON.stringify({ tmdb_id: Number(currentDetail.id), rating: val }) });
+        renderStars(val);
+        if (hint) hint.textContent = `Guardado: ${val}/10`;
+      }catch(err){
+        if (hint) hint.textContent = 'No se pudo guardar. Inicia sesión otra vez.';
+      }
+    });
+  }
 }
 
 // --- Modal details ---
@@ -480,14 +589,82 @@ async function openDetails(id, type){
   }
 
   el('modal').classList.add('open');
+
+  // Load user rating widget (if logged)
+  try{ await loadUserRatingIntoModal(Number(id)); }catch(_){ }
 }
 
 function closeModal(){ el('modal').classList.remove('open'); }
+
+// --- Auth modal ---
+let authMode = 'login';
+function openAuth(){
+  const m = el('authModal');
+  if (!m) return;
+  el('authMsg').textContent = '';
+  setAuthMode(authMode);
+  m.classList.add('open');
+}
+function closeAuth(){
+  const m = el('authModal');
+  if (!m) return;
+  m.classList.remove('open');
+}
+function setAuthMode(mode){
+  authMode = mode === 'register' ? 'register' : 'login';
+  const t1 = el('tabLogin');
+  const t2 = el('tabRegister');
+  if (t1) t1.classList.toggle('active', authMode === 'login');
+  if (t2) t2.classList.toggle('active', authMode === 'register');
+  const btn = el('authSubmit');
+  if (btn) btn.textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
+  const pass = el('authPass');
+  if (pass) pass.autocomplete = authMode === 'login' ? 'current-password' : 'new-password';
+}
 
 // --- Events ---
 function wireEvents(){
   el('closeModal').addEventListener('click', closeModal);
   el('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
+
+  // Auth modal events
+  const closeA = el('closeAuth');
+  const authModal = el('authModal');
+  if (closeA) closeA.addEventListener('click', closeAuth);
+  if (authModal) authModal.addEventListener('click', (e)=>{ if(e.target.id==='authModal') closeAuth(); });
+  const tabLogin = el('tabLogin');
+  const tabReg = el('tabRegister');
+  if (tabLogin) tabLogin.addEventListener('click', ()=>setAuthMode('login'));
+  if (tabReg) tabReg.addEventListener('click', ()=>setAuthMode('register'));
+  const submit = el('authSubmit');
+  if (submit){
+    submit.addEventListener('click', async ()=>{
+      const u = String(el('authUser')?.value || '').trim();
+      const p = String(el('authPass')?.value || '');
+      const msg = el('authMsg');
+      if (!u || !p){ if(msg) msg.textContent = 'Escribe usuario y contraseña.'; return; }
+      try{
+        const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        const j = await apiJson(endpoint, { method:'POST', body: JSON.stringify({ username: u, password: p }) });
+        auth.user = j?.user || null;
+        syncAuthUi();
+        closeAuth();
+        // Refresh rating widget if modal open
+        if (el('modal')?.classList?.contains('open') && currentDetail?.id){
+          try{ await loadUserRatingIntoModal(Number(currentDetail.id)); }catch(_){ }
+        }
+      }catch(err){
+        const code = err?.payload?.error || 'ERROR';
+        const map = {
+          USERNAME_TAKEN: 'Ese usuario ya existe.',
+          INVALID_CREDENTIALS: 'Usuario o contraseña incorrectos.',
+          USERNAME_INVALID: 'Usuario inválido (3–20).',
+          PASSWORD_INVALID: 'Contraseña inválida (mín. 6).'
+        };
+        if (msg) msg.textContent = map[code] || 'No se pudo acceder.';
+      }
+    });
+  }
 
   // Count a "view" only when the user clicks "Reproducir"
   const watch = el('watchLink');
@@ -513,7 +690,8 @@ function wireEvents(){
     // state.genre is managed by the Categorías dropdown
     state.letter = '';
     state.random = false;
-    state.pageSize = 24;
+    state.pageSize = 30;
+    state.view = 'home';
     state.clientGenreItems = null;
     state.totalPages = 1;
     const lbtn2 = el('letterFilterBtn');
@@ -525,7 +703,7 @@ function wireEvents(){
 
   el('resetBtn').addEventListener('click', ()=>{
     const keepGenres = state.genres || [];
-    state = { page:1, pageSize:24, q:'', actor:'', genre:'', letter:'', random: true, clientGenreItems: null, totalPages: 1 };
+    state = { page:1, pageSize:30, q:'', actor:'', genre:'', letter:'', random: true, view:'home', clientGenreItems: null, totalPages: 1 };
     state.genres = keepGenres;
     q.value=''; actor.value='';
     if (genreBtn) genreBtn.textContent = 'Categorías';
@@ -536,6 +714,50 @@ function wireEvents(){
     loadExplore();
     try{ window.scrollTo({ top: 0, behavior:'smooth' }); }catch(_){ }
   });
+
+  // Recommended / My Ratings
+  const recBtn = el('recommendedBtn');
+  const myBtn = el('myRatingsBtn');
+  if (recBtn){
+    recBtn.addEventListener('click', async ()=>{
+      if (!auth.user){ openAuth(); return; }
+      state.view = 'recommended';
+      state.page = 1;
+      state.pageSize = 30;
+      state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+      state.random = false;
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
+  if (myBtn){
+    myBtn.addEventListener('click', async ()=>{
+      if (!auth.user){ openAuth(); return; }
+      state.view = 'myratings';
+      state.page = 1;
+      state.pageSize = 30;
+      state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+      state.random = false;
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
+
+  // Auth
+  const authBtn = el('authBtn');
+  if (authBtn){
+    authBtn.addEventListener('click', async ()=>{
+      if (auth.user){
+        try{ await apiJson('/api/auth/logout', { method:'POST', body: '{}' }); }catch(_){ }
+        auth.user = null;
+        syncAuthUi();
+        // If user was on a private view, return home
+        if (state.view !== 'home') el('resetBtn').click();
+      }else{
+        openAuth();
+      }
+    });
+  }
 
   el('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; loadExplore(); }});
   el('next').addEventListener('click', ()=>{
@@ -607,11 +829,12 @@ function wireEvents(){
       if (!b) return;
       const val = b.dataset.genre || '';
       state.page = 1;
-      state.pageSize = 24;
+      state.pageSize = 30;
       state.letter = '';
       state.clientGenreItems = null;
       state.genre = val;
       state.random = val ? false : true;
+      state.view = 'home';
       const g = (state.genres || []).find(x => String(x.id) === String(val));
       if (genreBtn) genreBtn.textContent = val ? `Categorías: ${g ? g.name : 'Seleccionada'}` : 'Categorías';
       const lbtn3 = el('letterFilterBtn');
@@ -642,6 +865,7 @@ function wireEvents(){
 
 // --- Boot ---
 (async function init(){
+  await refreshMe();
   await fetchGenres();
   wireEvents();
   enableDragScroll(el('topRow'));
