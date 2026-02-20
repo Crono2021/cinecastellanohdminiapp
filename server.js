@@ -67,7 +67,28 @@ db.serialize(() => {
     link TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   )`);
+
+  // Global daily views (shared by all users)
+  // date: YYYY-MM-DD (server local time)
+  // type: 'movie' | 'tv'
+  db.run(`CREATE TABLE IF NOT EXISTS views_daily (
+    date TEXT NOT NULL,
+    type TEXT NOT NULL,
+    tmdb_id INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (date, type, tmdb_id)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date ON views_daily(date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_views_daily_date_count ON views_daily(date, count)`);
 });
+
+function ymdLocal(d = new Date()){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
 
 
 function normalizeLink(link){
@@ -217,6 +238,66 @@ app.get('/api/genres', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los géneros' });
   }
+});
+
+// --- Global Top (shared across all users) ---
+// POST /api/view  { tmdb_id, type }
+app.post('/api/view', (req, res) => {
+  try{
+    const tmdb_id = Number(req.body && (req.body.tmdb_id ?? req.body.id));
+    const typeRaw = String((req.body && req.body.type) || 'movie').toLowerCase();
+    const type = (typeRaw === 'tv' || typeRaw === 'series') ? 'tv' : 'movie';
+    if (!tmdb_id || !Number.isFinite(tmdb_id)) return res.status(400).json({ error: 'tmdb_id inválido' });
+    const date = ymdLocal();
+
+    db.run(
+      `INSERT INTO views_daily(date, type, tmdb_id, count, updated_at)
+       VALUES(?,?,?,?,datetime('now'))
+       ON CONFLICT(date, type, tmdb_id) DO UPDATE SET
+         count = count + 1,
+         updated_at = datetime('now')`,
+      [date, type, tmdb_id, 1],
+      (err) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ error: 'No se pudo registrar la vista' });
+        }
+        // Invalidate micro-cache keys related to today's top
+        try{ microCache.delete(`top:${date}:10`); }catch(_){ }
+        res.json({ ok: true });
+      }
+    );
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo registrar la vista' });
+  }
+});
+
+// GET /api/top?date=YYYY-MM-DD&limit=10
+app.get('/api/top', (req, res) => {
+  const date = String(req.query.date || ymdLocal());
+  const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
+  const key = `top:${date}:${limit}`;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+
+  db.all(
+    `SELECT type, tmdb_id, count
+     FROM views_daily
+     WHERE date = ?
+     ORDER BY count DESC, updated_at DESC
+     LIMIT ?`,
+    [date, limit],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'No se pudo obtener el top' });
+      }
+      const out = (rows || []).map(r => ({ type: r.type, id: r.tmdb_id, tmdb_id: r.tmdb_id, count: r.count }));
+      mcSet(key, out);
+      res.json(out);
+    }
+  );
 });
 
 

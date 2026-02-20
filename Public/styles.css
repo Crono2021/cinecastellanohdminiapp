@@ -187,6 +187,8 @@ header{background:#0b0c10cc}
 
 .row-scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 6px 16px;scroll-snap-type:x mandatory;scrollbar-width:none}
 .row-scroller::-webkit-scrollbar{display:none}
+.row-scroller{cursor:grab; user-select:none; -webkit-user-select:none; -ms-user-select:none}
+.row-scroller.dragging{cursor:grabbing}
 
 .row-card{flex:0 0 auto;scroll-snap-align:start;position:relative;border-radius:16px;overflow:hidden;border:1px solid #272933;background:#15161c;cursor:pointer;transition:transform .16s ease, box-shadow .2s ease}
 .row-card:hover{transform:translateY(-4px) scale(1.01);box-shadow:0 14px 38px rgba(0,0,0,.35)}

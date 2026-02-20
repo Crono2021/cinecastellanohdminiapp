@@ -23,48 +23,24 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 let state = { page: 1, pageSize: 24, q: '', actor: '', genre: '' };
 state.clientGenreItems = null; // (kept for compatibility with genre aggregator)
 
-// --- "Más vistas hoy" (client-only) ---
-function ymdLocal(d = new Date()){
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
-}
-
-function viewsKey(){
-  return `cchd_views_${ymdLocal()}`;
-}
-
-function readViews(){
-  try{
-    const raw = localStorage.getItem(viewsKey());
-    return raw ? JSON.parse(raw) : {};
-  }catch(_){ return {}; }
-}
-
-function writeViews(obj){
-  try{ localStorage.setItem(viewsKey(), JSON.stringify(obj || {})); }catch(_){ }
-}
-
+// --- "Más vistas hoy" (global, server-side) ---
 function trackView(id, type){
+  // Fire & forget (shared by all users)
   try{
-    const k = `${type || 'movie'}:${id}`;
-    const v = readViews();
-    v[k] = (v[k] || 0) + 1;
-    writeViews(v);
+    fetch('/api/view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tmdb_id: Number(id), type: type || 'movie' })
+    }).catch(()=>{});
   }catch(_){ }
 }
 
-function getTopToday(limit = 10){
-  const v = readViews();
-  const arr = Object.entries(v)
-    .map(([k,count]) => {
-      const [type,id] = k.split(':');
-      return { type, id, count };
-    })
-    .sort((a,b)=> (b.count||0) - (a.count||0))
-    .slice(0, limit);
-  return arr;
+async function fetchTopToday(limit = 10){
+  const p = new URLSearchParams({ limit: String(limit) });
+  const r = await fetch('/api/top?' + p.toString());
+  if (!r.ok) return [];
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
 }
 
 // --- UI helpers ---
@@ -92,8 +68,14 @@ function renderRow(container, items, { top10 = false } = {}){
     `;
   }).join('');
 
+  // Avoid native image drag on desktop
+  container.querySelectorAll('img').forEach(img => img.setAttribute('draggable','false'));
+
   container.querySelectorAll('.row-card').forEach(card => {
-    card.addEventListener('click', () => openDetails(card.dataset.id, card.dataset.type));
+    card.addEventListener('click', () => {
+      if (container.__justDragged) return;
+      openDetails(card.dataset.id, card.dataset.type);
+    });
   });
 }
 
@@ -107,6 +89,58 @@ function wireRowButtons(){
       const amount = Math.floor(target.clientWidth * 0.85) * dir;
       target.scrollBy({ left: amount, behavior: 'smooth' });
     });
+  });
+}
+
+// Drag-to-scroll for horizontal rows (mouse + touch)
+function enableDragScroll(scroller){
+  if (!scroller) return;
+  if (scroller.__dragBound) return;
+  scroller.__dragBound = true;
+
+  let isDown = false;
+  let startX = 0;
+  let startLeft = 0;
+  let moved = 0;
+
+  function onDown(e){
+    // Only left click, but allow touch/pen
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    isDown = true;
+    moved = 0;
+    startX = e.clientX;
+    startLeft = scroller.scrollLeft;
+    scroller.setPointerCapture?.(e.pointerId);
+    scroller.classList.add('dragging');
+  }
+
+  function onMove(e){
+    if (!isDown) return;
+    const dx = e.clientX - startX;
+    moved = Math.max(moved, Math.abs(dx));
+    scroller.scrollLeft = startLeft - dx;
+    if (moved > 6) e.preventDefault?.();
+  }
+
+  function onUp(){
+    isDown = false;
+    scroller.classList.remove('dragging');
+    // If we dragged, avoid accidental clicks right after
+    if (moved > 6){
+      scroller.__justDragged = true;
+      setTimeout(()=>{ scroller.__justDragged = false; }, 200);
+    }
+  }
+
+  scroller.addEventListener('pointerdown', onDown, { passive: true });
+  scroller.addEventListener('pointermove', onMove, { passive: false });
+  scroller.addEventListener('pointerup', onUp, { passive: true });
+  scroller.addEventListener('pointercancel', onUp, { passive: true });
+  scroller.addEventListener('mouseleave', onUp, { passive: true });
+
+  // Prevent image dragging ghost on desktop
+  scroller.querySelectorAll('img').forEach(img => {
+    img.setAttribute('draggable', 'false');
   });
 }
 
@@ -188,7 +222,7 @@ async function loadRecentRow(){
 }
 
 async function loadTopRow(){
-  const top = getTopToday(10);
+  const top = await fetchTopToday(10);
   const empty = el('topEmpty');
   const row = el('topRow');
 
@@ -202,18 +236,21 @@ async function loadTopRow(){
   // Fetch details for each (10 calls max). Keeps server simple.
   const items = await Promise.all(top.map(async (t) => {
     try{
-      const r = await fetch(t.type === 'tv' ? `/api/tv/${t.id}` : `/api/movie/${t.id}`);
+      const id = t.id || t.tmdb_id;
+      const type = (t.type === 'tv') ? 'tv' : 'movie';
+      const r = await fetch(type === 'tv' ? `/api/tv/${id}` : `/api/movie/${id}`);
       const d = await r.json();
       return {
         id: d.id,
         tmdb_id: d.id,
-        type: t.type,
+        type,
         title: d.title,
         year: d.release_date ? String(d.release_date).slice(0,4) : '',
         poster_path: d.poster_path,
       };
     }catch(_){
-      return { tmdb_id: t.id, id: t.id, type: t.type, title: `#${t.id}`, poster_path: null, year:'' };
+      const id = t.id || t.tmdb_id;
+      return { tmdb_id: id, id, type: t.type, title: `#${id}`, poster_path: null, year:'' };
     }
   }));
 
@@ -387,6 +424,8 @@ function wireEvents(){
 (async function init(){
   await fetchGenres();
   wireEvents();
+  enableDragScroll(el('topRow'));
+  enableDragScroll(el('recentRow'));
   await Promise.all([
     loadTopRow(),
     loadRecentRow(),
