@@ -169,7 +169,7 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   for (let p = 1; p <= maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
     if (genreId) params.set('genre', genreId);
-    const res = await fetch('/api/catalog?' + params.toString());
+    const res = await fetch('/api/movies?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
     const pageItems = (data.items || []);
@@ -206,7 +206,7 @@ async function loadPremieresRow(){
 }
 
 async function loadRecentRow(){
-  const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
+  const res = await fetch('/api/movies?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
   const data = await res.json();
   const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
   renderRow(el('recentRow'), movies);
@@ -291,7 +291,7 @@ async function loadExplore(){
         if (state.genre) p.set('genre', state.genre);
         return '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString();
       })()
-    : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
+    : (state.q && state.q.length > 0 ? '/api/movies?' + params.toString()
        : '/api/movies?' + params.toString());
 
   const res = await fetch(endpoint);

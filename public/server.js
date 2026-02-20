@@ -234,7 +234,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
 });
 
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
-app.get('/api/movies', async (req, res) => {
+async function handleCatalogMovies(req, res){
   try {
     const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
 
@@ -295,7 +295,12 @@ app.get('/api/movies', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
   }
-});
+}
+
+app.get('/api/movies', handleCatalogMovies);
+app.get('/api/catalog', handleCatalogMovies);
+
+
 
 // GET /api/movie/:id
 app.get('/api/movie/:id', async (req, res) => {
