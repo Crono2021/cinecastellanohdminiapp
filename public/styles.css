@@ -80,32 +80,8 @@ footer{border-top:1px solid #222;color:#aaa}
   .link{transition:none}
 }
 
+/* Ensure cards can host overlays (badges, rank numbers, etc.) */
 .card{ position: relative; }
-  position:absolute;
-  top:8px; left:8px;
-  padding:4px 10px;
-  border:2px solid #22c55e; /* green outline */
-  color:#22c55e;
-  background:transparent; /* transparent fill */
-  border-radius:9999px; /* full circle/pill */
-  font-weight:700;
-  font-size:.75rem;
-  line-height:1;
-  pointer-events:none; /* don't block clicks on the card */
-}
-  display:inline-block;
-  margin-left:6px;
-  padding:2px 6px;
-  border:2px solid #22c55e;
-  color:#22c55e;
-  background:transparent;
-  border-radius:9999px;
-  font-weight:600;
-  font-size:.65rem;
-  line-height:1;
-}
-
-.card { position: relative; }
 
 
 /* --- Serie badge: absolute bottom-right --- */
@@ -174,4 +150,67 @@ footer{border-top:1px solid #222;color:#aaa}
   .grid, #movies-list {
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   }
+}
+
+
+/* ================================
+   Netflix-ish UI (rows + hero)
+   ================================ */
+
+header{background:#0b0c10cc}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:2px}
+.logo{font-weight:900;letter-spacing:.6px;font-size:1.05rem;color:#e50914}
+.tag{font-size:.75rem;opacity:.7}
+
+.searchbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.searchbar input{min-width:160px}
+.searchbar select{min-width:190px}
+.ghost{background:transparent;border:1px solid #2b2d36;box-shadow:none;opacity:.9}
+.ghost:hover{opacity:1}
+
+.hero{background:radial-gradient(1200px 420px at 20% -10%, rgba(229,9,20,.38), rgba(0,0,0,0)),
+              radial-gradient(900px 420px at 90% 10%, rgba(34,197,94,.16), rgba(0,0,0,0));
+      border-bottom:1px solid #1c1d25}
+.hero-inner{padding-top:22px;padding-bottom:18px}
+.hero h1{margin:0 0 6px;font-size:1.6rem;letter-spacing:-.2px}
+.hero .mute{max-width:72ch}
+.hero-chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:8px;border:1px solid #2a2c37;background:#12131a;border-radius:999px;padding:6px 10px;font-size:.8rem;opacity:.9}
+
+.row-section{margin-top:18px}
+.row-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:10px}
+.row-head h3{margin:0;font-size:1.1rem}
+.row-ctrl{display:flex;gap:8px}
+.row-btn{width:38px;height:34px;padding:0;border-radius:12px;background:#12131a;border:1px solid #2a2c37;box-shadow:none}
+.row-btn:hover{transform:translateY(-1px)}
+
+.row-scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 6px 16px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.row-scroller::-webkit-scrollbar{display:none}
+
+.row-card{flex:0 0 auto;scroll-snap-align:start;position:relative;border-radius:16px;overflow:hidden;border:1px solid #272933;background:#15161c;cursor:pointer;transition:transform .16s ease, box-shadow .2s ease}
+.row-card:hover{transform:translateY(-4px) scale(1.01);box-shadow:0 14px 38px rgba(0,0,0,.35)}
+.row-poster{width:150px;aspect-ratio:2/3;object-fit:cover;background:#222;display:block}
+.row-meta{padding:8px 10px 10px;max-width:150px}
+.row-title{font-weight:750;font-size:.9rem;line-height:1.15}
+.row-sub{opacity:.7;font-size:.8rem;margin-top:2px}
+
+/* Top 10 style: big rank number like Netflix */
+.row-scroller.top10 .row-card{padding-left:46px}
+.rank-num{position:absolute;left:-6px;bottom:8px;font-size:86px;font-weight:1000;line-height:.8;
+  color:#0f1014; -webkit-text-stroke: 4px rgba(238,238,238,.18);
+  text-shadow:0 8px 28px rgba(0,0,0,.55); pointer-events:none;}
+
+.row-empty{opacity:.75;border:1px dashed #2a2c37;border-radius:14px;padding:12px 14px;background:#12131a}
+
+/* Make the explore grid feel more Netflix (slightly tighter + hover) */
+.grid{padding-top:6px}
+.card:hover{box-shadow:0 14px 38px rgba(0,0,0,.35)}
+
+@media (max-width:760px){
+  .searchbar input{min-width:140px}
+  .hero h1{font-size:1.35rem}
+  .row-poster{width:132px}
+  .row-meta{max-width:132px}
+  .rank-num{font-size:74px}
 }

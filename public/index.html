@@ -9,25 +9,75 @@
 </head>
 <body>
   <header>
-    <div class="container hstack">
-      <h2 style="margin:0">🎬 Cine en Castellano HD</h2>
-      <div style="font-size:0.8em; color:#aaa; margin-top:2px;">Por Crono2021</div>
-      <input id="q" placeholder="Buscar por título..." style="flex:1" />
-      <input id="actor" placeholder="...o por actor/actriz" />
-      <select id="genre"></select>
-      <button id="searchBtn">Buscar</button>
-      <button id="resetBtn">Vista global</button>
+    <div class="container nav">
+      <div class="brand">
+        <div class="logo">CineHD</div>
+        <div class="tag">MiniApp · TMDB</div>
+      </div>
+      <div class="nav-actions">
+        <div class="searchbar">
+          <input id="q" placeholder="Buscar por título..." />
+          <input id="actor" placeholder="Actor/actriz" />
+          <select id="genre"></select>
+          <button id="searchBtn">Buscar</button>
+          <button id="resetBtn" class="ghost">Inicio</button>
+        </div>
+      </div>
     </div>
   </header>
 
-  <div class="container">
-    <div id="grid" class="grid"></div>
-    <div class="pagination">
-      <button id="prev">◀︎</button>
-      <small id="pageInfo"></small>
-      <button id="next">▶︎</button>
+  <main>
+    <div class="hero">
+      <div class="container hero-inner">
+        <div>
+          <h1>Tu catálogo, estilo Netflix.</h1>
+          <p class="mute">Desliza horizontalmente en cada fila. Abre una ficha para ver sinopsis y reproducir.</p>
+          <div class="hero-chips">
+            <span class="chip">Más vistas hoy</span>
+            <span class="chip">Añadidas recientemente</span>
+            <span class="chip">Explorar</span>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+
+    <div class="container">
+      <section class="row-section" id="rowTop">
+        <div class="row-head">
+          <h3>Películas más vistas hoy</h3>
+          <div class="row-ctrl">
+            <button class="row-btn" data-row="top" data-dir="-1">◀</button>
+            <button class="row-btn" data-row="top" data-dir="1">▶</button>
+          </div>
+        </div>
+        <div class="row-scroller top10" id="topRow"></div>
+        <div class="row-empty" id="topEmpty" style="display:none">Aún no hay vistas hoy. Abre alguna ficha y volverás a ver aquí el Top 10.</div>
+      </section>
+
+      <section class="row-section" id="rowRecent">
+        <div class="row-head">
+          <h3>Añadidas recientemente</h3>
+          <div class="row-ctrl">
+            <button class="row-btn" data-row="recent" data-dir="-1">◀</button>
+            <button class="row-btn" data-row="recent" data-dir="1">▶</button>
+          </div>
+        </div>
+        <div class="row-scroller" id="recentRow"></div>
+      </section>
+
+      <section class="row-section" id="rowExplore">
+        <div class="row-head">
+          <h3>Explorar catálogo</h3>
+          <small class="mute" id="pageInfo"></small>
+        </div>
+        <div id="grid" class="grid"></div>
+        <div class="pagination">
+          <button id="prev">◀︎</button>
+          <button id="next">▶︎</button>
+        </div>
+      </section>
+    </div>
+  </main>
 
   <div id="modal" class="modal">
     <div class="modal-card">
