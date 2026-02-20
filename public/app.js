@@ -288,6 +288,10 @@ async function loadExplore(){
   const pageInfo = el('pageInfo');
   const grid = el('grid');
 
+  // Immediate feedback so the UI doesn't look "stuck"
+  if (pageInfo) pageInfo.textContent = 'Cargando…';
+  if (grid) grid.innerHTML = '';
+
   // Letter filter mode (server-side, alphabetic, 30 per page)
   if (state.letter){
     const params = new URLSearchParams({
@@ -340,8 +344,16 @@ async function loadExplore(){
     : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
        : '/api/movies?' + params.toString());
 
-  const res = await fetch(endpoint);
-  const data = await res.json();
+  let data;
+  try{
+    const res = await fetch(endpoint);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+  }catch(e){
+    if (pageInfo) pageInfo.textContent = 'Error cargando el catálogo';
+    console.error(e);
+    return;
+  }
 
   const movies = (data.items || []).filter(item => (item?.type || 'movie') !== 'tv');
   grid.innerHTML = movies.map(item => `

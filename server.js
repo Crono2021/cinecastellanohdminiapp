@@ -215,6 +215,65 @@ async function ensureGenreIdsForRow(row){
     return { genre_ids: ',', meta: { poster_path: null, backdrop_path: null, genres: [] } };
   }
 }
+
+// --- Backfill genre_ids in background (best-effort) ---
+// This makes genre filtering fast and progressively more complete.
+async function backfillGenreIdsInBackground(){
+  try{
+    const movieRows = await new Promise((resolve, reject)=>{
+      db.all(
+        "SELECT tmdb_id FROM movies WHERE genre_ids IS NULL OR TRIM(genre_ids) = '' OR TRIM(genre_ids) = ','",
+        [],
+        (err, rows)=> err ? reject(err) : resolve(rows||[])
+      );
+    });
+
+    const tvRows = await new Promise((resolve, reject)=>{
+      db.all(
+        "SELECT tmdb_id FROM series WHERE genre_ids IS NULL OR TRIM(genre_ids) = '' OR TRIM(genre_ids) = ','",
+        [],
+        (err, rows)=> err ? reject(err) : resolve(rows||[])
+      );
+    });
+
+    const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
+    const CONCURRENCY = 4;
+
+    async function runQueue(rows, type){
+      let idx = 0;
+      async function worker(){
+        while (true){
+          const i = idx++;
+          if (i >= rows.length) break;
+          const tmdbId = Number(rows[i].tmdb_id);
+          if (!tmdbId) continue;
+          try{
+            const meta = (type === 'tv') ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
+            const enc = encodeGenreIds(meta.genres);
+            await new Promise((resolve)=>{
+              const sql = (type === 'tv')
+                ? 'UPDATE series SET genre_ids = ? WHERE tmdb_id = ?'
+                : 'UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?';
+              db.run(sql, [enc, tmdbId], ()=> resolve());
+            });
+          }catch(_){
+            // ignore
+          }
+          // Gentle pacing for TMDB
+          await sleep(50);
+        }
+      }
+
+      const workers = Array.from({ length: Math.min(CONCURRENCY, rows.length) }, ()=> worker());
+      await Promise.all(workers);
+    }
+
+    await runQueue(movieRows, 'movie');
+    await runQueue(tvRows, 'tv');
+  }catch(e){
+    console.error('backfillGenreIdsInBackground error:', e);
+  }
+}
 // --- Helpers ---
 function adminGuard(req, res, next) {
   const auth = req.headers.authorization || '';
@@ -840,18 +899,31 @@ app.get('/api/movies', async (req, res) => {
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
+    const wantedGenre = genre ? String(genre) : '';
+    if (wantedGenre){
+      // Use cached genre_ids for speed. A background backfill progressively completes the cache.
+      where.push('genre_ids LIKE ?');
+      params.push(`%,${wantedGenre},%`);
+    }
+
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    // For correctness (genre/actor filters), we build the filtered list first and then paginate.
-    // We lazily cache genre_ids in SQLite to avoid repeated TMDB lookups.
     const limit = Math.min(parseInt(pageSize), 60) || 24;
     const pageNum = Math.max(parseInt(page) || 1, 1);
     const offset = (pageNum - 1) * limit;
 
+    const total = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) as c FROM movies ${whereSql}`,
+        params,
+        (err, row) => err ? reject(err) : resolve(row ? row.c : 0)
+      );
+    });
+
     const baseRows = await new Promise((resolve, reject) => {
       db.all(
-        `SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${whereSql} ORDER BY datetime(created_at) DESC, rowid DESC`,
-        params,
+        `SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${whereSql} ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset],
         (err, rows) => {
           if (err) return reject(err);
           resolve(rows || []);
@@ -871,26 +943,26 @@ app.get('/api/movies', async (req, res) => {
       }
     }
 
-    const wantedGenre = genre ? String(genre) : '';
-    const matched = [];
-    for (const r of baseRows) {
-      if (actorIds && !actorIds.has(Number(r.tmdb_id))) continue;
-
-      if (wantedGenre) {
-        const { genre_ids } = await ensureGenreIdsForRow({ ...r, type: 'movie' });
-        if (!String(genre_ids || '').includes(`,${wantedGenre},`)) continue;
-      }
-      matched.push(r);
+    // If actor filter is used, we must filter client-side since actor credits come from TMDB.
+    // (Genre filter already applied via SQL when possible.)
+    let slice = baseRows;
+    let totalOut = Number(total);
+    if (actorIds){
+      slice = baseRows.filter(r => actorIds.has(Number(r.tmdb_id)));
+      totalOut = slice.length; // best-effort for this page; exact total would require scanning all
     }
 
-    const total = matched.length;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    const slice = matched.slice(offset, offset + limit);
+    const totalPages = Math.max(1, Math.ceil(totalOut / limit));
 
     // Enrich with poster_path (cached)
     const items = await Promise.all(slice.map(async (r) => {
       try{
         const meta = await getMovieMetaFast(r.tmdb_id);
+        // opportunistically backfill genre_ids on rows that still miss it
+        if (!r.genre_ids || String(r.genre_ids).trim()==='' || String(r.genre_ids).trim()===','){
+          const enc = encodeGenreIds(meta.genres);
+          try{ db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, Number(r.tmdb_id)]); }catch(_){ }
+        }
         return {
           tmdb_id: r.tmdb_id,
           title: r.title,
@@ -905,7 +977,7 @@ app.get('/api/movies', async (req, res) => {
       }
     }));
 
-    res.json({ total, totalPages, page: pageNum, pageSize: limit, items });
+    res.json({ total: totalOut, totalPages, page: pageNum, pageSize: limit, items });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el listado' });
@@ -1346,4 +1418,7 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
+  // Best-effort background task to populate genre_ids so category filtering works reliably.
+  // It runs once on start and keeps the server responsive.
+  backfillGenreIdsInBackground().catch(()=>{});
 });
