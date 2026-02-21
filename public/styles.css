@@ -301,9 +301,25 @@ header{background:#0b0c10cc}
 
 
 /* Pending (watch later) */
-.pending-box{margin:14px 0 6px;padding:12px;border:1px solid #2a2c37;border-radius:14px;background:#12131a}
-.pending-box h4{margin:0 0 8px}
-.pending-box button{width:100%}
+.save-actions{margin:14px 0 6px;display:grid;grid-template-columns:1fr;gap:12px}
+.pending-box,.favorite-box{padding:12px;border:1px solid #2a2c37;border-radius:14px;background:#12131a}
+
+.save-btn{width:100%;background:#1f1f1f;color:#fff;border:1px solid rgba(255,255,255,.10);padding:12px 14px;border-radius:12px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .08s ease, background .15s ease, border-color .15s ease}
+.save-btn::before{display:inline-block;width:18px;text-align:center;opacity:.95}
+#pendingToggleBtn.save-btn::before{content:'⏱'}
+#favoriteToggleBtn.save-btn::before{content:'❤'}
+.save-btn:hover{background:#2b2b2b;border-color:rgba(255,255,255,.16)}
+.save-btn:active{transform:scale(.99)}
+.save-btn.active{background:#0f766e;border-color:rgba(255,255,255,.18)}
+.save-actions .mute{margin:0;font-size:13px;color:#b9b9b9}
+
+/* Toasts */
+.toast-host{position:fixed;left:0;right:0;bottom:18px;display:flex;justify-content:center;pointer-events:none;z-index:9999;padding:0 12px}
+.toast{pointer-events:none;background:rgba(17,17,17,.92);color:#fff;border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 30px rgba(0,0,0,.35);padding:12px 14px;border-radius:14px;max-width:520px;display:flex;align-items:center;gap:10px;transform:translateY(14px);opacity:0;transition:opacity .18s ease, transform .18s ease}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast .ticon{width:18px;text-align:center;opacity:.95}
+.toast.success{border-color:rgba(16,185,129,.25)}
+.toast.error{border-color:rgba(239,68,68,.25)}
 .pending-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #2a2c37;background:#12131a;border-radius:999px;padding:6px 10px;font-size:.78rem;opacity:.95}
 .card-actions{display:flex;gap:8px;margin-top:8px}
 .card-actions button{padding:7px 10px;border-radius:12px}

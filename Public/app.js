@@ -62,11 +62,39 @@ async function fetchBestApp(limit = 10){
 
 // --- UI helpers ---
 
+function showToast(message, kind = 'success'){
+  const host = el('toastHost');
+  if (!host) return;
+  const t = document.createElement('div');
+  t.className = `toast ${kind}`;
+  const icon = kind === 'error' ? '⚠' : (kind === 'success' ? '✓' : 'ℹ');
+  t.innerHTML = `<span class="ticon">${icon}</span><span class="tmsg">${esc(message)}</span>`;
+  host.innerHTML = '';
+  host.appendChild(t);
+  // next tick for animation
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(showToast.__t);
+  showToast.__t = setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => { if (t.parentNode) t.parentNode.removeChild(t); }, 220);
+  }, 2200);
+}
+
 async function markPendingWatched(tmdbId){
   if (!auth.user){ openAuth(); return; }
   try{
     await apiJson('/api/pending/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+    showToast('Marcada como vista');
     if (state.view === 'pending') loadExplore();
+  }catch(_){ }
+}
+
+async function removeFavoriteFromList(tmdbId){
+  if (!auth.user){ openAuth(); return; }
+  try{
+    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+    showToast('Quitada de favoritos');
+    if (state.view === 'favorites') loadExplore();
   }catch(_){ }
 }
 
@@ -116,6 +144,7 @@ function buildUserMenu(){
   if (!menu) return;
   menu.innerHTML = [
     `<button class="menu-item" type="button" data-action="myratings" role="menuitem">Mis valoraciones</button>`,
+    `<button class="menu-item" type="button" data-action="favorites" role="menuitem">Favoritos</button>`,
     `<button class="menu-item" type="button" data-action="pending" role="menuitem">Pendientes</button>`,
     `<div class="menu-divider"></div>`,
     `<button class="menu-item" type="button" data-action="logout" role="menuitem">Salir</button>`
@@ -400,17 +429,33 @@ async function loadExplore(){
   if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (grid) grid.innerHTML = '';
 
-  // Special views: Recommended / My Ratings
-  if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending'){
+  // Special views: Recommended / My Ratings / Pending / Favorites
+  if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending' || state.view === 'favorites'){
     updateHomeVisibility();
     const params = new URLSearchParams({ page: String(state.page), pageSize: String(state.pageSize || 30) });
-    const endpoint = state.view === 'recommended' ? ('/api/recommended?' + params.toString()) : (state.view === 'myratings' ? ('/api/my-ratings?' + params.toString()) : ('/api/pending?' + params.toString()));
+    const endpoint = state.view === 'recommended'
+      ? ('/api/recommended?' + params.toString())
+      : (state.view === 'myratings'
+        ? ('/api/my-ratings?' + params.toString())
+        : (state.view === 'pending'
+          ? ('/api/pending?' + params.toString())
+          : ('/api/favorites?' + params.toString())));
     try{
       const data = await apiJson(endpoint, { method:'GET', headers: {} });
       const items = data?.results || [];
       grid.innerHTML = items.map(item => {
-        const extra = (state.view === 'myratings' && item.user_rating) ? `<div class="year">Tu nota: ${item.user_rating}/10</div>` : (state.view === 'pending' ? `<div class="year">Pendiente</div>` : `<div class="year">${item.year || ''}</div>`);
-        const actions = (state.view === 'pending') ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>` : '';
+        const extra = (state.view === 'myratings' && item.user_rating)
+          ? `<div class="year">Tu nota: ${item.user_rating}/10</div>`
+          : (state.view === 'pending'
+            ? `<div class="year">Pendiente</div>`
+            : (state.view === 'favorites'
+              ? `<div class="year">Favorita</div>`
+              : `<div class="year">${item.year || ''}</div>`));
+        const actions = (state.view === 'pending')
+          ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>`
+          : (state.view === 'favorites')
+            ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}">Quitar</button></div>`
+            : '';
         return `
           <div class="card" data-id="${item.tmdb_id}" data-type="movie">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -433,12 +478,25 @@ async function loadExplore(){
             markPendingWatched(btn.dataset.id);
             return;
           }
+          const btn2 = e.target?.closest?.('button[data-action="unfav"]');
+          if (btn2){
+            e.preventDefault();
+            e.stopPropagation();
+            removeFavoriteFromList(btn2.dataset.id);
+            return;
+          }
           openDetails(elc.dataset.id, 'movie');
         });
       });
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);
       if (pageInfo){
-        const label = state.view === 'recommended' ? 'Recomendado para ti' : (state.view === 'myratings' ? 'Mis valoraciones' : 'Pendientes');
+        const label = state.view === 'recommended'
+          ? 'Recomendado para ti'
+          : (state.view === 'myratings'
+            ? 'Mis valoraciones'
+            : (state.view === 'pending'
+              ? 'Pendientes'
+              : 'Favoritos'));
         pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
       }
     }catch(e){
@@ -622,13 +680,15 @@ async function refreshPendingInModal(tmdbId){
   try{
     const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId));
     const isPending = !!j?.pending;
-    btn.textContent = isPending ? 'Quitar de pendientes' : 'Añadir a pendientes';
+    btn.textContent = isPending ? 'En pendientes' : 'Añadir a pendientes';
     btn.dataset.pending = isPending ? '1' : '0';
-    if (hint) hint.textContent = isPending ? 'Esta película está en tu lista de pendientes.' : 'Añádela para verla más tarde.';
+    btn.classList.toggle('active', isPending);
+    if (hint) hint.textContent = isPending ? 'La tienes guardada para ver más tarde' : 'Añádela para verla más tarde';
   }catch(_){
     btn.textContent = 'Añadir a pendientes';
     btn.dataset.pending = '0';
-    if (hint) hint.textContent = '';
+    btn.classList.remove('active');
+    if (hint) hint.textContent = 'Añádela para verla más tarde';
   }
 }
 
@@ -641,10 +701,55 @@ async function togglePendingFromModal(){
   try{
     if (isPending){
       await apiJson('/api/pending/' + encodeURIComponent(id), { method:'DELETE' });
+      showToast('Quitada de pendientes');
     } else {
       await apiJson('/api/pending', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id) }) });
+      showToast('Añadida a pendientes');
     }
     await refreshPendingInModal(id);
+  }catch(_){ }
+}
+
+async function refreshFavoriteInModal(tmdbId){
+  const box = el('favoriteBox');
+  const btn = el('favoriteToggleBtn');
+  const hint = el('favoriteHint');
+  if (!box || !btn) return;
+  if (!auth.user){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = '';
+  try{
+    const j = await apiJson('/api/favorites/' + encodeURIComponent(tmdbId));
+    const isFav = !!j?.favorite;
+    btn.textContent = isFav ? 'En favoritos' : 'Añadir a favoritos';
+    btn.dataset.favorite = isFav ? '1' : '0';
+    btn.classList.toggle('active', isFav);
+    if (hint) hint.textContent = isFav ? 'La tienes guardada en favoritos' : 'Guárdala en tu lista de favoritos';
+  }catch(_){
+    btn.textContent = 'Añadir a favoritos';
+    btn.dataset.favorite = '0';
+    btn.classList.remove('active');
+    if (hint) hint.textContent = 'Guárdala en tu lista de favoritos';
+  }
+}
+
+async function toggleFavoriteFromModal(){
+  if (!auth.user){ openAuth(); return; }
+  const id = currentDetail?.id;
+  if (!id) return;
+  const btn = el('favoriteToggleBtn');
+  const isFav = btn && btn.dataset.favorite === '1';
+  try{
+    if (isFav){
+      await apiJson('/api/favorites/' + encodeURIComponent(id), { method:'DELETE' });
+      showToast('Quitada de favoritos');
+    } else {
+      await apiJson('/api/favorites', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id) }) });
+      showToast('Añadida a favoritos');
+    }
+    await refreshFavoriteInModal(id);
   }catch(_){ }
 }
 
@@ -731,6 +836,9 @@ async function openDetails(id, type){
 
   // Load pending button state (if logged)
   try{ await refreshPendingInModal(Number(id)); }catch(_){ }
+
+  // Load favorite button state (if logged)
+  try{ await refreshFavoriteInModal(Number(id)); }catch(_){ }
 }
 
 function closeModal(){ el('modal').classList.remove('open'); }
@@ -766,6 +874,8 @@ function wireEvents(){
   el('closeModal').addEventListener('click', closeModal);
   const pt = el('pendingToggleBtn');
   if (pt && !pt.__bound){ pt.__bound = true; pt.addEventListener('click', (e)=>{ e.preventDefault(); togglePendingFromModal(); }); }
+  const ft = el('favoriteToggleBtn');
+  if (ft && !ft.__bound){ ft.__bound = true; ft.addEventListener('click', (e)=>{ e.preventDefault(); toggleFavoriteFromModal(); }); }
   el('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
 
   // Auth modal events
@@ -794,6 +904,7 @@ function wireEvents(){
         if (el('modal')?.classList?.contains('open') && currentDetail?.id){
           try{ await loadUserRatingIntoModal(Number(currentDetail.id)); }catch(_){ }
           try{ await refreshPendingInModal(Number(currentDetail.id)); }catch(_){ }
+          try{ await refreshFavoriteInModal(Number(currentDetail.id)); }catch(_){ }
         }
       }catch(err){
         const code = err?.payload?.error || 'ERROR';
@@ -899,6 +1010,15 @@ function wireEvents(){
       } else if (act === 'pending'){
         if (!auth.user){ openAuth(); return; }
         state.view = 'pending';
+        state.page = 1;
+        state.pageSize = 30;
+        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.random = false;
+        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        loadExplore();
+      } else if (act === 'favorites'){
+        if (!auth.user){ openAuth(); return; }
+        state.view = 'favorites';
         state.page = 1;
         state.pageSize = 30;
         state.q = ''; state.actor = ''; state.genre=''; state.letter='';

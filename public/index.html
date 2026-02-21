@@ -133,10 +133,16 @@
               <small id="ratingHint" class="mute"></small>
             </div>
 
-            <div id="pendingBox" class="pending-box" style="display:none">
-              <h4>Pendientes</h4>
-              <button id="pendingToggleBtn" class="ghost" type="button">Añadir a pendientes</button>
-              <small id="pendingHint" class="mute"></small>
+            <div class="save-actions">
+              <div id="pendingBox" class="pending-box" style="display:none">
+                <button id="pendingToggleBtn" class="save-btn" type="button">Añadir a pendientes</button>
+                <small id="pendingHint" class="mute"></small>
+              </div>
+
+              <div id="favoriteBox" class="favorite-box" style="display:none">
+                <button id="favoriteToggleBtn" class="save-btn" type="button">Añadir a favoritos</button>
+                <small id="favoriteHint" class="mute"></small>
+              </div>
             </div>
 
             <h4>Reparto principal</h4>
@@ -180,5 +186,8 @@
 
   <script src="/app.js"></script>
   <script src="back-handler.js"></script>
+
+  <!-- Toast container -->
+  <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
