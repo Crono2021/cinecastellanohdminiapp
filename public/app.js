@@ -140,7 +140,7 @@ function updateExploreHeader(){
   // Switch header per view
   if (state.view === 'collections' || state.view === 'mycollections'){
     if (titleEl) titleEl.textContent = (state.view === 'mycollections') ? 'Mis colecciones' : 'Colecciones';
-    if (pageInfo) pageInfo.textContent = '';
+    if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'');
 
     // Right-side button becomes "Crear colección"
     if (lbtn){
@@ -637,7 +637,7 @@ async function loadMyCollections(){
 
   // Only cards (header is handled by the Explore row header)
   grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no has creado colecciones.</div>'}</div>`;
-  if (pageInfo) pageInfo.textContent = 'Mis colecciones';
+  if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Mis colecciones');
 
   // Clicking a card opens the collection like normal catalog
   grid.querySelectorAll('.collection-card').forEach(card => {
@@ -1017,7 +1017,7 @@ async function loadExplore(){
   updateHomeVisibility();
 
   // Immediate feedback so the UI doesn't look "stuck"
-  if (pageInfo) pageInfo.textContent = 'Cargando…';
+  if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Cargando…');
   if (grid) grid.innerHTML = '';
 
 
@@ -1030,7 +1030,7 @@ async function loadExplore(){
       if (pageInfo) pageInfo.textContent = (state.view==='collections'||state.view==='mycollections')?'': 'Colecciones';
     }catch(_){
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Error cargando colecciones';
+      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando colecciones');
     }
     return;
   }
@@ -1076,7 +1076,7 @@ async function loadExplore(){
       }
     }catch(_){
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Error cargando la colección';
+      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando la colección');
     }
     return;
   }
@@ -1087,10 +1087,10 @@ async function loadExplore(){
     try{
       await loadMyCollections();
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Mis colecciones';
+      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Mis colecciones');
     }catch(_){
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Error cargando tus colecciones';
+      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando tus colecciones');
     }
     return;
   }
@@ -1177,7 +1177,7 @@ async function loadExplore(){
       }
     }catch(e){
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Error cargando la lista';
+      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando la lista');
     }
     return;
   }
@@ -1248,7 +1248,7 @@ async function loadExplore(){
     if (seq !== loadSeq) return;
   }catch(e){
     if (seq !== loadSeq) return;
-    if (pageInfo) pageInfo.textContent = 'Error cargando el catálogo';
+    if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando el catálogo');
     console.error(e);
     return;
   }
