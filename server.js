@@ -182,6 +182,31 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_tmdb ON favorites(tmdb_id)`);
+
+// --- Collections (public) ---
+db.run(`CREATE TABLE IF NOT EXISTS collections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  cover_image TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_collections_created ON collections(created_at)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS collection_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  collection_id INTEGER NOT NULL,
+  tmdb_id INTEGER NOT NULL,
+  position INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(collection_id, tmdb_id),
+  FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items(tmdb_id)`);
+
 });
 
 // Lightweight schema migrations for older DBs
@@ -1162,6 +1187,27 @@ app.get('/api/series/by-actor', async (req, res) => {
   }
 });
 
+
+
+// GET /api/movies/search-lite?q=...&limit=20  (for live search in collections)
+app.get('/api/movies/search-lite', (req, res) => {
+  try{
+    const q = String(req.query.q || '').trim().toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 50);
+    if (!q) return res.json([]);
+    db.all(
+      `SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) LIKE ? ORDER BY title ASC LIMIT ?`,
+      ['%' + q + '%', limit],
+      (err, rows) => {
+        if (err) return res.status(500).json({ error: 'DB_ERROR' });
+        res.json(rows || []);
+      }
+    );
+  }catch(_){
+    res.status(500).json({ error: 'SERVER_ERROR' });
+  }
+});
+
 // GET /api/movies – q, genre, actor, page, pageSize (enriquecido con poster_path)
 
 // GET /api/catalog -- unified movies + series
@@ -1940,6 +1986,119 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
 
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
+
+
+
+// --- Collections API ---
+app.get('/api/collections', (req, res) => {
+  db.all(
+    `SELECT c.id, c.name, c.cover_image, c.created_at, u.username,
+            (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) as items_count
+     FROM collections c
+     JOIN users u ON u.id = c.user_id
+     ORDER BY datetime(c.created_at) DESC`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      res.json((rows || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        cover_image: r.cover_image || null,
+        created_at: r.created_at,
+        username: r.username,
+        items_count: r.items_count
+      })));
+    }
+  );
+});
+
+app.get('/api/collections/:id', (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID_INVALID' });
+
+  db.get(
+    `SELECT c.id, c.name, c.cover_image, c.created_at, u.username
+     FROM collections c JOIN users u ON u.id = c.user_id WHERE c.id = ?`,
+    [id],
+    (err, col) => {
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      if (!col) return res.status(404).json({ error: 'NOT_FOUND' });
+
+      db.all(
+        `SELECT ci.tmdb_id, m.title, m.year
+         FROM collection_items ci
+         LEFT JOIN movies m ON m.tmdb_id = ci.tmdb_id
+         WHERE ci.collection_id = ?
+         ORDER BY ci.position ASC, ci.id ASC`,
+        [id],
+        async (err2, rows) => {
+          if (err2) return res.status(500).json({ error: 'DB_ERROR' });
+          const base = rows || [];
+          try{
+            const enriched = await Promise.all(base.map(async (r) => {
+              const key = 'tmdb:movie:' + r.tmdb_id;
+              const cached = mcGet(key);
+              if (cached) return { ...r, poster_path: cached.poster_path || null };
+              const d = await tmdbGetMovieDetails(r.tmdb_id);
+              mcSet(key, { poster_path: d?.poster_path || null });
+              return { ...r, poster_path: d?.poster_path || null };
+            }));
+            res.json({
+              id: col.id,
+              name: col.name,
+              cover_image: col.cover_image || null,
+              created_at: col.created_at,
+              username: col.username,
+              items_count: enriched.length,
+              items: enriched.map(x => ({ tmdb_id: x.tmdb_id, title: x.title, year: x.year, poster_path: x.poster_path }))
+            });
+          }catch(_){
+            res.json({
+              id: col.id,
+              name: col.name,
+              cover_image: col.cover_image || null,
+              created_at: col.created_at,
+              username: col.username,
+              items_count: base.length,
+              items: base.map(x => ({ tmdb_id: x.tmdb_id, title: x.title, year: x.year, poster_path: null }))
+            });
+          }
+        }
+      );
+    }
+  );
+});
+
+app.post('/api/collections', requireAuth, (req, res) => {
+  const u = getSessionUser(req);
+  const name = String(req.body?.name || '').trim();
+  const cover = req.body?.cover_image || null;
+  const items = Array.isArray(req.body?.items) ? req.body.items.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
+
+  if (!name || name.length < 2 || name.length > 60) return res.status(400).json({ error: 'NAME_INVALID' });
+  if (!items.length) return res.status(400).json({ error: 'ITEMS_INVALID' });
+
+  if (cover){
+    const s = String(cover);
+    if (!/^data:image\/(webp|png|jpeg);base64,/i.test(s)) return res.status(400).json({ error: 'IMAGE_INVALID' });
+    const b64 = s.split(',')[1] || '';
+    const bytes = Math.floor(b64.length * 0.75);
+    if (bytes > 45000) return res.status(400).json({ error: 'IMAGE_TOO_LARGE' });
+  }
+
+  db.run(
+    `INSERT INTO collections (user_id, name, cover_image) VALUES (?, ?, ?)`,
+    [u.id, name, cover || null],
+    function(err){
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      const colId = this.lastID;
+
+      const stmt = db.prepare(`INSERT OR IGNORE INTO collection_items (collection_id, tmdb_id, position) VALUES (?, ?, ?)`);
+      items.forEach((tmdbId, idx) => stmt.run([colId, tmdbId, idx]));
+      stmt.finalize(() => res.json({ ok: true, id: colId }));
+    }
+  );
+});
 
 app.listen(PORT, () => {
   console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);

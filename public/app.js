@@ -132,21 +132,18 @@ async function refreshMe(){
 function syncAuthUi(){
   const loginBtn = el('authBtn');
   const menuBtn = el('userMenuBtn');
-  const rec = el('recommendedBtn');
   if (auth.user){
     if (loginBtn) loginBtn.style.display = 'none';
     if (menuBtn){
       menuBtn.style.display = '';
       menuBtn.textContent = `Menú personal (${auth.user.username})`;
     }
-    if (rec) rec.style.display = '';
   } else {
     if (loginBtn){
       loginBtn.style.display = '';
       loginBtn.textContent = 'Login';
     }
     if (menuBtn) menuBtn.style.display = 'none';
-    if (rec) rec.style.display = '';
   }
 }
 
@@ -157,6 +154,7 @@ function buildUserMenu(){
   if (!menu) return;
   menu.innerHTML = [
     `<button class="menu-item" type="button" data-action="myratings" role="menuitem">Mis valoraciones</button>`,
+    `<button class="menu-item" type="button" data-action="recommended" role="menuitem">Recomendado para ti</button>`,
     `<button class="menu-item" type="button" data-action="favorites" role="menuitem">Favoritos</button>`,
     `<button class="menu-item" type="button" data-action="pending" role="menuitem">Pendientes</button>`,
     `<div class="menu-divider"></div>`,
@@ -431,6 +429,290 @@ async function loadBestAppRow(){
   }
 }
 
+
+// --- Collections ---
+function openCollectionsModal(title, html){
+  const m = el('collectionsModal');
+  const t = el('collectionsTitle');
+  const b = el('collectionsBody');
+  if (t) t.textContent = title || 'Colecciones';
+  if (b) b.innerHTML = html || '';
+  if (m) m.classList.add('open');
+}
+function closeCollectionsModal(){
+  const m = el('collectionsModal');
+  if (m) m.classList.remove('open');
+}
+
+async function fileToSmallWebpDataUrl(file){
+  // Requirements: optional image, max 320x180, WEBP, <= 40KB (approx)
+  const maxW = 320, maxH = 180;
+  const blob = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+  const img = blob;
+  let w = img.naturalWidth || img.width;
+  let h = img.naturalHeight || img.height;
+  const scale = Math.min(1, maxW / w, maxH / h);
+  w = Math.max(1, Math.round(w * scale));
+  h = Math.max(1, Math.round(h * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+
+  // Try a couple of qualities to keep small
+  const qualities = [0.75, 0.6, 0.5, 0.4];
+  for (const q of qualities){
+    const dataUrl = canvas.toDataURL('image/webp', q);
+    // Rough base64 size check
+    const b64 = dataUrl.split(',')[1] || '';
+    const bytes = Math.floor(b64.length * 0.75);
+    if (bytes <= 40000) return dataUrl;
+  }
+  // last resort
+  return canvas.toDataURL('image/webp', 0.35);
+}
+
+async function loadCollections(){
+  const grid = el('grid');
+  const pageInfo = el('pageInfo');
+  if (!grid) return;
+
+  const res = await fetch('/api/collections');
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : (data.items || []);
+
+  const canCreate = !!auth.user;
+  const head = `
+    <div class="collections-head">
+      <div class="collections-title">Colecciones</div>
+      ${canCreate ? `<button id="createCollectionBtn">Crear colección</button>` : `<small class="mute">Regístrate para crear colecciones</small>`}
+    </div>
+  `;
+
+  const cards = items.map(c => {
+    const cover = c.cover_image || '';
+    const img = cover ? `<img class="collection-cover" src="${cover}" />` : `<div class="collection-cover placeholder"></div>`;
+    return `
+      <div class="collection-card" data-id="${c.id}">
+        ${img}
+        <div class="collection-meta">
+          <div class="collection-name">${esc(c.name)}</div>
+          <div class="collection-user">por ${esc(c.username || '')}</div>
+          <div class="collection-count">${Number(c.items_count||0)} películas</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.innerHTML = head + `<div class="collections-grid">${cards || '<div class="mute">Aún no hay colecciones.</div>'}</div>`;
+  if (pageInfo) pageInfo.textContent = 'Colecciones';
+
+  const btn = el('createCollectionBtn');
+  if (btn){
+    btn.addEventListener('click', () => openCreateCollectionFlow());
+  }
+
+  grid.querySelectorAll('.collection-card').forEach(card => {
+    card.addEventListener('click', async ()=>{
+      const id = card.dataset.id;
+      try{
+        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method:'GET', headers:{} });
+        const list = (d.items || []).map(it => `
+          <div class="col-item" data-id="${it.tmdb_id}">
+            <img class="col-item-poster" src="${imgBase}${it.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+            <div class="col-item-text">
+              <div class="col-item-title">${esc(it.title)}</div>
+              <div class="mute">${it.year || ''}</div>
+            </div>
+          </div>
+        `).join('');
+        openCollectionsModal(d.name, `
+          <div class="col-modal-meta"><small class="mute">por ${esc(d.username || '')} · ${Number(d.items_count||0)} películas</small></div>
+          <div class="col-items">${list || '<div class="mute">Colección vacía.</div>'}</div>
+        `);
+        const body = el('collectionsBody');
+        body?.querySelectorAll?.('.col-item')?.forEach(row=>{
+          row.addEventListener('click', ()=> openDetails(row.dataset.id, 'movie'));
+        });
+      }catch(_){
+        showToast('No se pudo abrir la colección', 'error');
+      }
+    });
+  });
+}
+
+function openCreateCollectionFlow(){
+  if (!auth.user){ openAuth(); return; }
+
+  // Step 1: name + optional image
+  const modalHtml = `
+    <div class="form-row">
+      <label>Nombre de la colección</label>
+      <input id="colNameInput" placeholder="Ej. Cine clásico" />
+    </div>
+    <div class="form-row">
+      <label>Imagen (opcional)</label>
+      <div class="inline">
+        <input id="colImageFile" type="file" accept="image/*" />
+        <small class="mute">Se convertirá a WEBP (máx. 320×180) para ocupar muy poco.</small>
+      </div>
+      <div id="colImagePreview" class="image-preview"></div>
+    </div>
+    <div class="modal-actions">
+      <button id="colCancel1" class="ghost" type="button">Cancelar</button>
+      <button id="colNext1" type="button">OK</button>
+    </div>
+  `;
+  openCollectionsModal('Crear colección', modalHtml);
+
+  let imageDataUrl = '';
+
+  const fileInput = el('colImageFile');
+  if (fileInput){
+    fileInput.addEventListener('change', async ()=>{
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      try{
+        const dataUrl = await fileToSmallWebpDataUrl(f);
+        imageDataUrl = dataUrl;
+        const prev = el('colImagePreview');
+        if (prev) prev.innerHTML = `<img src="${dataUrl}" alt="preview" />`;
+      }catch(_){
+        showToast('No se pudo procesar la imagen', 'error');
+      }
+    });
+  }
+
+  el('colCancel1')?.addEventListener('click', ()=> closeCollectionsModal());
+
+  el('colNext1')?.addEventListener('click', ()=>{
+    const name = (el('colNameInput')?.value || '').trim();
+    if (!name || name.length < 2){
+      showToast('Pon un nombre (mín. 2 caracteres)', 'error');
+      return;
+    }
+    openPickMoviesStep(name, imageDataUrl);
+  });
+}
+
+function openPickMoviesStep(colName, coverImage){
+  const html = `
+    <div class="form-row">
+      <label>Añadir películas</label>
+      <input id="colSearchInput" placeholder="Introduce el título de la película" />
+      <div id="colSearchResults" class="search-results"></div>
+      <div class="selected-box">
+        <div class="selected-title">Seleccionadas:</div>
+        <div id="colSelectedList" class="selected-list"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="colBack2" class="ghost" type="button">Atrás</button>
+      <button id="colFinish2" type="button">Finalizar</button>
+    </div>
+  `;
+  openCollectionsModal('Añadir películas', html);
+
+  const selected = new Map(); // tmdb_id -> {title, year}
+  const renderSelected = ()=>{
+    const box = el('colSelectedList');
+    if (!box) return;
+    const arr = Array.from(selected.values());
+    box.innerHTML = arr.length ? arr.map(it => `<span class="pill">${esc(it.title)}${it.year?` (${it.year})`:''}</span>`).join('') : `<span class="mute">Ninguna</span>`;
+  };
+  renderSelected();
+
+  el('colBack2')?.addEventListener('click', ()=> openCreateCollectionFlow());
+
+  // Live search (debounced)
+  const input = el('colSearchInput');
+  const results = el('colSearchResults');
+  let t;
+  async function doSearch(){
+    const q = (input?.value || '').trim();
+    if (!results) return;
+    if (!q){
+      results.innerHTML = '';
+      return;
+    }
+    try{
+      const r = await fetch('/api/movies/search-lite?q=' + encodeURIComponent(q) + '&limit=20');
+      const j = await r.json();
+      const list = Array.isArray(j) ? j : (j.items || []);
+      results.innerHTML = list.map(it => {
+        const inSel = selected.has(String(it.tmdb_id));
+        return `
+          <div class="result-row" data-id="${it.tmdb_id}" data-title="${esc(it.title)}" data-year="${it.year||''}">
+            <div class="result-text">${esc(it.title)}${it.year?` (${it.year})`:''}</div>
+            <div class="result-actions">
+              <button class="iconbtn" data-action="add" title="Añadir">+</button>
+              <button class="iconbtn" data-action="del" title="Eliminar">−</button>
+            </div>
+          </div>
+        `;
+      }).join('') || `<div class="mute">Sin resultados</div>`;
+    }catch(_){
+      results.innerHTML = `<div class="mute">Error buscando</div>`;
+    }
+  }
+  if (input){
+    input.addEventListener('input', ()=>{
+      clearTimeout(t);
+      t = setTimeout(doSearch, 120);
+    });
+  }
+
+  if (results){
+    results.addEventListener('click', (e)=>{
+      const row = e.target?.closest?.('.result-row');
+      if (!row) return;
+      const id = String(row.dataset.id);
+      const title = row.dataset.title || '';
+      const year = row.dataset.year || '';
+      const act = e.target?.closest?.('button')?.dataset?.action;
+      if (act === 'add'){
+        selected.set(id, { tmdb_id: Number(id), title, year });
+        renderSelected();
+      } else if (act === 'del'){
+        selected.delete(id);
+        renderSelected();
+      }
+    });
+  }
+
+  el('colFinish2')?.addEventListener('click', async ()=>{
+    const items = Array.from(selected.values()).map(x => Number(x.tmdb_id));
+    try{
+      await apiJson('/api/collections', {
+        method:'POST',
+        body: JSON.stringify({ name: colName, cover_image: coverImage || null, items })
+      });
+      closeCollectionsModal();
+      showToast('Colección creada');
+      state.view = 'collections';
+      loadExplore();
+    }catch(err){
+      const code = err?.payload?.error || 'ERROR';
+      const map = {
+        NAME_INVALID: 'Nombre inválido.',
+        ITEMS_INVALID: 'Selecciona al menos una película.',
+        IMAGE_TOO_LARGE: 'Imagen demasiado grande.',
+        NO_AUTH: 'Necesitas estar logueado.'
+      };
+      showToast(map[code] || 'No se pudo crear la colección', 'error');
+    }
+  });
+
+  // Trigger initial empty state
+  doSearch();
+}
+
+
 async function loadExplore(){
   const pageInfo = el('pageInfo');
   const grid = el('grid');
@@ -441,6 +723,19 @@ async function loadExplore(){
   // Immediate feedback so the UI doesn't look "stuck"
   if (pageInfo) pageInfo.textContent = 'Cargando…';
   if (grid) grid.innerHTML = '';
+
+
+  // Special view: Collections
+  if (state.view === 'collections'){
+    updateHomeVisibility();
+    try{
+      await loadCollections();
+      if (pageInfo) pageInfo.textContent = 'Colecciones';
+    }catch(_){
+      if (pageInfo) pageInfo.textContent = 'Error cargando colecciones';
+    }
+    return;
+  }
 
   // Special views: Recommended / My Ratings / Pending / Favorites
   if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending' || state.view === 'favorites'){
@@ -904,6 +1199,13 @@ function wireEvents(){
   const authModal = el('authModal');
   if (closeA) closeA.addEventListener('click', closeAuth);
   if (authModal) authModal.addEventListener('click', (e)=>{ if(e.target.id==='authModal') closeAuth(); });
+
+// Collections modal events
+const closeC = el('closeCollections');
+const colModal = el('collectionsModal');
+if (closeC) closeC.addEventListener('click', closeCollectionsModal);
+if (colModal) colModal.addEventListener('click', (e)=>{ if(e.target.id==='collectionsModal') closeCollectionsModal(); });
+
   const tabLogin = el('tabLogin');
   const tabReg = el('tabRegister');
   if (tabLogin) tabLogin.addEventListener('click', ()=>setAuthMode('login'));
@@ -990,10 +1292,23 @@ function wireEvents(){
     try{ window.scrollTo({ top: 0, behavior:'smooth' }); }catch(_){ }
   });
 
-  // Recommended / My Ratings
-  const recBtn = el('recommendedBtn');
 
-  // Auth + User menu
+  const collectionsBtn = el('collectionsBtn');
+  if (collectionsBtn){
+    collectionsBtn.addEventListener('click', ()=>{
+      state.view = 'collections';
+      state.page = 1;
+      state.pageSize = 30;
+      state.q = ''; state.actor=''; state.genre=''; state.letter='';
+      state.random = false;
+      state.totalPages = 1;
+      updateHomeVisibility();
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
+
+  // Auth + User menu  // Auth + User menu
   const authBtn = el('authBtn');
   const userMenuBtn = el('userMenuBtn');
   const userMenu = el('userMenu');
@@ -1022,6 +1337,15 @@ function wireEvents(){
       if (act === 'myratings'){
         if (!auth.user){ openAuth(); return; }
         state.view = 'myratings';
+        state.page = 1;
+        state.pageSize = 30;
+        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.random = false;
+        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        loadExplore();
+      } else if (act === 'recommended'){
+        if (!auth.user){ openAuth(); return; }
+        state.view = 'recommended';
         state.page = 1;
         state.pageSize = 30;
         state.q = ''; state.actor = ''; state.genre=''; state.letter='';
