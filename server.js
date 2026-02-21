@@ -153,17 +153,6 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ratings_tmdb ON ratings(tmdb_id)`);
-
-  db.run(`CREATE TABLE IF NOT EXISTS pending (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    tmdb_id INTEGER NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(user_id, tmdb_id),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  )`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_pending_user ON pending(user_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_pending_tmdb ON pending(tmdb_id)`);
 });
 
 // Lightweight schema migrations for older DBs
@@ -635,79 +624,6 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
         });
       }
       res.json({ ok: true, page, pageSize, totalPages, totalResults: total, results: out });
-    });
-  });
-});
-
-// --------------------
-// Pendientes (watch later)
-// --------------------
-
-app.get('/api/pending/:tmdb_id', requireAuth, (req, res) => {
-  const user = getSessionUser(req);
-  const tmdbId = Number(req.params.tmdb_id);
-  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.get('SELECT 1 as ok FROM pending WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err, row) => {
-    if (err) return res.status(500).json({ error: 'DB_ERROR' });
-    res.json({ ok: true, pending: !!row });
-  });
-});
-
-app.post('/api/pending', requireAuth, (req, res) => {
-  const user = getSessionUser(req);
-  const tmdbId = Number(req.body?.tmdb_id);
-  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  const sql = `INSERT INTO pending (user_id, tmdb_id) VALUES (?, ?)
-               ON CONFLICT(user_id, tmdb_id) DO NOTHING`;
-  db.run(sql, [user.id, tmdbId], (err) => {
-    if (err) return res.status(500).json({ error: 'DB_ERROR' });
-    res.json({ ok: true });
-  });
-});
-
-app.delete('/api/pending/:tmdb_id', requireAuth, (req, res) => {
-  const user = getSessionUser(req);
-  const tmdbId = Number(req.params.tmdb_id);
-  if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.run('DELETE FROM pending WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err) => {
-    if (err) return res.status(500).json({ error: 'DB_ERROR' });
-    res.json({ ok: true });
-  });
-});
-
-app.get('/api/pending', requireAuth, (req, res) => {
-  const user = getSessionUser(req);
-  const page = Math.max(1, parseInt(req.query.page || '1', 10));
-  const pageSize = Math.min(60, Math.max(1, parseInt(req.query.pageSize || '30', 10)));
-  const offset = (page - 1) * pageSize;
-
-  db.get('SELECT COUNT(1) as c FROM pending WHERE user_id = ?', [user.id], (err, rowCount) => {
-    if (err) return res.status(500).json({ error: 'DB_ERROR' });
-    const total = Number(rowCount?.c || 0);
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const sql = `SELECT p.tmdb_id, p.created_at,
-                       m.title as title, m.year as year, m.link as link
-                FROM pending p
-                LEFT JOIN movies m ON m.tmdb_id = p.tmdb_id
-                WHERE p.user_id = ?
-                ORDER BY p.created_at DESC
-                LIMIT ? OFFSET ?`;
-    db.all(sql, [user.id, pageSize, offset], async (err2, rows) => {
-      if (err2) return res.status(500).json({ error: 'DB_ERROR' });
-      const out = [];
-      for (const r of (rows||[])) {
-        let meta = { poster_path: null, title: r.title || '' };
-        try{ meta = await getMovieMetaFast(r.tmdb_id); }catch(_){ }
-        out.push({
-          type: 'movie',
-          tmdb_id: r.tmdb_id,
-          title: r.title || meta.title || '',
-          year: r.year || (meta.release_date ? String(meta.release_date).slice(0,4) : null),
-          link: r.link || null,
-          poster_path: meta.poster_path || null
-        });
-      }
-      res.json({ ok: true, page, pageSize, totalPages, totalResults: total, results: out, items: out });
     });
   });
 });

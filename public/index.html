@@ -10,22 +10,10 @@
 <body>
   <header>
     <div class="container nav">
-      <div class="nav-top">
-        <div class="brand">
-          <div class="logo">Cine en Castellano HD</div>
-          <div class="tag">por Crono2021</div>
-        </div>
-
-        <div class="user-wrap">
-          <button id="authBtn" class="ghost" type="button">Login</button>
-
-          <div class="user-menu-wrap">
-            <button id="userMenuBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false" style="display:none"></button>
-            <div id="userMenu" class="dropdown-menu" role="menu" aria-label="Menú personal"></div>
-          </div>
-        </div>
+      <div class="brand">
+        <div class="logo">Cine en Castellano HD</div>
+        <div class="tag">por Crono2021</div>
       </div>
-
       <div class="nav-actions">
         <div class="searchbar">
           <input id="q" placeholder="Buscar por título..." />
@@ -37,6 +25,8 @@
           <button id="searchBtn">Buscar</button>
           <button id="resetBtn" class="ghost">Inicio</button>
           <button id="recommendedBtn" class="ghost">Recomendado para ti</button>
+          <button id="myRatingsBtn" class="ghost">Mis valoraciones</button>
+          <button id="authBtn" class="ghost">Entrar</button>
         </div>
       </div>
     </div>
@@ -54,18 +44,6 @@
         </div>
         <div class="row-scroller top10" id="topRow"></div>
         <div class="row-empty" id="topEmpty" style="display:none">Aún no hay reproducciones hoy. Pulsa “Reproducir” en alguna ficha y verás aquí el Top 10.</div>
-      </section>
-
-      <section class="row-section" id="rowBestApp">
-        <div class="row-head">
-          <h3>Películas mejor valoradas en la APP</h3>
-          <div class="row-ctrl">
-            <button class="row-btn" data-row="bestapp" data-dir="-1">◀</button>
-            <button class="row-btn" data-row="bestapp" data-dir="1">▶</button>
-          </div>
-        </div>
-        <div class="row-scroller" id="bestAppRow"></div>
-        <div class="row-empty" id="bestAppEmpty" style="display:none">Aún no hay suficientes valoraciones. ¡Sé el primero en puntuar!</div>
       </section>
 
       
@@ -133,12 +111,6 @@
               <small id="ratingHint" class="mute"></small>
             </div>
 
-            <div id="pendingBox" class="pending-box" style="display:none">
-              <h4>Pendientes</h4>
-              <button id="pendingToggleBtn" class="ghost" type="button">Añadir a pendientes</button>
-              <small id="pendingHint" class="mute"></small>
-            </div>
-
             <h4>Reparto principal</h4>
             <div id="modalCast" class="cast"></div>
             <p>
@@ -159,13 +131,13 @@
       </div>
       <div class="modal-body">
         <div class="auth-tabs">
-          <button id="tabLogin" class="tab active" type="button">Login</button>
+          <button id="tabLogin" class="tab active" type="button">Entrar</button>
           <button id="tabRegister" class="tab" type="button">Crear cuenta</button>
         </div>
         <div class="auth-form">
           <input id="authUser" placeholder="Usuario" autocomplete="username" />
           <input id="authPass" placeholder="Contraseña" type="password" autocomplete="current-password" />
-          <button id="authSubmit">Login</button>
+          <button id="authSubmit">Entrar</button>
           <div><small id="authMsg" class="mute"></small></div>
         </div>
       </div>

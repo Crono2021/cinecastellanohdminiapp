@@ -27,12 +27,6 @@ button{cursor:pointer;box-shadow:var(--shadow);}
 small.mute{opacity:.6}
 footer{border-top:1px solid #222;color:#aaa}
 @media (max-width:760px){
-  /* Header top row */
-  .nav-top{width:100%}
-  .user-wrap{margin-left:auto}
-  .searchbar{gap:8px}
-  .searchbar input{min-width:0;flex:1}
-
   .detail{grid-template-columns:1fr}
   .poster-lg{width:100%}
 }
@@ -177,10 +171,6 @@ footer{border-top:1px solid #222;color:#aaa}
 
 header{background:#0b0c10cc}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.nav-top{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%}
-.user-wrap{display:flex;align-items:center;gap:10px}
-.user-menu-wrap{position:relative;display:inline-flex}
-.nav-actions{width:100%}
 .brand{display:flex;flex-direction:column;gap:2px}
 .logo{font-weight:900;letter-spacing:.6px;font-size:1.05rem;color:#fff}
 .tag{font-size:.75rem;opacity:.7}
@@ -240,12 +230,6 @@ header{background:#0b0c10cc}
 .letter-menu .letter-item.active{background:#1a1b26;border-color:#3a3c49;}
 
 @media (max-width:760px){
-  /* Header top row */
-  .nav-top{width:100%}
-  .user-wrap{margin-left:auto}
-  .searchbar{gap:8px}
-  .searchbar input{min-width:0;flex:1}
-
   .row-head{align-items:flex-start}
   .row-tools{width:100%;justify-content:space-between}
   /* On mobile, make the dropdown feel like a tidy vertical column */
@@ -283,12 +267,6 @@ header{background:#0b0c10cc}
 .card:hover{box-shadow:0 14px 38px rgba(0,0,0,.35)}
 
 @media (max-width:760px){
-  /* Header top row */
-  .nav-top{width:100%}
-  .user-wrap{margin-left:auto}
-  .searchbar{gap:8px}
-  .searchbar input{min-width:0;flex:1}
-
   .searchbar input{min-width:140px}
   /* En móvil: título + actor en la misma fila */
   .searchbar #q,
@@ -298,12 +276,3 @@ header{background:#0b0c10cc}
   .row-meta{max-width:132px}
   .rank-num{font-size:74px}
 }
-
-
-/* Pending (watch later) */
-.pending-box{margin:14px 0 6px;padding:12px;border:1px solid #2a2c37;border-radius:14px;background:#12131a}
-.pending-box h4{margin:0 0 8px}
-.pending-box button{width:100%}
-.pending-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #2a2c37;background:#12131a;border-radius:999px;padding:6px 10px;font-size:.78rem;opacity:.95}
-.card-actions{display:flex;gap:8px;margin-top:8px}
-.card-actions button{padding:7px 10px;border-radius:12px}

@@ -52,24 +52,7 @@ async function fetchTopToday(limit = 10){
   return Array.isArray(data) ? data : [];
 }
 
-async function fetchBestApp(limit = 10){
-  const p = new URLSearchParams({ limit: String(limit) });
-  const r = await fetch('/api/app-top-rated?' + p.toString());
-  if (!r.ok) return [];
-  const data = await r.json();
-  return Array.isArray(data) ? data : [];
-}
-
 // --- UI helpers ---
-
-async function markPendingWatched(tmdbId){
-  if (!auth.user){ openAuth(); return; }
-  try{
-    await apiJson('/api/pending/' + encodeURIComponent(tmdbId), { method:'DELETE' });
-    if (state.view === 'pending') loadExplore();
-  }catch(_){ }
-}
-
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
@@ -89,53 +72,12 @@ async function refreshMe(){
 }
 
 function syncAuthUi(){
-  const loginBtn = el('authBtn');
-  const menuBtn = el('userMenuBtn');
+  const btn = el('authBtn');
+  const my = el('myRatingsBtn');
   const rec = el('recommendedBtn');
-  if (auth.user){
-    if (loginBtn) loginBtn.style.display = 'none';
-    if (menuBtn){
-      menuBtn.style.display = '';
-      menuBtn.textContent = `Menú personal (${auth.user.username})`;
-    }
-    if (rec) rec.style.display = '';
-  } else {
-    if (loginBtn){
-      loginBtn.style.display = '';
-      loginBtn.textContent = 'Login';
-    }
-    if (menuBtn) menuBtn.style.display = 'none';
-    if (rec) rec.style.display = '';
-  }
-}
-
-
-// --- User menu (Menú personal) ---
-function buildUserMenu(){
-  const menu = el('userMenu');
-  if (!menu) return;
-  menu.innerHTML = [
-    `<button class="menu-item" type="button" data-action="myratings" role="menuitem">Mis valoraciones</button>`,
-    `<button class="menu-item" type="button" data-action="pending" role="menuitem">Pendientes</button>`,
-    `<div class="menu-divider"></div>`,
-    `<button class="menu-item" type="button" data-action="logout" role="menuitem">Salir</button>`
-  ].join('');
-}
-
-function closeUserMenu(){
-  const menu = el('userMenu');
-  const btn = el('userMenuBtn');
-  if (!menu || !btn) return;
-  menu.classList.remove('open');
-  btn.setAttribute('aria-expanded','false');
-}
-function toggleUserMenu(){
-  const menu = el('userMenu');
-  const btn = el('userMenuBtn');
-  if (!menu || !btn) return;
-  const open = !menu.classList.contains('open');
-  menu.classList.toggle('open', open);
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (btn) btn.textContent = auth.user ? `Salir (${auth.user.username})` : 'Entrar';
+  if (my) my.style.display = auth.user ? '' : 'none';
+  if (rec) rec.style.display = auth.user ? '' : 'none';
 }
 
 function renderRow(container, items, { top10 = false } = {}){
@@ -181,7 +123,7 @@ function wireRowButtons(){
     btn.addEventListener('click', () => {
       const row = btn.dataset.row;
       const dir = parseInt(btn.dataset.dir || '1', 10);
-      const target = row === 'top' ? el('topRow') : (row === 'bestapp' ? el('bestAppRow') : (row === 'premieres' ? el('premieresRow') : (row === 'recent' ? el('recentRow') : null)));
+      const target = row === 'top' ? el('topRow') : (row === 'premieres' ? el('premieresRow') : (row === 'recent' ? el('recentRow') : null));
       if (!target) return;
       const amount = Math.floor(target.clientWidth * 0.85) * dir;
       target.scrollBy({ left: amount, behavior: 'smooth' });
@@ -370,25 +312,6 @@ async function loadTopRow(){
   renderRow(row, items, { top10: true });
 }
 
-async function loadBestAppRow(){
-  const row = el('bestAppRow');
-  const empty = el('bestAppEmpty');
-  if (!row) return;
-  try{
-    const items = await fetchBestApp(10);
-    if (!items.length){
-      row.innerHTML = '';
-      if (empty) empty.style.display = '';
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-    renderRow(row, items, { top10: false });
-  }catch(_){
-    row.innerHTML = '';
-    if (empty) empty.style.display = '';
-  }
-}
-
 async function loadExplore(){
   const pageInfo = el('pageInfo');
   const grid = el('grid');
@@ -401,16 +324,15 @@ async function loadExplore(){
   if (grid) grid.innerHTML = '';
 
   // Special views: Recommended / My Ratings
-  if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending'){
+  if (state.view === 'recommended' || state.view === 'myratings'){
     updateHomeVisibility();
     const params = new URLSearchParams({ page: String(state.page), pageSize: String(state.pageSize || 30) });
-    const endpoint = state.view === 'recommended' ? ('/api/recommended?' + params.toString()) : (state.view === 'myratings' ? ('/api/my-ratings?' + params.toString()) : ('/api/pending?' + params.toString()));
+    const endpoint = state.view === 'recommended' ? ('/api/recommended?' + params.toString()) : ('/api/my-ratings?' + params.toString());
     try{
       const data = await apiJson(endpoint, { method:'GET', headers: {} });
       const items = data?.results || [];
       grid.innerHTML = items.map(item => {
-        const extra = (state.view === 'myratings' && item.user_rating) ? `<div class="year">Tu nota: ${item.user_rating}/10</div>` : (state.view === 'pending' ? `<div class="year">Pendiente</div>` : `<div class="year">${item.year || ''}</div>`);
-        const actions = (state.view === 'pending') ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>` : '';
+        const extra = (state.view === 'myratings' && item.user_rating) ? `<div class="year">Tu nota: ${item.user_rating}/10</div>` : `<div class="year">${item.year || ''}</div>`;
         return `
           <div class="card" data-id="${item.tmdb_id}" data-type="movie">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -418,27 +340,13 @@ async function loadExplore(){
               <div class="title">${esc(item.title)}</div>
               ${extra}
             </div>
-            ${actions}
           </div>
         `;
       }).join('');
-
-      // Click handling (open ficha vs marcar como vista)
-      grid.querySelectorAll('.card').forEach(elc => {
-        elc.addEventListener('click', (e) => {
-          const btn = e.target?.closest?.('button[data-action="watched"]');
-          if (btn){
-            e.preventDefault();
-            e.stopPropagation();
-            markPendingWatched(btn.dataset.id);
-            return;
-          }
-          openDetails(elc.dataset.id, 'movie');
-        });
-      });
+      grid.querySelectorAll('.card').forEach(elc => elc.addEventListener('click', () => openDetails(elc.dataset.id, 'movie')));
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);
       if (pageInfo){
-        const label = state.view === 'recommended' ? 'Recomendado para ti' : (state.view === 'myratings' ? 'Mis valoraciones' : 'Pendientes');
+        const label = state.view === 'recommended' ? 'Recomendado para ti' : 'Mis valoraciones';
         pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
       }
     }catch(e){
@@ -524,7 +432,6 @@ async function loadExplore(){
         <div class="title">${esc(item.title)}</div>
         <div class="year">${item.year || ''}</div>
       </div>
-      ${actions}
     </div>
   `).join('');
 
@@ -598,52 +505,11 @@ function updateHomeVisibility(){
   const hasFilter = !!(state.genre || state.letter || state.q || state.actor);
   const show = !hasFilter && (state.view === 'home');
   const top = el('rowTop');
-  const best = el('rowBestApp');
   const prem = el('rowPremieres');
   const rec = el('rowRecent');
   if (top) top.style.display = show ? '' : 'none';
-  if (best) best.style.display = show ? '' : 'none';
   if (prem) prem.style.display = show ? '' : 'none';
   if (rec) rec.style.display = show ? '' : 'none';
-}
-
-async function refreshPendingInModal(tmdbId){
-  const box = el('pendingBox');
-  const btn = el('pendingToggleBtn');
-  const hint = el('pendingHint');
-  if (!box || !btn) return;
-  if (!auth.user){
-    box.style.display = 'none';
-    return;
-  }
-  box.style.display = '';
-  try{
-    const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId));
-    const isPending = !!j?.pending;
-    btn.textContent = isPending ? 'Quitar de pendientes' : 'Añadir a pendientes';
-    btn.dataset.pending = isPending ? '1' : '0';
-    if (hint) hint.textContent = isPending ? 'Esta película está en tu lista de pendientes.' : 'Añádela para verla más tarde.';
-  }catch(_){
-    btn.textContent = 'Añadir a pendientes';
-    btn.dataset.pending = '0';
-    if (hint) hint.textContent = '';
-  }
-}
-
-async function togglePendingFromModal(){
-  if (!auth.user){ openAuth(); return; }
-  const id = currentDetail?.id;
-  if (!id) return;
-  const btn = el('pendingToggleBtn');
-  const isPending = btn && btn.dataset.pending === '1';
-  try{
-    if (isPending){
-      await apiJson('/api/pending/' + encodeURIComponent(id), { method:'DELETE' });
-    } else {
-      await apiJson('/api/pending', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id) }) });
-    }
-    await refreshPendingInModal(id);
-  }catch(_){ }
 }
 
 function renderStars(current){
@@ -751,7 +617,7 @@ function setAuthMode(mode){
   if (t1) t1.classList.toggle('active', authMode === 'login');
   if (t2) t2.classList.toggle('active', authMode === 'register');
   const btn = el('authSubmit');
-  if (btn) btn.textContent = authMode === 'login' ? 'Login' : 'Crear cuenta';
+  if (btn) btn.textContent = authMode === 'login' ? 'Entrar' : 'Crear cuenta';
   const pass = el('authPass');
   if (pass) pass.autocomplete = authMode === 'login' ? 'current-password' : 'new-password';
 }
@@ -759,8 +625,6 @@ function setAuthMode(mode){
 // --- Events ---
 function wireEvents(){
   el('closeModal').addEventListener('click', closeModal);
-  const pt = el('pendingToggleBtn');
-  if (pt && !pt.__bound){ pt.__bound = true; pt.addEventListener('click', (e)=>{ e.preventDefault(); togglePendingFromModal(); }); }
   el('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
 
   // Auth modal events
@@ -846,7 +710,6 @@ function wireEvents(){
     const lbtn = el('letterFilterBtn');
     if (lbtn) lbtn.textContent = 'Filtrar letra';
     loadTopRow();
-    loadBestAppRow();
     loadRecentRow();
     loadExplore();
     try{ window.scrollTo({ top: 0, behavior:'smooth' }); }catch(_){ }
@@ -854,65 +717,47 @@ function wireEvents(){
 
   // Recommended / My Ratings
   const recBtn = el('recommendedBtn');
+  const myBtn = el('myRatingsBtn');
+  if (recBtn){
+    recBtn.addEventListener('click', async ()=>{
+      if (!auth.user){ openAuth(); return; }
+      state.view = 'recommended';
+      state.page = 1;
+      state.pageSize = 30;
+      state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+      state.random = false;
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
+  if (myBtn){
+    myBtn.addEventListener('click', async ()=>{
+      if (!auth.user){ openAuth(); return; }
+      state.view = 'myratings';
+      state.page = 1;
+      state.pageSize = 30;
+      state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+      state.random = false;
+      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      loadExplore();
+    });
+  }
 
-  // Auth + User menu
+  // Auth
   const authBtn = el('authBtn');
-  const userMenuBtn = el('userMenuBtn');
-  const userMenu = el('userMenu');
-  buildUserMenu();
-
   if (authBtn){
-    authBtn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      openAuth();
-    });
-  }
-
-  if (userMenuBtn){
-    userMenuBtn.addEventListener('click', (e)=>{
-      e.preventDefault();
-      toggleUserMenu();
-    });
-  }
-
-  if (userMenu){
-    userMenu.addEventListener('click', async (e)=>{
-      const item = e.target?.closest?.('.menu-item');
-      if (!item) return;
-      const act = item.dataset.action;
-      closeUserMenu();
-      if (act === 'myratings'){
-        if (!auth.user){ openAuth(); return; }
-        state.view = 'myratings';
-        state.page = 1;
-        state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
-        state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
-        loadExplore();
-      } else if (act === 'pending'){
-        if (!auth.user){ openAuth(); return; }
-        state.view = 'pending';
-        state.page = 1;
-        state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
-        state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
-        loadExplore();
-      } else if (act === 'logout'){
+    authBtn.addEventListener('click', async ()=>{
+      if (auth.user){
         try{ await apiJson('/api/auth/logout', { method:'POST', body: '{}' }); }catch(_){ }
         auth.user = null;
         syncAuthUi();
+        // If user was on a private view, return home
         if (state.view !== 'home') el('resetBtn').click();
+      }else{
+        openAuth();
       }
     });
   }
-
-  document.addEventListener('click', (e)=>{
-    if (!userMenu || !userMenuBtn) return;
-    if (userMenu.classList.contains('open') && !userMenu.contains(e.target) && !userMenuBtn.contains(e.target)) closeUserMenu();
-  });
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeUserMenu(); });
 
   el('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; loadExplore(); }});
   el('next').addEventListener('click', ()=>{
