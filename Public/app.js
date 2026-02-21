@@ -848,7 +848,10 @@ function openEditCollectionFlow(existing){
   if (!auth.user){ openAuth(); return; }
   const existingName = String(existing?.name || '').trim();
   const existingCover = existing?.cover_image || '';
-  const existingItems = Array.isArray(existing?.items) ? existing.items.map(x => Number(x.tmdb_id)).filter(n => Number.isFinite(n) && n > 0) : [];
+  const existingItems = Array.isArray(existing?.items)
+    ? existing.items.map(x => ({ tmdb_id: Number(x.tmdb_id), title: String(x.title || x.name || '').trim(), year: x.year || x.release_year || '' }))
+        .filter(o => Number.isFinite(o.tmdb_id) && o.tmdb_id > 0)
+    : [];
 
   // Step 1
   const modalHtml = `
@@ -918,7 +921,20 @@ function openEditCollectionFlow(existing){
 }
 
 function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
-  const selected = new Set(Array.isArray(initialItems) ? initialItems : []);
+  // initialItems can be [number] or [{tmdb_id,title,year}]
+  const selected = new Map(); // tmdb_id(string) -> {tmdb_id:number,title,year}
+  (Array.isArray(initialItems) ? initialItems : []).forEach(it => {
+    if (typeof it === 'number'){
+      const id = String(it);
+      selected.set(id, { tmdb_id: Number(it), title: id, year: '' });
+    } else if (it && typeof it === 'object'){
+      const idn = Number(it.tmdb_id);
+      if (!Number.isFinite(idn) || idn <= 0) return;
+      const id = String(idn);
+      selected.set(id, { tmdb_id: idn, title: String(it.title || id).trim(), year: it.year || '' });
+    }
+  });
+
   const modalHtml2 = `
     <div class="form-row">
       <label>Añade películas</label>
@@ -940,9 +956,9 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
   function renderSelected(){
     const box = el('colSelected');
     if (!box) return;
-    const arr = Array.from(selected);
+    const arr = Array.from(selected.values());
     box.innerHTML = arr.length
-      ? arr.map(id => `<div class="pill">${id}</div>`).join('')
+      ? arr.map(it => `<div class="pill">${esc(it.title || String(it.tmdb_id))}${it.year ? ` (${esc(String(it.year))})` : ''}</div>`).join('')
       : `<div class="mute">Ninguna</div>`;
   }
   renderSelected();
@@ -950,18 +966,24 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
   const input = el('colMovieSearch');
   const results = el('colMovieResults');
   let tmr = null;
+
   async function doSearch(q){
     if (!results) return;
     const qq = String(q || '').trim();
     if (qq.length < 2){ results.innerHTML = ''; return; }
     try{
-      const data = await apiJson('/api/movies/search-lite?q=' + encodeURIComponent(qq) + '&limit=20', { method:'GET', headers:{} });
-      const list = (data?.results || []).map(it => {
+      // NOTE: search-lite returns either an array or {items: []} depending on backend version.
+      const r = await fetch('/api/movies/search-lite?q=' + encodeURIComponent(qq) + '&limit=20');
+      const j = await r.json();
+      const items = Array.isArray(j) ? j : (j.items || j.results || []);
+
+      const list = (items || []).map(it => {
+        const id = String(it.tmdb_id);
         const year = it.year ? ` (${it.year})` : '';
-        const inSel = selected.has(Number(it.tmdb_id));
+        const inSel = selected.has(id);
         return `
-          <div class="result-row" data-id="${it.tmdb_id}">
-            <div class="result-text">${esc(it.title)}${esc(year)}</div>
+          <div class="result-row" data-id="${esc(id)}" data-title="${esc(it.title || '')}" data-year="${esc(String(it.year||''))}">
+            <div class="result-text">${esc(it.title || '')}${esc(year)}</div>
             <div class="result-actions">
               <button class="iconbtn" data-action="add" title="Añadir" ${inSel ? 'disabled' : ''}>+</button>
               <button class="iconbtn" data-action="del" title="Eliminar" ${inSel ? '' : 'disabled'}>−</button>
@@ -969,25 +991,33 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
           </div>
         `;
       }).join('');
+
       results.innerHTML = list || `<div class="mute">Sin resultados.</div>`;
     }catch(_){
       results.innerHTML = `<div class="mute">Error buscando.</div>`;
     }
   }
+
   if (input){
     input.addEventListener('input', ()=>{
       if (tmr) clearTimeout(tmr);
       tmr = setTimeout(()=> doSearch(input.value), 120);
     });
   }
+
   if (results){
     results.addEventListener('click', (e)=>{
       const row = e.target?.closest?.('.result-row');
       if (!row) return;
-      const id = Number(row.dataset.id);
+      const id = String(row.dataset.id || '');
       const act = e.target?.closest?.('button')?.dataset?.action;
-      if (act === 'add') selected.add(id);
-      if (act === 'del') selected.delete(id);
+      const title = row.dataset.title || id;
+      const year = row.dataset.year || '';
+      if (act === 'add'){
+        selected.set(id, { tmdb_id: Number(id), title, year });
+      } else if (act === 'del'){
+        selected.delete(id);
+      }
       renderSelected();
       doSearch(input?.value || '');
     });
@@ -997,8 +1027,9 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
     if (typeof onBack === 'function') return onBack();
     closeCollectionsModal();
   });
+
   el('colFinish')?.addEventListener('click', ()=>{
-    const arr = Array.from(selected);
+    const arr = Array.from(selected.values()).map(x => Number(x.tmdb_id)).filter(n => Number.isFinite(n) && n > 0);
     if (!arr.length){ showToast('Añade al menos una película', 'error'); return; }
     if (typeof onFinish === 'function') onFinish(arr);
   });
