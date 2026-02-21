@@ -1159,5 +1159,3 @@ function wireEvents(){
     loadExplore(),
   ]);
 })();
-
-// v4.3.2 clock icon placeholder change
