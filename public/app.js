@@ -98,6 +98,19 @@ async function removeFavoriteFromList(tmdbId){
   }catch(_){ }
 }
 
+async function removeRatingFromList(tmdbId){
+  if (!auth.user){ openAuth(); return; }
+  try{
+    await apiJson('/api/ratings/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+    showToast('Valoración eliminada');
+    if (state.view === 'myratings'){
+      loadExplore();
+      // Actualiza también el carrusel global de mejor valoradas
+      try{ loadBestAppRow(); }catch(_){ }
+    }
+  }catch(_){ }
+}
+
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
@@ -455,7 +468,9 @@ async function loadExplore(){
           ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>`
           : (state.view === 'favorites')
             ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}">Quitar</button></div>`
-            : '';
+            : (state.view === 'myratings')
+              ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
+              : '';
         return `
           <div class="card" data-id="${item.tmdb_id}" data-type="movie">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
@@ -483,6 +498,13 @@ async function loadExplore(){
             e.preventDefault();
             e.stopPropagation();
             removeFavoriteFromList(btn2.dataset.id);
+            return;
+          }
+          const btn3 = e.target?.closest?.('button[data-action="delrating"]');
+          if (btn3){
+            e.preventDefault();
+            e.stopPropagation();
+            removeRatingFromList(btn3.dataset.id);
             return;
           }
           openDetails(elc.dataset.id, 'movie');
@@ -1149,10 +1171,12 @@ function wireEvents(){
   await fetchGenres();
   wireEvents();
   enableDragScroll(el('topRow'));
+  enableDragScroll(el('bestAppRow'));
   enableDragScroll(el('premieresRow'));
   enableDragScroll(el('recentRow'));
   await Promise.all([
     loadTopRow(),
+    loadBestAppRow(),
     loadPremieresRow(),
     loadRecentRow(),
     loadExplore(),
