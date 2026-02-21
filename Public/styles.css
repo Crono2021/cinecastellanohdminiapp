@@ -374,6 +374,7 @@ header{background:#0b0c10cc}
 .collection-meta{ padding: 10px 12px 12px 12px; }
 .collection-name{ font-weight:700; }
 .collection-user, .collection-count{ font-size: 12px; opacity: .75; margin-top: 2px; }
+.collection-actions{ display:flex; gap:10px; margin-top: 8px; flex-wrap:wrap; }
 
 .form-row{ display:flex; flex-direction:column; gap:8px; margin-bottom: 12px; }
 .form-row label{ font-weight: 700; font-size: 13px; opacity: .9; }

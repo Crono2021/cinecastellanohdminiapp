@@ -2012,6 +2012,31 @@ app.get('/api/collections', (req, res) => {
   );
 });
 
+// GET /api/collections/mine  (private)
+app.get('/api/collections/mine', requireAuth, (req, res) => {
+  const u = getSessionUser(req);
+  db.all(
+    `SELECT c.id, c.name, c.cover_image, c.created_at, u.username,
+            (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) as items_count
+     FROM collections c
+     JOIN users u ON u.id = c.user_id
+     WHERE c.user_id = ?
+     ORDER BY datetime(c.created_at) DESC`,
+    [u.id],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      res.json((rows || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        cover_image: r.cover_image || null,
+        created_at: r.created_at,
+        username: r.username,
+        items_count: r.items_count
+      })));
+    }
+  );
+});
+
 app.get('/api/collections/:id', (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: 'ID_INVALID' });
@@ -2096,6 +2121,71 @@ app.post('/api/collections', requireAuth, (req, res) => {
       const stmt = db.prepare(`INSERT OR IGNORE INTO collection_items (collection_id, tmdb_id, position) VALUES (?, ?, ?)`);
       items.forEach((tmdbId, idx) => stmt.run([colId, tmdbId, idx]));
       stmt.finalize(() => res.json({ ok: true, id: colId }));
+    }
+  );
+});
+
+// PUT /api/collections/:id  (update collection: name, cover, items)
+app.put('/api/collections/:id', requireAuth, (req, res) => {
+  const u = getSessionUser(req);
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID_INVALID' });
+
+  const name = String(req.body?.name || '').trim();
+  const cover = req.body?.cover_image || null;
+  const items = Array.isArray(req.body?.items) ? req.body.items.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
+
+  if (!name || name.length < 2 || name.length > 60) return res.status(400).json({ error: 'NAME_INVALID' });
+  if (!items.length) return res.status(400).json({ error: 'ITEMS_INVALID' });
+
+  if (cover){
+    const s = String(cover);
+    if (!/^data:image\/(webp|png|jpeg);base64,/i.test(s)) return res.status(400).json({ error: 'IMAGE_INVALID' });
+    const b64 = s.split(',')[1] || '';
+    const bytes = Math.floor(b64.length * 0.75);
+    if (bytes > 45000) return res.status(400).json({ error: 'IMAGE_TOO_LARGE' });
+  }
+
+  db.get(
+    `SELECT id FROM collections WHERE id = ? AND user_id = ?`,
+    [id, u.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      if (!row) return res.status(403).json({ error: 'FORBIDDEN' });
+
+      db.run(
+        `UPDATE collections SET name = ?, cover_image = ? WHERE id = ? AND user_id = ?`,
+        [name, cover || null, id, u.id],
+        (err2) => {
+          if (err2) return res.status(500).json({ error: 'DB_ERROR' });
+
+          // Replace items (simple & safe)
+          db.serialize(() => {
+            db.run(`DELETE FROM collection_items WHERE collection_id = ?`, [id], (err3) => {
+              if (err3) return res.status(500).json({ error: 'DB_ERROR' });
+              const stmt = db.prepare(`INSERT OR IGNORE INTO collection_items (collection_id, tmdb_id, position) VALUES (?, ?, ?)`);
+              items.forEach((tmdbId, idx) => stmt.run([id, tmdbId, idx]));
+              stmt.finalize(() => res.json({ ok: true }));
+            });
+          });
+        }
+      );
+    }
+  );
+});
+
+// DELETE /api/collections/:id
+app.delete('/api/collections/:id', requireAuth, (req, res) => {
+  const u = getSessionUser(req);
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: 'ID_INVALID' });
+  db.run(
+    `DELETE FROM collections WHERE id = ? AND user_id = ?`,
+    [id, u.id],
+    function(err){
+      if (err) return res.status(500).json({ error: 'DB_ERROR' });
+      if (this.changes === 0) return res.status(403).json({ error: 'FORBIDDEN' });
+      res.json({ ok: true });
     }
   );
 });
