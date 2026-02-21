@@ -1166,14 +1166,19 @@ async function loadExplore(){
       });
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);
       if (pageInfo){
-        const label = state.view === 'recommended'
-          ? 'Recomendado para ti'
-          : (state.view === 'myratings'
-            ? 'Mis valoraciones'
-            : (state.view === 'pending'
-              ? 'Pendientes'
-              : 'Favoritos'));
-        pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
+        // En secciones personales y colecciones no mostramos el subtexto gris (pageInfo)
+        if (['myratings','favorites','pending','mycollections','collections'].includes(state.view)){
+          pageInfo.textContent = '';
+        } else {
+          const label = state.view === 'recommended'
+            ? 'Recomendado para ti'
+            : (state.view === 'myratings'
+              ? 'Mis valoraciones'
+              : (state.view === 'pending'
+                ? 'Pendientes'
+                : 'Favoritos'));
+          pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
+        }
       }
     }catch(e){
       if (seq !== loadSeq) return;
