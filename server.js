@@ -17,6 +17,13 @@ const microCache = new Map();
 const MC_TTL_MS = 60 * 1000; // 60s
 function mcGet(key){ const v = microCache.get(key); if(!v) return null; if(Date.now()-v.t>MC_TTL_MS){ microCache.delete(key); return null;} return v.d; }
 function mcSet(key, data){ microCache.set(key, {t:Date.now(), d:data}); }
+function mcDelPrefix(prefix){
+  try{
+    for (const k of microCache.keys()){
+      if (String(k).startsWith(prefix)) microCache.delete(k);
+    }
+  }catch(_){ }
+}
 
 // Per-user recommendations cache (kept separate from microCache)
 const recCache = new Map();
@@ -597,6 +604,7 @@ app.post('/api/ratings', requireAuth, (req, res) => {
   db.run(sql, [user.id, tmdbId, Math.round(rating)], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     recDel(user.id);
+    mcDelPrefix('appTopRated:');
     res.json({ ok: true });
   });
 });
@@ -608,6 +616,7 @@ app.delete('/api/ratings/:tmdb_id', requireAuth, (req, res) => {
   db.run('DELETE FROM ratings WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     recDel(user.id);
+    mcDelPrefix('appTopRated:');
     res.json({ ok: true });
   });
 });
@@ -931,6 +940,74 @@ app.get('/api/top', (req, res) => {
       res.json(out);
     }
   );
+});
+
+// GET /api/app-top-rated?limit=10
+// Devuelve las películas mejor valoradas *dentro de la app* (media de ratings de usuarios).
+// Orden: media desc, nº de votos desc. Limitado a 50.
+app.get('/api/app-top-rated', async (req, res) => {
+  try{
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
+    const key = `appTopRated:${limit}`;
+    const cached = mcGet(key);
+    if (cached) return res.json(cached);
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT tmdb_id,
+                AVG(rating) AS avg_rating,
+                COUNT(*)     AS votes
+           FROM ratings
+          WHERE rating IS NOT NULL
+          GROUP BY tmdb_id
+          HAVING votes >= 1
+          ORDER BY avg_rating DESC, votes DESC
+          LIMIT ?`,
+        [limit],
+        (err, r) => err ? reject(err) : resolve(r || [])
+      );
+    });
+
+    if (!rows.length){
+      mcSet(key, []);
+      return res.json([]);
+    }
+
+    // Enrich con datos TMDB (título/poster/año). 10-50 llamadas máx.
+    const items = await Promise.all(rows.map(async (r) => {
+      const tmdbId = Number(r.tmdb_id);
+      try{
+        const d = await getTmdbMovieDetails(tmdbId);
+        return {
+          tmdb_id: d.id,
+          id: d.id,
+          type: 'movie',
+          title: d.title,
+          year: d.release_date ? String(d.release_date).slice(0,4) : '',
+          poster_path: d.poster_path,
+          avg_rating: Number(r.avg_rating || 0),
+          votes: Number(r.votes || 0),
+        };
+      }catch(_){
+        return {
+          tmdb_id: tmdbId,
+          id: tmdbId,
+          type: 'movie',
+          title: `#${tmdbId}`,
+          year: '',
+          poster_path: null,
+          avg_rating: Number(r.avg_rating || 0),
+          votes: Number(r.votes || 0),
+        };
+      }
+    }));
+
+    mcSet(key, items);
+    res.json(items);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el top de la app' });
+  }
 });
 
 
