@@ -588,7 +588,7 @@ async function loadCollections(){
 
   // Only cards (header is handled by the Explore row header)
   grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no hay colecciones.</div>'}</div>`;
-  if (pageInfo) pageInfo.textContent = 'Colecciones';
+  if (pageInfo) pageInfo.textContent = (state.view==='collections'||state.view==='mycollections')?'': 'Colecciones';
 
   grid.querySelectorAll('.collection-card').forEach(card => {
     card.addEventListener('click', async ()=>{
@@ -1027,7 +1027,7 @@ async function loadExplore(){
     try{
       await loadCollections();
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = 'Colecciones';
+      if (pageInfo) pageInfo.textContent = (state.view==='collections'||state.view==='mycollections')?'': 'Colecciones';
     }catch(_){
       if (seq !== loadSeq) return;
       if (pageInfo) pageInfo.textContent = 'Error cargando colecciones';
