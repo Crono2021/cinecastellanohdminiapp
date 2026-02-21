@@ -945,7 +945,7 @@ app.get('/api/top', (req, res) => {
 // GET /api/app-top-rated?limit=10
 // Devuelve las películas mejor valoradas *dentro de la app* (media de ratings de usuarios).
 // Orden: media desc, nº de votos desc. Limitado a 50.
-app.get('/api/app-top-rated', async (req, res) => {
+async function handleAppTopRated(req, res){
   try{
     const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
     const key = `appTopRated:${limit}`;
@@ -1008,7 +1008,14 @@ app.get('/api/app-top-rated', async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el top de la app' });
   }
-});
+}
+
+// Canonical endpoint
+app.get('/api/app-top-rated', handleAppTopRated);
+// Aliases (front/back compatibility with previous UI code)
+app.get('/api/top-rated-app', handleAppTopRated);
+app.get('/api/appTopRated', handleAppTopRated);
+app.get('/api/best-rated', handleAppTopRated);
 
 
 // GET /api/movies/by-actor?name=...&page=1&pageSize=24[&q=][&genre=]
