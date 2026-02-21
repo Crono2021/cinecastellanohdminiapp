@@ -115,6 +115,87 @@ async function removeRatingFromList(tmdbId){
 }
 
 function el(id){ return document.getElementById(id); }
+
+function updateExploreHeader(){
+  const row = el('rowExplore');
+  if (!row) return;
+  const titleEl = row.querySelector('.row-head h3');
+  const pageInfo = el('pageInfo');
+  const lbtn = el('letterFilterBtn');
+  const lmenu = el('letterMenu');
+  const prev = el('prev');
+  const next = el('next');
+
+  // Defaults
+  if (lbtn){
+    lbtn.dataset.mode = 'letter';
+    lbtn.textContent = 'Filtrar letra';
+    lbtn.classList.remove('disabled');
+    lbtn.removeAttribute('disabled');
+  }
+  if (lmenu) lmenu.style.display = '';
+  if (prev) prev.parentElement && (prev.parentElement.style.display = '');
+  if (pageInfo) pageInfo.textContent = pageInfo.textContent || '';
+
+  // Switch header per view
+  if (state.view === 'collections' || state.view === 'mycollections'){
+    if (titleEl) titleEl.textContent = (state.view === 'mycollections') ? 'Mis colecciones' : 'Colecciones';
+    if (pageInfo) pageInfo.textContent = '';
+
+    // Right-side button becomes "Crear colección"
+    if (lbtn){
+      lbtn.dataset.mode = 'create';
+      lbtn.textContent = 'Crear colección';
+      // Only show enabled for logged users; otherwise prompt login
+      if (!auth.user){
+        lbtn.classList.add('disabled');
+      } else {
+        lbtn.classList.remove('disabled');
+      }
+    }
+    if (lmenu){
+      lmenu.classList.remove('open');
+      lmenu.style.display = 'none';
+    }
+    // No pagination controls here
+    if (prev && prev.parentElement) prev.parentElement.style.display = 'none';
+    return;
+  }
+
+  if (state.view === 'collection'){
+    const name = state.collectionMeta?.name || 'Colección';
+    if (titleEl) titleEl.textContent = name;
+
+    // Right-side button becomes Back
+    if (lbtn){
+      lbtn.dataset.mode = 'back';
+      lbtn.textContent = '← Volver';
+      lbtn.classList.remove('disabled');
+    }
+    if (lmenu){
+      lmenu.classList.remove('open');
+      lmenu.style.display = 'none';
+    }
+    if (prev && prev.parentElement) prev.parentElement.style.display = 'none';
+    return;
+  }
+
+  // Default explore/catalog view
+  if (titleEl) titleEl.textContent = 'Explorar catálogo';
+  if (lmenu) lmenu.style.display = '';
+  if (prev && prev.parentElement) prev.parentElement.style.display = '';
+}
+
+async function enterCollection(collectionId, backView){
+  state.view = 'collection';
+  state.collectionId = collectionId;
+  state.collectionBackView = backView || 'collections';
+  state.collectionItems = null;
+  state.collectionMeta = { id: collectionId, name: 'Colección' };
+  updateExploreHeader();
+  try{ el('rowExplore')?.scrollIntoView?.({ behavior:'smooth', block:'start' }); }catch(_){ }
+  loadExplore();
+}
 function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 async function apiJson(url, opts){
@@ -490,14 +571,6 @@ async function loadCollections(){
   const data = await res.json();
   const items = Array.isArray(data) ? data : (data.items || []);
 
-  const canCreate = !!auth.user;
-  const head = `
-    <div class="collections-head">
-      <div class="collections-title">Colecciones</div>
-      ${canCreate ? `<button id="createCollectionBtn">Crear colección</button>` : `<small class="mute">Regístrate para crear colecciones</small>`}
-    </div>
-  `;
-
   const cards = items.map(c => {
     const cover = c.cover_image || '';
     const img = cover ? `<img class="collection-cover" src="${cover}" />` : `<div class="collection-cover placeholder"></div>`;
@@ -513,39 +586,14 @@ async function loadCollections(){
     `;
   }).join('');
 
-  grid.innerHTML = head + `<div class="collections-grid">${cards || '<div class="mute">Aún no hay colecciones.</div>'}</div>`;
+  // Only cards (header is handled by the Explore row header)
+  grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no hay colecciones.</div>'}</div>`;
   if (pageInfo) pageInfo.textContent = 'Colecciones';
-
-  const btn = el('createCollectionBtn');
-  if (btn){
-    btn.addEventListener('click', () => openCreateCollectionFlow());
-  }
 
   grid.querySelectorAll('.collection-card').forEach(card => {
     card.addEventListener('click', async ()=>{
       const id = card.dataset.id;
-      try{
-        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method:'GET', headers:{} });
-        const list = (d.items || []).map(it => `
-          <div class="col-item" data-id="${it.tmdb_id}">
-            <img class="col-item-poster" src="${imgBase}${it.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
-            <div class="col-item-text">
-              <div class="col-item-title">${esc(it.title)}</div>
-              <div class="mute">${it.year || ''}</div>
-            </div>
-          </div>
-        `).join('');
-        openCollectionsModal(d.name, `
-          <div class="col-modal-meta"><small class="mute">por ${esc(d.username || '')} · ${Number(d.items_count||0)} películas</small></div>
-          <div class="col-items">${list || '<div class="mute">Colección vacía.</div>'}</div>
-        `);
-        const body = el('collectionsBody');
-        body?.querySelectorAll?.('.col-item')?.forEach(row=>{
-          row.addEventListener('click', ()=> openDetails(row.dataset.id, 'movie'));
-        });
-      }catch(_){
-        showToast('No se pudo abrir la colección', 'error');
-      }
+      enterCollection(id, 'collections');
     });
   });
 }
@@ -568,13 +616,6 @@ async function loadMyCollections(){
   const data = await res.json();
   const items = Array.isArray(data) ? data : (data.items || []);
 
-  const head = `
-    <div class="collections-head">
-      <div class="collections-title">Mis colecciones</div>
-      <button id="createCollectionBtn">Crear colección</button>
-    </div>
-  `;
-
   const cards = items.map(c => {
     const cover = c.cover_image || '';
     const img = cover ? `<img class="collection-cover" src="${cover}" />` : `<div class="collection-cover placeholder"></div>`;
@@ -594,10 +635,14 @@ async function loadMyCollections(){
     `;
   }).join('');
 
-  grid.innerHTML = head + `<div class="collections-grid">${cards || '<div class="mute">Aún no has creado colecciones.</div>'}</div>`;
+  // Only cards (header is handled by the Explore row header)
+  grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no has creado colecciones.</div>'}</div>`;
   if (pageInfo) pageInfo.textContent = 'Mis colecciones';
 
-  el('createCollectionBtn')?.addEventListener('click', () => openCreateCollectionFlow());
+  // Clicking a card opens the collection like normal catalog
+  grid.querySelectorAll('.collection-card').forEach(card => {
+    card.addEventListener('click', ()=> enterCollection(card.dataset.id, 'mycollections'));
+  });
 
   // Edit
   grid.querySelectorAll('button[data-action="edit"]').forEach(b => {
@@ -965,6 +1010,9 @@ async function loadExplore(){
   const pageInfo = el('pageInfo');
   const grid = el('grid');
 
+  // Keep the Explore header consistent across special views (collections, my collections, single collection)
+  updateExploreHeader();
+
   // Show/hide carousels depending on filters
   updateHomeVisibility();
 
@@ -983,6 +1031,52 @@ async function loadExplore(){
     }catch(_){
       if (seq !== loadSeq) return;
       if (pageInfo) pageInfo.textContent = 'Error cargando colecciones';
+    }
+    return;
+  }
+
+  // Special view: A single collection displayed like the normal catalog grid
+  if (state.view === 'collection'){
+    updateHomeVisibility();
+    try{
+      // If we don't have items yet, fetch them
+      if (!state.collectionMeta || !Array.isArray(state.collectionItems)){
+        const id = state.collectionMeta?.id || state.collectionId;
+        if (!id) throw new Error('NO_COLLECTION_ID');
+        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method:'GET', headers:{} });
+        state.collectionMeta = { id: d.id, name: d.name, username: d.username, items_count: d.items_count };
+        state.collectionItems = d.items || [];
+      }
+
+      if (seq !== loadSeq) return;
+
+      const items = (state.collectionItems || []).filter(it => (it?.type || 'movie') !== 'tv');
+      grid.innerHTML = items.map(item => `
+        <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+          <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
+          <div class="meta">
+            <div class="title">${esc(item.title)}</div>
+            <div class="year">${item.year || ''}</div>
+          </div>
+        </div>
+      `).join('');
+
+      grid.querySelectorAll('.card').forEach(elc => {
+        elc.addEventListener('click', () => openDetails(elc.dataset.id, elc.dataset.type));
+      });
+
+      // No pagination in a collection view
+      state.totalPages = 1;
+      state.page = 1;
+      if (pageInfo){
+        const meta = state.collectionMeta || {};
+        const user = meta.username ? `por ${meta.username}` : '';
+        const cnt = Number(meta.items_count || items.length || 0);
+        pageInfo.textContent = [user, `${cnt} películas`].filter(Boolean).join(' · ');
+      }
+    }catch(_){
+      if (seq !== loadSeq) return;
+      if (pageInfo) pageInfo.textContent = 'Error cargando la colección';
     }
     return;
   }
@@ -1690,6 +1784,23 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   if (lbtn){
     lbtn.addEventListener('click', (e)=>{
       e.preventDefault();
+      const mode = lbtn.dataset.mode || 'letter';
+      if (mode === 'create'){
+        // Create collection (only logged users)
+        if (!auth.user){ openAuth(); return; }
+        openCreateCollectionFlow();
+        return;
+      }
+      if (mode === 'back'){
+        // Back from a single collection to collections list
+        const back = state.collectionBackView || 'collections';
+        state.view = back;
+        state.collectionItems = null;
+        state.collectionMeta = null;
+        updateExploreHeader();
+        loadExplore();
+        return;
+      }
       toggleLetterMenu();
     });
   }
