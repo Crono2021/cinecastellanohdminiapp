@@ -670,7 +670,6 @@ function updateHomeVisibility(){
 async function refreshPendingInModal(tmdbId){
   const box = el('pendingBox');
   const btn = el('pendingToggleBtn');
-  const hint = el('pendingHint');
   if (!box || !btn) return;
   if (!auth.user){
     box.style.display = 'none';
@@ -680,15 +679,16 @@ async function refreshPendingInModal(tmdbId){
   try{
     const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId));
     const isPending = !!j?.pending;
-    btn.textContent = isPending ? 'En pendientes' : 'Añadir a pendientes';
     btn.dataset.pending = isPending ? '1' : '0';
     btn.classList.toggle('active', isPending);
-    if (hint) hint.textContent = isPending ? 'La tienes guardada para ver más tarde' : 'Añádela para verla más tarde';
+    // Icon only
+    const icon = el('pendingIcon');
+    if (icon) icon.textContent = '🕒';
   }catch(_){
-    btn.textContent = 'Añadir a pendientes';
     btn.dataset.pending = '0';
     btn.classList.remove('active');
-    if (hint) hint.textContent = 'Añádela para verla más tarde';
+    const icon = el('pendingIcon');
+    if (icon) icon.textContent = '🕒';
   }
 }
 
@@ -713,7 +713,6 @@ async function togglePendingFromModal(){
 async function refreshFavoriteInModal(tmdbId){
   const box = el('favoriteBox');
   const btn = el('favoriteToggleBtn');
-  const hint = el('favoriteHint');
   if (!box || !btn) return;
   if (!auth.user){
     box.style.display = 'none';
@@ -723,15 +722,15 @@ async function refreshFavoriteInModal(tmdbId){
   try{
     const j = await apiJson('/api/favorites/' + encodeURIComponent(tmdbId));
     const isFav = !!j?.favorite;
-    btn.textContent = isFav ? 'En favoritos' : 'Añadir a favoritos';
     btn.dataset.favorite = isFav ? '1' : '0';
     btn.classList.toggle('active', isFav);
-    if (hint) hint.textContent = isFav ? 'La tienes guardada en favoritos' : 'Guárdala en tu lista de favoritos';
+    const icon = el('favoriteIcon');
+    if (icon) icon.textContent = '❤';
   }catch(_){
-    btn.textContent = 'Añadir a favoritos';
     btn.dataset.favorite = '0';
     btn.classList.remove('active');
-    if (hint) hint.textContent = 'Guárdala en tu lista de favoritos';
+    const icon = el('favoriteIcon');
+    if (icon) icon.textContent = '❤';
   }
 }
 

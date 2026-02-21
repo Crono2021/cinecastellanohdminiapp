@@ -313,6 +313,18 @@ header{background:#0b0c10cc}
 .save-btn.active{background:#0f766e;border-color:rgba(255,255,255,.18)}
 .save-actions .mute{margin:0;font-size:13px;color:#b9b9b9}
 
+/* Bottom actions under cast (Add to: pending/favorites) */
+.addto-wrap{margin:14px 0 6px}
+.addto-label{font-size:13px;color:#aaa;margin:0 0 8px}
+.addto-row{display:flex;gap:14px;align-items:flex-start}
+.addto-item{display:flex;flex-direction:column;align-items:center;gap:6px}
+.icon-action{width:44px;height:44px;border-radius:14px;background:#12131a;border:1px solid #2a2c37;display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;transition:transform .08s ease, background .15s ease, border-color .15s ease, opacity .15s ease}
+.icon-action:hover{background:#171824;border-color:rgba(255,255,255,.16)}
+.icon-action:active{transform:scale(.99)}
+.icon-action.active{border-color:#22c55e;color:#22c55e}
+.icon{font-size:20px;line-height:1}
+.icon-caption{font-size:11px;color:#bdbdbd}
+
 /* Toasts */
 .toast-host{position:fixed;left:0;right:0;bottom:18px;display:flex;justify-content:center;pointer-events:none;z-index:9999;padding:0 12px}
 .toast{pointer-events:none;background:rgba(17,17,17,.92);color:#fff;border:1px solid rgba(255,255,255,.12);box-shadow:0 10px 30px rgba(0,0,0,.35);padding:12px 14px;border-radius:14px;max-width:520px;display:flex;align-items:center;gap:10px;transform:translateY(14px);opacity:0;transition:opacity .18s ease, transform .18s ease}

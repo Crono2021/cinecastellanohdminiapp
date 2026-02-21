@@ -127,26 +127,34 @@
             <p><small class="mute" id="modalMeta"></small></p>
             <div id="modalGenres"></div>
 
+            <h4>Reparto principal</h4>
+            <div id="modalCast" class="cast"></div>
+
+            <!-- Bottom actions (below cast) -->
             <div id="userRatingBox" class="user-rating" style="display:none">
               <h4>Tu valoración</h4>
               <div id="starRow" class="stars" aria-label="Valorar del 1 al 10"></div>
               <small id="ratingHint" class="mute"></small>
             </div>
 
-            <div class="save-actions">
-              <div id="pendingBox" class="pending-box" style="display:none">
-                <button id="pendingToggleBtn" class="save-btn" type="button">Añadir a pendientes</button>
-                <small id="pendingHint" class="mute"></small>
-              </div>
+            <div id="addToWrap" class="addto-wrap">
+              <div class="addto-label">Añadir a:</div>
+              <div class="addto-row">
+                <div id="pendingBox" class="addto-item" style="display:none">
+                  <button id="pendingToggleBtn" class="icon-action" type="button" aria-label="Pendientes">
+                    <span id="pendingIcon" class="icon">🕒</span>
+                  </button>
+                  <div class="icon-caption">Pendientes</div>
+                </div>
 
-              <div id="favoriteBox" class="favorite-box" style="display:none">
-                <button id="favoriteToggleBtn" class="save-btn" type="button">Añadir a favoritos</button>
-                <small id="favoriteHint" class="mute"></small>
+                <div id="favoriteBox" class="addto-item" style="display:none">
+                  <button id="favoriteToggleBtn" class="icon-action" type="button" aria-label="Favoritos">
+                    <span id="favoriteIcon" class="icon">❤</span>
+                  </button>
+                  <div class="icon-caption">Favoritos</div>
+                </div>
               </div>
             </div>
-
-            <h4>Reparto principal</h4>
-            <div id="modalCast" class="cast"></div>
             <p>
               <a id="watchLink" class="link" target="_blank">▶ Reproducir</a>
             </p>
