@@ -451,3 +451,10 @@ header{background:#0b0c10cc}
 .col-item:hover{ background: rgba(255,255,255,0.06); }
 .col-item-poster{ width: 44px; height: 66px; object-fit: cover; border-radius: 8px; background:#111; }
 .col-item-title{ font-weight: 700; }
+
+.tv-card:focus {
+  outline: 3px solid #00c3ff;
+  outline-offset: 2px;
+  transform: scale(1.05);
+  z-index: 20;
+}

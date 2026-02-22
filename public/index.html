@@ -7,207 +7,298 @@
   <link rel="stylesheet" href="/styles.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
+
 <body>
-  <header>
-    <div class="container nav">
-      <div class="nav-top">
-        <div class="brand">
-          <div class="logo">Cine en Castellano HD</div>
-          <div class="tag">por Crono2021</div>
-        </div>
 
-        <div class="user-wrap">
-          <button id="authBtn" class="ghost" type="button">Login</button>
+<header>
+  <div class="container nav">
+    <div class="nav-top">
 
-          <div class="user-menu-wrap">
-            <button id="userMenuBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false" style="display:none"></button>
-            <div id="userMenu" class="dropdown-menu" role="menu" aria-label="Menú personal"></div>
-          </div>
+      <div class="brand">
+        <div class="logo">Cine en Castellano HD</div>
+        <div class="tag">por Crono2021</div>
+      </div>
+
+      <div class="user-wrap">
+        <button id="authBtn" class="ghost" type="button" tabindex="0">Login</button>
+
+        <div class="user-menu-wrap">
+          <button id="userMenuBtn"
+                  class="ghost"
+                  type="button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  tabindex="0"
+                  style="display:none"></button>
+
+          <div id="userMenu"
+               class="dropdown-menu"
+               role="menu"
+               aria-label="Menú personal"
+               tabindex="-1"></div>
         </div>
       </div>
 
-      <div class="nav-actions">
-        <div class="searchbar">
-          <input id="q" placeholder="Buscar por título..." />
-          <input id="actor" placeholder="Actor/actriz" />
-          <div class="genre-wrap">
-            <button id="genreBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Categorías</button>
-            <div id="genreMenu" class="dropdown-menu" role="menu" aria-label="Categorías"></div>
-          </div>
-          <button id="searchBtn">Buscar</button>
-          <button id="resetBtn" class="ghost">Inicio</button>
-          <button id="collectionsBtn" class="ghost">Colecciones</button>
-                  </div>
+    </div>
+
+    <div class="nav-actions">
+      <div class="searchbar">
+
+        <input id="q"
+               placeholder="Buscar por título..."
+               tabindex="0" />
+
+        <input id="actor"
+               placeholder="Actor/actriz"
+               tabindex="0" />
+
+        <div class="genre-wrap">
+          <button id="genreBtn"
+                  class="ghost"
+                  type="button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  tabindex="0">Categorías</button>
+
+          <div id="genreMenu"
+               class="dropdown-menu"
+               role="menu"
+               aria-label="Categorías"
+               tabindex="-1"></div>
+        </div>
+
+        <button id="searchBtn" tabindex="0">Buscar</button>
+        <button id="resetBtn" class="ghost" tabindex="0">Inicio</button>
+        <button id="collectionsBtn" class="ghost" tabindex="0">Colecciones</button>
+
       </div>
     </div>
-  </header>
+  </div>
+</header>
 
-  <main>
-    <div class="container">
-      <section class="row-section" id="rowTop">
-        <div class="row-head">
-          <h3>Películas más vistas hoy</h3>
-          <div class="row-ctrl">
-            <button class="row-btn" data-row="top" data-dir="-1">◀</button>
-            <button class="row-btn" data-row="top" data-dir="1">▶</button>
+<main>
+  <div class="container">
+
+    <!-- TOP -->
+    <section class="row-section" id="rowTop">
+      <div class="row-head">
+        <h3>Películas más vistas hoy</h3>
+        <div class="row-ctrl">
+          <button class="row-btn" data-row="top" data-dir="-1" tabindex="0">◀</button>
+          <button class="row-btn" data-row="top" data-dir="1" tabindex="0">▶</button>
+        </div>
+      </div>
+      <div class="row-scroller top10" id="topRow"></div>
+      <div class="row-empty" id="topEmpty" style="display:none">
+        Aún no hay reproducciones hoy.
+      </div>
+    </section>
+
+    <!-- BEST -->
+    <section class="row-section" id="rowBestApp">
+      <div class="row-head">
+        <h3>Películas mejor valoradas</h3>
+        <div class="row-ctrl">
+          <button class="row-btn" data-row="bestapp" data-dir="-1" tabindex="0">◀</button>
+          <button class="row-btn" data-row="bestapp" data-dir="1" tabindex="0">▶</button>
+        </div>
+      </div>
+      <div class="row-scroller" id="bestAppRow"></div>
+      <div class="row-empty" id="bestAppEmpty" style="display:none">
+        Aún no hay valoraciones.
+      </div>
+    </section>
+
+    <!-- PREMIERES -->
+    <section class="row-section" id="rowPremieres">
+      <div class="row-head">
+        <h3>Estrenos</h3>
+        <div class="row-ctrl">
+          <button class="row-btn" data-row="premieres" data-dir="-1" tabindex="0">◀</button>
+          <button class="row-btn" data-row="premieres" data-dir="1" tabindex="0">▶</button>
+        </div>
+      </div>
+      <div class="row-scroller" id="premieresRow"></div>
+    </section>
+
+    <!-- RECENT -->
+    <section class="row-section" id="rowRecent">
+      <div class="row-head">
+        <h3>Añadidas recientemente</h3>
+        <div class="row-ctrl">
+          <button class="row-btn" data-row="recent" data-dir="-1" tabindex="0">◀</button>
+          <button class="row-btn" data-row="recent" data-dir="1" tabindex="0">▶</button>
+        </div>
+      </div>
+      <div class="row-scroller" id="recentRow"></div>
+    </section>
+
+    <!-- EXPLORE -->
+    <section class="row-section" id="rowExplore">
+      <div class="row-head">
+        <h3>Explorar catálogo</h3>
+
+        <div class="row-tools">
+          <small class="mute" id="pageInfo"></small>
+
+          <div class="filter-wrap">
+            <button id="letterFilterBtn"
+                    class="ghost"
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    tabindex="0">Filtrar letra</button>
+
+            <div id="letterMenu"
+                 class="letter-menu"
+                 role="menu"
+                 aria-label="Filtrar por letra"
+                 tabindex="-1"></div>
           </div>
         </div>
-        <div class="row-scroller top10" id="topRow"></div>
-        <div class="row-empty" id="topEmpty" style="display:none">Aún no hay reproducciones hoy. Pulsa “Reproducir” en alguna ficha y verás aquí el Top 10.</div>
-      </section>
+      </div>
 
-      <section class="row-section" id="rowBestApp">
-        <div class="row-head">
-          <h3>Películas mejor valoradas</h3>
-          <div class="row-ctrl">
-            <button class="row-btn" data-row="bestapp" data-dir="-1">◀</button>
-            <button class="row-btn" data-row="bestapp" data-dir="1">▶</button>
+      <div id="grid" class="grid"></div>
+
+      <div class="pagination">
+        <button id="prev" tabindex="0">◀︎</button>
+        <button id="next" tabindex="0">▶︎</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- MODAL DETALLE -->
+<div id="modal"
+     class="modal"
+     role="dialog"
+     aria-modal="true"
+     tabindex="-1">
+  <div class="modal-card">
+
+    <div class="modal-header">
+      <strong id="modalTitle"></strong>
+      <button id="closeModal" tabindex="0">Cerrar</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="detail">
+        <img id="modalPoster" class="poster-lg" />
+
+        <div>
+          <p id="modalOverview"></p>
+          <p><small class="mute" id="modalMeta"></small></p>
+          <div id="modalGenres"></div>
+
+          <h4>Reparto principal</h4>
+          <div id="modalCast" class="cast"></div>
+
+          <div id="userRatingBox" class="user-rating" style="display:none">
+            <h4>Tu valoración</h4>
+            <div id="starRow"
+                 class="stars"
+                 aria-label="Valorar del 1 al 10"></div>
           </div>
-        </div>
-        <div class="row-scroller" id="bestAppRow"></div>
-        <div class="row-empty" id="bestAppEmpty" style="display:none">Aún no hay valoraciones. ¡Sé el primero en puntuar!</div>
-      </section>
 
-      
-      <section class="row-section" id="rowPremieres">
-        <div class="row-head">
-          <h3>Estrenos</h3>
-          <div class="row-ctrl">
-            <button class="row-btn" data-row="premieres" data-dir="-1">◀</button>
-            <button class="row-btn" data-row="premieres" data-dir="1">▶</button>
-          </div>
-        </div>
-        <div class="row-scroller" id="premieresRow"></div>
-      </section>
+          <div id="addToWrap" class="addto-wrap">
+            <div class="addto-label">Añadir a:</div>
+            <div class="addto-row">
 
-      <section class="row-section" id="rowRecent">
-        <div class="row-head">
-          <h3>Añadidas recientemente</h3>
-          <div class="row-ctrl">
-            <button class="row-btn" data-row="recent" data-dir="-1">◀</button>
-            <button class="row-btn" data-row="recent" data-dir="1">▶</button>
-          </div>
-        </div>
-        <div class="row-scroller" id="recentRow"></div>
-      </section>
-
-      <section class="row-section" id="rowExplore">
-        <div class="row-head">
-          <h3>Explorar catálogo</h3>
-          <div class="row-tools">
-            <small class="mute" id="pageInfo"></small>
-            <div class="filter-wrap">
-              <button id="letterFilterBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Filtrar letra</button>
-              <div id="letterMenu" class="letter-menu" role="menu" aria-label="Filtrar por letra">
-                <!-- Buttons injected by app.js -->
+              <div id="pendingBox" class="addto-item" style="display:none">
+                <button id="pendingToggleBtn"
+                        class="icon-action"
+                        type="button"
+                        tabindex="0">Pendientes</button>
               </div>
-            </div>
-          </div>
-        </div>
-        <div id="grid" class="grid"></div>
-        <div class="pagination">
-          <button id="prev">◀︎</button>
-          <button id="next">▶︎</button>
-        </div>
-      </section>
-    </div>
-  </main>
 
-  <div id="modal" class="modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <strong id="modalTitle"></strong>
-        <button id="closeModal">Cerrar</button>
-      </div>
-      <div class="modal-body">
-        <div class="detail">
-          <img id="modalPoster" class="poster-lg" />
-          <div>
-            <p id="modalOverview"></p>
-            <p><small class="mute" id="modalMeta"></small></p>
-            <div id="modalGenres"></div>
-
-            <h4>Reparto principal</h4>
-            <div id="modalCast" class="cast"></div>
-
-            <!-- Bottom actions (below cast) -->
-            <div id="userRatingBox" class="user-rating" style="display:none">
-              <h4>Tu valoración</h4>
-              <div id="starRow" class="stars" aria-label="Valorar del 1 al 10"></div>
-              <small id="ratingHint" class="mute"></small>
-            </div>
-
-            <div id="addToWrap" class="addto-wrap">
-              <div class="addto-label">Añadir a:</div>
-              <div class="addto-row">
-                <div id="pendingBox" class="addto-item" style="display:none">
-                  <button id="pendingToggleBtn" class="icon-action" type="button" aria-label="Pendientes">
-                    <span id="pendingIcon" class="icon">🕒</span>
-                  </button>
-                  <div class="icon-caption">Pendientes</div>
-                </div>
-
-                <div id="favoriteBox" class="addto-item" style="display:none">
-                  <button id="favoriteToggleBtn" class="icon-action" type="button" aria-label="Favoritos">
-                    <span id="favoriteIcon" class="icon">❤</span>
-                  </button>
-                  <div class="icon-caption">Favoritos</div>
-                </div>
+              <div id="favoriteBox" class="addto-item" style="display:none">
+                <button id="favoriteToggleBtn"
+                        class="icon-action"
+                        type="button"
+                        tabindex="0">Favoritos</button>
               </div>
+
             </div>
-            <p>
-              <a id="watchLink" class="link" target="_blank">▶ Reproducir</a>
-            </p>
           </div>
+
+          <p>
+            <a id="watchLink"
+               class="link"
+               target="_blank"
+               tabindex="0">▶ Reproducir</a>
+          </p>
+
         </div>
       </div>
+
     </div>
   </div>
+</div>
 
-  <!-- Auth modal -->
-  <div id="authModal" class="modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <strong id="authTitle">Cuenta</strong>
-        <button id="closeAuth">Cerrar</button>
+<!-- AUTH MODAL -->
+<div id="authModal"
+     class="modal"
+     role="dialog"
+     aria-modal="true"
+     tabindex="-1">
+
+  <div class="modal-card">
+
+    <div class="modal-header">
+      <strong id="authTitle">Cuenta</strong>
+      <button id="closeAuth" tabindex="0">Cerrar</button>
+    </div>
+
+    <div class="modal-body">
+
+      <div class="auth-tabs">
+        <button id="tabLogin" class="tab active" type="button" tabindex="0">Login</button>
+        <button id="tabRegister" class="tab" type="button" tabindex="0">Crear cuenta</button>
       </div>
-      <div class="modal-body">
-        <div class="auth-tabs">
-          <button id="tabLogin" class="tab active" type="button">Login</button>
-          <button id="tabRegister" class="tab" type="button">Crear cuenta</button>
-        </div>
-        <div class="auth-form">
-          <input id="authUser" placeholder="Usuario" autocomplete="username" />
-          <input id="authPass" placeholder="Contraseña" type="password" autocomplete="current-password" />
-          <button id="authSubmit">Login</button>
-          <div><small id="authMsg" class="mute"></small></div>
-        </div>
+
+      <div class="auth-form">
+        <input id="authUser" placeholder="Usuario" autocomplete="username" tabindex="0" />
+        <input id="authPass" placeholder="Contraseña" type="password" autocomplete="current-password" tabindex="0" />
+        <button id="authSubmit" tabindex="0">Login</button>
       </div>
+
     </div>
   </div>
+</div>
 
+<!-- COLLECTIONS MODAL -->
+<div id="collectionsModal"
+     class="modal"
+     role="dialog"
+     aria-modal="true"
+     tabindex="-1">
 
-  <!-- Collections modal -->
-  <div id="collectionsModal" class="modal">
-    <div class="modal-card">
-      <div class="modal-header">
-        <strong id="collectionsTitle"></strong>
-        <button id="closeCollections">Cerrar</button>
-      </div>
-      <div class="modal-body" id="collectionsBody"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <strong id="collectionsTitle"></strong>
+      <button id="closeCollections" tabindex="0">Cerrar</button>
     </div>
+    <div class="modal-body" id="collectionsBody"></div>
   </div>
+</div>
 
-  <footer>
-    <div class="container">
-      <small class="mute">® Cine Castellano HD — datos de TMDB. Esta mini app no está afiliada ni respaldada por TMDB.</small>
-    </div>
-  </footer>
+<footer>
+  <div class="container">
+    <small class="mute">
+      ® Cine Castellano HD — datos de TMDB.
+    </small>
+  </div>
+</footer>
 
-  <script src="/app.js"></script>
-  <script src="back-handler.js"></script>
+<script src="/app.js"></script>
+<script src="back-handler.js"></script>
 
-  <!-- Toast container -->
-  <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
+<div id="toastHost"
+     class="toast-host"
+     aria-live="polite"
+     aria-atomic="true"></div>
+
 </body>
 </html>
