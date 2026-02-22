@@ -210,7 +210,7 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items
 });
 
 // Lightweight schema migrations for older DBs
-// NOTE: sqlite3 errors from db.run are async (they won't be caught by try/catch).
+
 // We must check PRAGMA table_info first to avoid "duplicate column name" crashes.
 function ensureColumn(table, column, typeSql){
   db.all(`PRAGMA table_info(${table})`, (err, rows) => {

@@ -972,7 +972,7 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
     const qq = String(q || '').trim();
     if (qq.length < 2){ results.innerHTML = ''; return; }
     try{
-      // NOTE: search-lite returns either an array or {items: []} depending on backend version.
+
       const r = await fetch('/api/movies/search-lite?q=' + encodeURIComponent(qq) + '&limit=20');
       const j = await r.json();
       const items = Array.isArray(j) ? j : (j.items || j.results || []);
@@ -1602,7 +1602,7 @@ function wireEvents(){
 const closeC = el('closeCollections');
 const colModal = el('collectionsModal');
 if (closeC) closeC.addEventListener('click', closeCollectionsModal);
-// NOTE: do not close Collections modal on backdrop click.
+
 // It was too sensitive on desktop/webview (lost focus / pointer events).
 
   const tabLogin = el('tabLogin');
