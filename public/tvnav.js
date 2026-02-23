@@ -155,61 +155,173 @@
     try { history.back(); } catch (e) { }
   }
 
-  
-  function isEditingTarget(t) {
-    if (!t) return false;
-    // Inputs/textareas/selects and contenteditable should behave like normal typing fields.
-    if (t.isContentEditable) return true;
-    var isForm = isEditingTarget(e.target) || isEditingTarget(document.activeElement);
+// ---- Text input "edit mode" ----
+var editMode = false;
+var editEl = null;
+var lastNavIndex = -1;
 
-    // If the user is typing in a field, don't hijack keys (space/enter/arrows).
-    if (isForm) {
-      // Allow normal typing and caret navigation.
-      if (!isPopupOpen()) return;
-      // In modals: still let Back/Escape be handled below (so backspace can delete).
+function isTextField(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+
+  var tag = (el.tagName || '').toUpperCase();
+  if (tag === 'TEXTAREA') return true;
+
+  if (tag === 'INPUT') {
+    var t = (el.getAttribute('type') || 'text').toLowerCase();
+    // treat these as non-text controls
+    if (t === 'button' || t === 'submit' || t === 'reset' || t === 'checkbox' || t === 'radio' || t === 'range' || t === 'color' || t === 'file' || t === 'image') {
+      return false;
     }
-// Modal open: keep control inside the modal.
-    if (isPopupOpen()) {
-      if (k === 'Backspace' || k === 'Escape') {
-        if (!isForm) {
-          e.preventDefault();
-          e.stopPropagation();
-          back();
-        }
-        return;
+    return true;
+  }
+
+  // ARIA textbox
+  var role = (el.getAttribute && el.getAttribute('role')) || '';
+  if (role.toLowerCase() === 'textbox') return true;
+
+  return false;
+}
+
+function enterEditMode(field) {
+  if (editMode && editEl === field) return;
+  editMode = true;
+  editEl = field;
+
+  // Remember where we were in TV navigation so we can return.
+  lastNavIndex = index;
+
+  // Make sure the field is actually focused (Android TV sometimes focuses "behind").
+  try { field.focus({ preventScroll: true }); } catch (e) { try { field.focus(); } catch (e2) {} }
+
+  // Optional: scroll it into view so the keyboard/search bar is visible.
+  try { field.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e3) {}
+}
+
+function exitEditMode() {
+  if (!editMode) return;
+  var prev = editEl;
+  editMode = false;
+  editEl = null;
+
+  try { prev && prev.blur && prev.blur(); } catch (e) {}
+
+  // Restore TV navigation focus.
+  index = (lastNavIndex >= 0) ? lastNavIndex : index;
+  if (getItems().length) {
+    highlight((index >= 0) ? index : 0);
+  }
+}
+
+// Keep editMode in sync with focus changes.
+document.addEventListener('focusin', function (ev) {
+  var t = ev.target;
+  if (isTextField(t)) {
+    enterEditMode(t);
+  }
+}, true);
+
+// If the field loses focus by any means, leave edit mode.
+document.addEventListener('focusout', function (ev) {
+  if (!editMode) return;
+  // Defer: focus might move inside the same field or to another field.
+  setTimeout(function () {
+    var a = document.activeElement;
+    if (!isTextField(a)) exitEditMode();
+  }, 0);
+}, true);
+
+function caretAtStartAndEmpty(el) {
+  try {
+    if (!el || typeof el.value !== 'string') return false;
+    if (el.value.length !== 0) return false;
+    if (typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+      return el.selectionStart === 0 && el.selectionEnd === 0;
+    }
+    return true;
+  } catch (e) { return false; }
+}
+
+function onKey(e) {
+  var k = e.key;
+
+  // Always keep modal focus synced (so opening/closing works even if no keys are pressed).
+  // (cheap, but reliable)
+  // syncModalFocus();  <-- syncModalFocus is defined below; avoid calling before definition.
+
+  // If user is in a text field, do NOT navigate cards at all.
+  // Only leave edit mode with Enter or Back.
+  if (editMode && editEl) {
+    // Ensure focus stays on the field.
+    if (document.activeElement !== editEl) {
+      try { editEl.focus({ preventScroll: true }); } catch (e0) {}
+    }
+
+    // BACK: prefer Escape; treat Backspace as BACK only if field is empty (so we don't break deletion).
+    if (k === 'Escape' || k === 'BrowserBack' || (k === 'Backspace' && caretAtStartAndEmpty(editEl))) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isPopupOpen()) {
+        back();
+      } else {
+        exitEditMode();
       }
-      if (!isForm && (k === 'Enter' || k === 'NumpadEnter' || k === ' ')) {
-        e.preventDefault();
-        e.stopPropagation();
-        enter();
-        return;
-      }
-      if (!isForm && k === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); move('left'); return; }
-      if (!isForm && k === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); move('right'); return; }
-      if (!isForm && k === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); move('up'); return; }
-      if (!isForm && k === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); move('down'); return; }
-      if (k === 'Tab') { e.stopPropagation(); }
       return;
     }
 
-    // No modal: normal navigation.
-    if ((k === 'Backspace' || k === 'Escape') && !isForm) {
+    // ENTER: leave edit mode (close keyboard) and return to navigation.
+    if (k === 'Enter' || k === 'NumpadEnter') {
       e.preventDefault();
+      e.stopPropagation();
+      exitEditMode();
+      return;
+    }
+
+    // Everything else: let the browser handle typing/caret movement normally.
+    return;
+  }
+
+  // Modal open: keep control inside the modal.
+  if (isPopupOpen()) {
+    if (k === 'Backspace' || k === 'Escape' || k === 'BrowserBack') {
+      e.preventDefault();
+      e.stopPropagation();
       back();
       return;
     }
-    if (!isForm && (k === 'Enter' || k === 'NumpadEnter' || k === ' ')) {
+    if (k === 'Enter' || k === 'NumpadEnter' || k === ' ') {
       e.preventDefault();
+      e.stopPropagation();
       enter();
       return;
     }
-    if (!isForm && k === 'ArrowLeft') { e.preventDefault(); move('left'); return; }
-    if (!isForm && k === 'ArrowRight') { e.preventDefault(); move('right'); return; }
-    if (!isForm && k === 'ArrowUp') { e.preventDefault(); move('up'); return; }
-    if (!isForm && k === 'ArrowDown') { e.preventDefault(); move('down'); return; }
+    if (k === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); move('left'); return; }
+    if (k === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); move('right'); return; }
+    if (k === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); move('up'); return; }
+    if (k === 'ArrowDown') { e.preventDefault(); e.stopPropagation(); move('down'); return; }
+    if (k === 'Tab') { e.stopPropagation(); }
+    return;
   }
 
-  function syncModalFocus() {
+  // No modal + not editing: normal navigation.
+  if (k === 'Backspace' || k === 'Escape' || k === 'BrowserBack') {
+    e.preventDefault();
+    back();
+    return;
+  }
+  if (k === 'Enter' || k === 'NumpadEnter' || k === ' ') {
+    e.preventDefault();
+    enter();
+    return;
+  }
+  if (k === 'ArrowLeft') { e.preventDefault(); move('left'); return; }
+  if (k === 'ArrowRight') { e.preventDefault(); move('right'); return; }
+  if (k === 'ArrowUp') { e.preventDefault(); move('up'); return; }
+  if (k === 'ArrowDown') { e.preventDefault(); move('down'); return; }
+}
+
+function syncModalFocus
+() {
     var open = isPopupOpen();
     if (open && !lastModalOpen) {
       lastFocusBeforeModal = document.activeElement;
