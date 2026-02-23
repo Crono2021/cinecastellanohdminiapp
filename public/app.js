@@ -89,21 +89,19 @@ function showToast(message, kind = 'success'){
   }, 2200);
 }
 
-async function markPendingWatched(tmdbId, mediaType = 'movie'){
+async function markPendingWatched(tmdbId){
   if (!auth.user){ openAuth(); return; }
   try{
-    const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
-    await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
+    await apiJson('/api/pending/' + encodeURIComponent(tmdbId), { method:'DELETE' });
     showToast('Marcada como vista');
     if (state.view === 'pending') loadExplore();
   }catch(_){ }
 }
 
-async function removeFavoriteFromList(tmdbId, mediaType = 'movie'){
+async function removeFavoriteFromList(tmdbId){
   if (!auth.user){ openAuth(); return; }
   try{
-    const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
-    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
+    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId), { method:'DELETE' });
     showToast('Quitada de favoritos');
     if (state.view === 'favorites') loadExplore();
   }catch(_){ }
@@ -133,18 +131,13 @@ function setCatalogLabels(){
   set('lblPremieres', tv ? 'Estrenos (series)' : 'Estrenos');
   set('lblRecent', tv ? 'Añadidas recientemente (series)' : 'Añadidas recientemente');
   set('lblExplore', tv ? 'Explorar catálogo de series' : 'Explorar catálogo');
-
-  // Expose current catalog type to CSS (used to tweak title wrapping)
-  try{
-    document.body.classList.toggle('is-tv', tv);
-    document.body.classList.toggle('is-movie', !tv);
-  }catch(_){ }
 }
 
 function curtainNavigate(href){
-  // Curtain transition removed (it was causing issues on mobile).
-  // Keep the helper so callers don't need to change.
-  try{ window.location.href = href; }catch(_){ location.href = href; }
+  try{
+    document.body.classList.add('curtain-on');
+    setTimeout(()=>{ window.location.href = href; }, 220);
+  }catch(_){ window.location.href = href; }
 }
 
 function setupCatalogToggle(){
@@ -1195,7 +1188,7 @@ async function loadExplore(){
 
       const items = (state.collectionItems || []).filter(it => (it?.type || 'movie') !== 'tv');
       grid.innerHTML = items.map(item => `
-        <div class="card" data-id="${item.tmdb_id}" data-type="${(item.type || 'movie')}">
+        <div class="card" data-id="${item.tmdb_id}" data-type="${isTv() ? "tv" : "movie"}">
           <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
           <div class="meta">
             <div class="title">${esc(item.title || item.name || '')}</div>
@@ -1262,9 +1255,9 @@ async function loadExplore(){
               ? `<div class="year">Favorita</div>`
               : `<div class="year">${item.year || ''}</div>`));
         const actions = (state.view === 'pending')
-          ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}" data-type="${esc(String(item?.type || 'movie'))}">Marcar como vista</button></div>`
+          ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>`
           : (state.view === 'favorites')
-            ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}" data-type="${esc(String(item?.type || 'movie'))}">Quitar</button></div>`
+            ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}">Quitar</button></div>`
             : (state.view === 'myratings')
               ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
               : '';
@@ -1287,14 +1280,14 @@ async function loadExplore(){
           if (btn){
             e.preventDefault();
             e.stopPropagation();
-            markPendingWatched(btn.dataset.id, btn.dataset.type || elc.dataset.type || 'movie');
+            markPendingWatched(btn.dataset.id);
             return;
           }
           const btn2 = e.target?.closest?.('button[data-action="unfav"]');
           if (btn2){
             e.preventDefault();
             e.stopPropagation();
-            removeFavoriteFromList(btn2.dataset.id, btn2.dataset.type || elc.dataset.type || 'movie');
+            removeFavoriteFromList(btn2.dataset.id);
             return;
           }
           const btn3 = e.target?.closest?.('button[data-action="delrating"]');
@@ -1304,7 +1297,7 @@ async function loadExplore(){
             removeRatingFromList(btn3.dataset.id);
             return;
           }
-          openDetails(elc.dataset.id, elc.dataset.type || 'movie');
+          openDetails(elc.dataset.id, 'movie');
         });
       });
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);
@@ -1500,7 +1493,7 @@ function updateHomeVisibility(){
   if (rec) rec.style.display = show ? '' : 'none';
 }
 
-async function refreshPendingInModal(tmdbId, mediaType){
+async function refreshPendingInModal(tmdbId){
   const box = el('pendingBox');
   const btn = el('pendingToggleBtn');
   if (!box || !btn) return;
@@ -1510,8 +1503,7 @@ async function refreshPendingInModal(tmdbId, mediaType){
   }
   box.style.display = '';
   try{
-    const t = (String(mediaType||'movie') === 'tv') ? 'tv' : 'movie';
-    const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?type=' + encodeURIComponent(t));
+    const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId));
     const isPending = !!j?.pending;
     btn.dataset.pending = isPending ? '1' : '0';
     btn.classList.toggle('active', isPending);
@@ -1529,23 +1521,22 @@ async function refreshPendingInModal(tmdbId, mediaType){
 async function togglePendingFromModal(){
   if (!auth.user){ openAuth(); return; }
   const id = currentDetail?.id;
-  const type = currentDetail?.type || 'movie';
   if (!id) return;
   const btn = el('pendingToggleBtn');
   const isPending = btn && btn.dataset.pending === '1';
   try{
     if (isPending){
-      await apiJson('/api/pending/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method:'DELETE' });
+      await apiJson('/api/pending/' + encodeURIComponent(id), { method:'DELETE' });
       showToast('Quitada de pendientes');
     } else {
-      await apiJson('/api/pending', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
+      await apiJson('/api/pending', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id) }) });
       showToast('Añadida a pendientes');
     }
-    await refreshPendingInModal(id, type);
+    await refreshPendingInModal(id);
   }catch(_){ }
 }
 
-async function refreshFavoriteInModal(tmdbId, mediaType){
+async function refreshFavoriteInModal(tmdbId){
   const box = el('favoriteBox');
   const btn = el('favoriteToggleBtn');
   if (!box || !btn) return;
@@ -1555,8 +1546,7 @@ async function refreshFavoriteInModal(tmdbId, mediaType){
   }
   box.style.display = '';
   try{
-    const t = (String(mediaType||'movie') === 'tv') ? 'tv' : 'movie';
-    const j = await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?type=' + encodeURIComponent(t));
+    const j = await apiJson('/api/favorites/' + encodeURIComponent(tmdbId));
     const isFav = !!j?.favorite;
     btn.dataset.favorite = isFav ? '1' : '0';
     btn.classList.toggle('active', isFav);
@@ -1573,19 +1563,18 @@ async function refreshFavoriteInModal(tmdbId, mediaType){
 async function toggleFavoriteFromModal(){
   if (!auth.user){ openAuth(); return; }
   const id = currentDetail?.id;
-  const type = currentDetail?.type || 'movie';
   if (!id) return;
   const btn = el('favoriteToggleBtn');
   const isFav = btn && btn.dataset.favorite === '1';
   try{
     if (isFav){
-      await apiJson('/api/favorites/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method:'DELETE' });
+      await apiJson('/api/favorites/' + encodeURIComponent(id), { method:'DELETE' });
       showToast('Quitada de favoritos');
     } else {
-      await apiJson('/api/favorites', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
+      await apiJson('/api/favorites', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id) }) });
       showToast('Añadida a favoritos');
     }
-    await refreshFavoriteInModal(id, type);
+    await refreshFavoriteInModal(id);
   }catch(_){ }
 }
 
@@ -1709,10 +1698,10 @@ async function openDetails(id, type){
   try{ await loadUserRatingIntoModal(Number(id)); }catch(_){ }
 
   // Load pending button state (if logged)
-  try{ await refreshPendingInModal(Number(id), resolvedType); }catch(_){ }
+  try{ await refreshPendingInModal(Number(id)); }catch(_){ }
 
   // Load favorite button state (if logged)
-  try{ await refreshFavoriteInModal(Number(id), resolvedType); }catch(_){ }
+  try{ await refreshFavoriteInModal(Number(id)); }catch(_){ }
 }
 
 function closeModal(){ el('modal').classList.remove('open'); }
