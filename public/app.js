@@ -362,6 +362,10 @@ function toggleUserMenu(){
 function renderRow(container, items, { top10 = false } = {}){
   if (!container) return;
 
+  // Ensure every horizontal row is drag-scrollable, even if rows are re-rendered.
+  // (Binding is idempotent via container.__dragBound.)
+  enableDragScroll(container);
+
   // En home mostramos el tipo correspondiente al catálogo actual
   const tvMode = isTv();
   const filtered = (items || []).filter(it => {
@@ -547,6 +551,11 @@ function enableDragScroll(scroller){
   scroller.querySelectorAll('img').forEach(img => {
     img.setAttribute('draggable', 'false');
   });
+}
+
+// Bind drag-scroll to every carousel on the page (and any that get added later).
+function bindAllCarousels(){
+  document.querySelectorAll('.row-scroller').forEach(s => enableDragScroll(s));
 }
 
 // --- Data fetchers ---
@@ -1508,10 +1517,9 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
 
-  // Home: show random movies by default so the grid always feels fresh.
-  // IMPORTANT: Avoid random mode for series because it can be expensive (and makes Series feel "slow").
+  // Home: show random titles by default so the grid always feels fresh.
   const isHomeNoFilters = !state.q && !state.actor && !state.genre && !state.letter;
-  if (isHomeNoFilters && state.random && !isTv()){
+  if (isHomeNoFilters && state.random){
     params.set('random', '1');
   }
 
@@ -2216,10 +2224,21 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   setCatalogLabels();
   setupCatalogToggle();
   wireEvents();
-  enableDragScroll(el('topRow'));
-  enableDragScroll(el('bestAppRow'));
-  enableDragScroll(el('premieresRow'));
-  enableDragScroll(el('recentRow'));
+  bindAllCarousels();
+
+  // Auto-bind for any carousels that get rendered later
+  try{
+    const mo = new MutationObserver((mutations)=>{
+      for (const m of mutations){
+        for (const n of (m.addedNodes || [])){
+          if (!n || n.nodeType !== 1) continue;
+          if (n.classList?.contains('row-scroller')) enableDragScroll(n);
+          n.querySelectorAll?.('.row-scroller')?.forEach(s => enableDragScroll(s));
+        }
+      }
+    });
+    mo.observe(document.body, { childList:true, subtree:true });
+  }catch(_){/* ignore */}
   await Promise.all([
     loadTopRow(),
     (isTv() ? loadBestSeriesRow() : loadBestAppRow()),
