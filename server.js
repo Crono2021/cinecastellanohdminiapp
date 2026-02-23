@@ -301,6 +301,8 @@ async function getMovieMetaFast(tmdbId){
   const meta = {
     poster_path: d?.poster_path || null,
     backdrop_path: d?.backdrop_path || null,
+    title: d?.title || d?.original_title || null,
+    release_date: d?.release_date || null,
     genres: Array.isArray(d?.genres) ? d.genres : [],
   };
   metaSet(key, meta);
@@ -315,6 +317,8 @@ async function getTvMetaFast(tmdbId){
   const meta = {
     poster_path: d?.poster_path || null,
     backdrop_path: d?.backdrop_path || null,
+    name: d?.name || d?.original_name || null,
+    first_air_date: d?.first_air_date || null,
     genres: Array.isArray(d?.genres) ? d.genres : [],
   };
   metaSet(key, meta);

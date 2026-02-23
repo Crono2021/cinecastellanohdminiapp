@@ -131,13 +131,18 @@ function setCatalogLabels(){
   set('lblPremieres', tv ? 'Estrenos (series)' : 'Estrenos');
   set('lblRecent', tv ? 'Añadidas recientemente (series)' : 'Añadidas recientemente');
   set('lblExplore', tv ? 'Explorar catálogo de series' : 'Explorar catálogo');
+
+  // Expose current catalog type to CSS (used to tweak title wrapping)
+  try{
+    document.body.classList.toggle('is-tv', tv);
+    document.body.classList.toggle('is-movie', !tv);
+  }catch(_){ }
 }
 
 function curtainNavigate(href){
-  try{
-    document.body.classList.add('curtain-on');
-    setTimeout(()=>{ window.location.href = href; }, 220);
-  }catch(_){ window.location.href = href; }
+  // Curtain transition removed (it was causing issues on mobile).
+  // Keep the helper so callers don't need to change.
+  try{ window.location.href = href; }catch(_){ location.href = href; }
 }
 
 function setupCatalogToggle(){
@@ -1297,7 +1302,7 @@ async function loadExplore(){
             removeRatingFromList(btn3.dataset.id);
             return;
           }
-          openDetails(elc.dataset.id, 'movie');
+          openDetails(elc.dataset.id, elc.dataset.type || 'movie');
         });
       });
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);

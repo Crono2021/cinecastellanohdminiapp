@@ -500,6 +500,8 @@ body.curtain-on .curtain{
   transform: translateX(0%);
 }
 
+/* Curtain transition disabled in JS (kept for backwards-compat) */
+
 
 /* === FIX TÍTULOS LARGOS EN TARJETAS === */
 .card-title {
@@ -550,4 +552,13 @@ body.curtain-on .curtain{
 /* Evita que elementos flex se estiren por texto largo */
 .row-card, .card{
   min-width: 0;
+}
+
+/* === Series: allow longer titles without stretching cards === */
+body.is-tv .card .meta .title,
+body.is-tv .meta .title,
+body.is-tv .title{
+  /* Allow a bit more room for long series names, but keep a consistent card height */
+  -webkit-line-clamp: 3;
+  min-height: 3.6em;
 }
