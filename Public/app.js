@@ -1189,10 +1189,10 @@ async function loadExplore(){
 
       const items = (state.collectionItems || []).filter(it => (it?.type || 'movie') !== 'tv');
       grid.innerHTML = items.map(item => `
-        <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+        <div class="card" data-id="${item.tmdb_id}" data-type="${isTv() ? "tv" : "movie"}">
           <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
           <div class="meta">
-            <div class="title">${esc(item.title)}</div>
+            <div class="title">${esc(item.title || item.name || '')}</div>
             <div class="year">${item.year || ''}</div>
           </div>
         </div>
@@ -1263,10 +1263,10 @@ async function loadExplore(){
               ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
               : '';
         return `
-          <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+          <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
             <div class="meta">
-              <div class="title">${esc(item.title)}</div>
+              <div class="title">${esc(item.title || item.name || '')}</div>
               ${extra}
             </div>
             ${actions}
@@ -1335,12 +1335,13 @@ async function loadExplore(){
     const res = await fetch('/api/catalog/by-letter?' + params.toString());
     const data = await res.json();
 
-    const movies = (data.items || []).filter(item => (item?.type || 'movie') !== 'tv');
-    grid.innerHTML = movies.map(item => `
-      <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+    const items = (data.items || []);
+const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
+    grid.innerHTML = filtered.map(item => `
+      <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
-          <div class="title">${esc(item.title)}</div>
+          <div class="title">${esc(item.title || item.name || '')}</div>
           <div class="year">${item.year || ''}</div>
         </div>
       </div>
@@ -1377,10 +1378,14 @@ async function loadExplore(){
         const p = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
         if (state.q) p.set('q', state.q);
         if (state.genre) p.set('genre', state.genre);
-        return '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString();
+        // Actor search is separated for movies vs series
+        return (isTv()
+          ? '/api/series/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString()
+          : '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString());
       })()
-    : (state.q && state.q.length > 0 ? '/api/catalog?' + params.toString()
-       : '/api/movies?' + params.toString());
+    : (state.q && state.q.length > 0
+        ? '/api/catalog?' + params.toString()
+        : (isTv() ? '/api/series?' + params.toString() : '/api/movies?' + params.toString()));
 
   let data;
   try{
@@ -1395,14 +1400,15 @@ async function loadExplore(){
     return;
   }
 
-  const movies = (data.items || []).filter(item => (item?.type || 'movie') !== 'tv');
+  const items = (data.items || []);
+const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
   // In the main explore grid we don't show per-card action buttons.
   const actions = '';
-  grid.innerHTML = movies.map(item => `
-    <div class="card" data-id="${item.tmdb_id}" data-type="movie">
+  grid.innerHTML = filtered.map(item => `
+    <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
-        <div class="title">${esc(item.title)}</div>
+        <div class="title">${esc(item.title || item.name || '')}</div>
         <div class="year">${item.year || ''}</div>
       </div>
       ${actions}
@@ -1699,8 +1705,7 @@ async function openDetails(id, type){
   try{ await refreshFavoriteInModal(Number(id)); }catch(_){ }
 }
 
-function closeModal(){ el('modal').classList.remove('open'); }(){ el('modal').classList.remove('open'); }
-
+function closeModal(){ el('modal').classList.remove('open'); }
 // --- Auth modal ---
 let authMode = 'login';
 function openAuth(){
