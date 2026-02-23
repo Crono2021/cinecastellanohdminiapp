@@ -44,12 +44,37 @@
       return focusables;
     }
 
-    // Main catalog tiles and common card containers.
-    var nodes = $all(document, '.movie-item, .card-tile, .card, .grid > div, .row-scroller > div');
-    var items = nodes.filter(isVisible);
-    items.forEach(ensureFocusable);
-    return items;
-  }
+      // Main (no modal): include top navigation/search controls + catalog tiles.
+  // 1) Natural focusables (nav buttons, search input, etc.)
+  var focusables = $all(document,
+    'a[href],button,input,select,textarea,[role="button"],[tabindex]:not([tabindex="-1"])'
+  ).filter(function (n) { return !n.disabled && isVisible(n); });
+
+  // 2) Common card/tile containers that might be clickable but not naturally focusable.
+  var nodes = $all(document, '.movie-item, .card-tile, .card, .grid > div, .row-scroller > div');
+  var tiles = nodes.filter(isVisible);
+
+  // Ensure focusability (adds tabindex=0 when needed)
+  focusables.forEach(ensureFocusable);
+  tiles.forEach(ensureFocusable);
+
+  // Merge unique, preserving DOM order for stability.
+  var set = new Set();
+  var merged = [];
+  // Prefer DOM order by scanning the document with a combined selector.
+  var combined = $all(document,
+    'a[href],button,input,select,textarea,[role="button"],[tabindex]:not([tabindex="-1"]),.movie-item,.card-tile,.card,.grid > div,.row-scroller > div'
+  ).filter(function (n) { return !n.disabled && isVisible(n); });
+
+  combined.forEach(function (n) {
+    if (!set.has(n)) {
+      set.add(n);
+      merged.push(n);
+    }
+  });
+
+  return merged;
+}
 
   var index = -1;
   var lastFocusBeforeModal = null;
