@@ -244,8 +244,6 @@ document.addEventListener('click', function (ev) {
   var t = ev.target;
   if (isTextField(t)) enterEditMode(t);
 }, true);
-  }
-}, true);
 
 // If the field loses focus by any means, leave edit mode.
 document.addEventListener('focusout', function (ev) {
