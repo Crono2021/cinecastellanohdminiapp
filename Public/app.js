@@ -457,7 +457,7 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   for (let p = 1; p <= maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
     if (genreId) params.set('genre', genreId);
-    if (isTv()) params.set('type','tv'); else params.set('type','movie');
+    if (isTv()) { params.set('type','tv'); } else { if (!state.q) params.set('type','movie'); }
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -2024,6 +2024,8 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
 (async function init(){
   await refreshMe();
   await fetchGenres();
+  setCatalogLabels();
+  setupCatalogToggle();
   wireEvents();
   enableDragScroll(el('topRow'));
   enableDragScroll(el('bestAppRow'));

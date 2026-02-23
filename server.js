@@ -1475,6 +1475,65 @@ app.get('/api/series', async (req, res) => {
   }
 });
 
+// GET /api/series/top-rated?limit=10
+// Devuelve las series mejor valoradas según TMDB (vote_average + vote_count) dentro del catálogo local.
+app.get('/api/series/top-rated', async (req, res) => {
+  const key = req.originalUrl;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+
+  const _json = res.json.bind(res);
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+
+  try{
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, payload FROM series`, [], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows || []);
+      });
+    });
+
+    if (!rows.length) return res.json({ items: [] });
+
+    // Fetch details from TMDB
+    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id).catch(_=>null)));
+
+    let items = rows.map((r, i) => {
+      const d = details[i] || {};
+      const vote_average = Number(d.vote_average || 0);
+      const vote_count = Number(d.vote_count || 0);
+      // Simple score: primary vote_average, tie-breaker vote_count
+      const score = vote_average * 100000 + vote_count;
+      return {
+        type: 'tv',
+        tmdb_id: r.tmdb_id,
+        id: r.tmdb_id,
+        title: r.title,
+        year: r.year || (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        poster_path: d.poster_path || null,
+        backdrop_path: d.backdrop_path || null,
+        vote_average,
+        vote_count,
+        telegram: buildTelegramForPayload(r.payload) || null,
+        payload: r.payload || null,
+        _score: score
+      };
+    });
+
+    items.sort((a,b) => (b._score||0) - (a._score||0));
+    items = items.slice(0, limit).map(({_score, ...rest}) => rest);
+
+    res.json({ items });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el top de series' });
+  }
+});
+
+
+
 
 app.get('/api/movies', async (req, res) => {
   try {
