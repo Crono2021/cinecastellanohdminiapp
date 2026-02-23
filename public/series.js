@@ -4,6 +4,36 @@ const imgBase = 'https://image.tmdb.org/t/p/w342';
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
+function isMobile(){
+  const ua = navigator.userAgent || '';
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+}
+
+function openTelegramDeepLink(tg){
+  // tg: { app, web, cmd }
+  if (!tg) return;
+  const appLink = tg.app || '';
+  const webLink = tg.web || tg.link || '';
+
+  // On desktop, opening tg:// often causes the browser to "load" forever.
+  // So we only try tg:// on mobile, with a quick fallback to https.
+  if (!isMobile() || !appLink){
+    if (webLink) window.open(webLink, '_blank', 'noopener');
+    return;
+  }
+
+  const start = Date.now();
+  // Attempt to open Telegram app
+  window.location.href = appLink;
+  // Fallback to web after a short delay if the app isn't installed / didn't open
+  setTimeout(()=>{
+    // If the page is still visible shortly after, assume app didn't open
+    if (document.visibilityState === 'visible' && (Date.now() - start) > 600){
+      if (webLink) window.location.href = webLink;
+    }
+  }, 800);
+}
+
 // State
 const state = {
   q: '',
@@ -84,11 +114,14 @@ async function openDetails(id){
   el('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
 
   const link = el('watchLink');
-  if (d.link) {
-    link.href = d.link;
+  if (d.link || d.telegram) {
+    const tg = d.telegram || { web: d.link };
+    link.href = tg.web || d.link;
+    link.dataset.telegram = JSON.stringify(tg);
     link.style.display = 'inline-flex';
   } else {
     link.style.display = 'none';
+    link.removeAttribute('data-telegram');
   }
 
   el('modal').classList.add('open');
@@ -124,8 +157,16 @@ function wire(){
   });
 
   // Track views only when pressing "Reproducir"
-  el('watchLink').addEventListener('click', ()=>{
+  el('watchLink').addEventListener('click', (e)=>{
     if (state.current.id) trackView(state.current.id);
+    // Prevent slow in-browser redirect to t.me when possible
+    try{
+      const tg = JSON.parse(el('watchLink').dataset.telegram || 'null');
+      if (tg && (tg.app || tg.web)){
+        e.preventDefault();
+        openTelegramDeepLink(tg);
+      }
+    }catch(_){ }
   });
 }
 

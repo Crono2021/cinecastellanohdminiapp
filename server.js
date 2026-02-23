@@ -50,11 +50,21 @@ const PORT = process.env.PORT || 3000;
 // Requested bot: @videoclubpacobot
 // Command format: /s Titulo (año)
 const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'videoclubpacobot';
-function telegramSeriesLink(title, year){
+function telegramSeriesCommand(title, year){
   const safeTitle = String(title || '').trim();
   const safeYear = year ? String(year).trim() : '';
-  const cmd = `/s ${safeTitle}${safeYear ? ` (${safeYear})` : ''}`;
-  return `https://t.me/${TELEGRAM_BOT_USERNAME}?text=${encodeURIComponent(cmd)}`;
+  return `/s ${safeTitle}${safeYear ? ` (${safeYear})` : ''}`;
+}
+function telegramWebLinkFromCmd(cmd){
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?text=${encodeURIComponent(String(cmd||''))}`;
+}
+function telegramAppLinkFromCmd(cmd){
+  // Forces Telegram app on mobile when available
+  return `tg://resolve?domain=${encodeURIComponent(TELEGRAM_BOT_USERNAME)}&text=${encodeURIComponent(String(cmd||''))}`;
+}
+function telegramSeriesLink(title, year){
+  const cmd = telegramSeriesCommand(title, year);
+  return telegramWebLinkFromCmd(cmd);
 }
 
 // --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
@@ -1587,6 +1597,9 @@ app.get('/api/tv/:id', async (req, res) => {
     });
 
     const d = await getTmdbTvDetails(tmdbId);
+    const inferredYear = d.first_air_date ? String(d.first_air_date).slice(0,4) : (seriesRow?.first_air_year ? String(seriesRow.first_air_year) : '');
+    const inferredTitle = (seriesRow?.name || d.name || '').trim();
+    const cmd = telegramSeriesCommand(inferredTitle, inferredYear);
     // Return same shape fields server already uses in TV branch of /api/movie/:id
     return res.json({
       id: d.id,
@@ -1600,7 +1613,14 @@ app.get('/api/tv/:id', async (req, res) => {
       runtime: null,
       vote_average: d.vote_average,
       cast: d.cast,
-      link: seriesRow ? normalizeLink(seriesRow.link) : null
+      // Prefer stored link (so your admin import decides the exact command format),
+      // but also send cmd+app/web variants so the client can open Telegram faster.
+      link: seriesRow ? normalizeLink(seriesRow.link) : telegramWebLinkFromCmd(cmd),
+      telegram: {
+        cmd,
+        web: telegramWebLinkFromCmd(cmd),
+        app: telegramAppLinkFromCmd(cmd)
+      }
     });
   } catch (e) {
     console.error(e);
