@@ -505,8 +505,9 @@ function enableDragScroll(scroller){
     function onMove(e){
       moveDrag(e.clientX, ()=>e.preventDefault?.());
     }
-    scroller.addEventListener('pointerdown', onDown, { passive: false });
-    scroller.addEventListener('pointermove', onMove, { passive: false });
+    // Use capture so we still receive the event even if inner elements stop propagation.
+    scroller.addEventListener('pointerdown', onDown, { passive: false, capture: true });
+    scroller.addEventListener('pointermove', onMove, { passive: false, capture: true });
     scroller.addEventListener('pointerup', endDrag, { passive: true });
     scroller.addEventListener('pointercancel', endDrag, { passive: true });
     scroller.addEventListener('mouseleave', endDrag, { passive: true });
@@ -529,7 +530,19 @@ function enableDragScroll(scroller){
     };
     document.addEventListener('mousemove', onDocMove, { passive:false });
     document.addEventListener('mouseup', onDocUp, { passive:true });
-  }, { passive:false });
+  }, { passive:false, capture:true });
+
+  // If we dragged, cancel the click in capture phase so cards remain clickable otherwise.
+  scroller.addEventListener('click', (e)=>{
+    if (!scroller.__justDragged) return;
+    try{ e.preventDefault(); }catch(_){ }
+    try{ e.stopPropagation(); }catch(_){ }
+  }, true);
+
+  // Prevent browser "ghost" drag behavior (images/links) from hijacking mouse drags.
+  scroller.addEventListener('dragstart', (e)=>{
+    try{ e.preventDefault(); }catch(_){ }
+  });
 
   // Touch fallback (for older iOS Safari without Pointer Events)
   scroller.addEventListener('touchstart', (e)=>{
