@@ -499,3 +499,21 @@ header{background:#0b0c10cc}
 body.curtain-on .curtain{
   transform: translateX(0%);
 }
+
+
+/* === FIX TÍTULOS LARGOS EN TARJETAS === */
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 6px;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 34px;
+}
