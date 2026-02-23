@@ -258,6 +258,8 @@ header{background:#0b0c10cc}
 .row-btn:hover{transform:translateY(-1px)}
 
 .row-scroller{display:flex;gap:12px;overflow-x:auto;padding:10px 6px 16px;scroll-snap-type:x mandatory;scrollbar-width:none;touch-action:pan-y}
+.row-scroller.dragging{scroll-snap-type:none !important;scroll-behavior:auto !important;cursor:grabbing}
+.no-select,.no-select *{user-select:none !important;-webkit-user-select:none !important}
 .row-scroller::-webkit-scrollbar{display:none}
 .row-scroller{cursor:grab; user-select:none; -webkit-user-select:none; -ms-user-select:none}
 .row-scroller.dragging{cursor:grabbing}

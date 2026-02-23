@@ -418,35 +418,73 @@ function enableDragScroll(scroller){
   scroller.__dragBound = true;
 
   let isDown = false;
+  let isDragging = false;
   let startX = 0;
   let startLeft = 0;
   let moved = 0;
+  const DRAG_THRESHOLD = 6;
 
-  function startDrag(clientX, prevent){
-    if (prevent) prevent();
+  // Preserve original inline styles so we can restore them
+  const originalSnapType = scroller.style.scrollSnapType;
+  const originalScrollBehavior = scroller.style.scrollBehavior;
+
+  function startDrag(clientX){
     isDown = true;
+    isDragging = false;
     moved = 0;
     startX = clientX;
     startLeft = scroller.scrollLeft;
+  }
+
+  function beginDragging(){
+    if (isDragging) return;
+    isDragging = true;
     scroller.classList.add('dragging');
+
+    // Avoid text/image selection jank while dragging (esp. desktop)
+    document.body.classList.add('no-select');
+
+    // Disable snap + smooth scrolling during drag to prevent "jumping"
+    scroller.style.scrollSnapType = 'none';
+    scroller.style.scrollBehavior = 'auto';
   }
 
   function moveDrag(clientX, prevent){
     if (!isDown) return;
     const dx = clientX - startX;
     moved = Math.max(moved, Math.abs(dx));
-    scroller.scrollLeft = startLeft - dx;
-    if (moved > 6 && prevent) prevent();
+
+    // Only start "real" dragging after a small threshold.
+    // This keeps cards clickable on tap/click.
+    if (!isDragging && moved >= DRAG_THRESHOLD){
+      beginDragging();
+    }
+
+    if (isDragging){
+      // Write scrollLeft directly for the lowest latency feel.
+      scroller.scrollLeft = startLeft - dx;
+      if (prevent) prevent();
+    }
   }
 
   function endDrag(){
+    if (!isDown) return;
     isDown = false;
-    scroller.classList.remove('dragging');
-    // If we dragged, avoid accidental clicks right after
-    if (moved > 6){
+
+    if (isDragging){
+      scroller.classList.remove('dragging');
+      document.body.classList.remove('no-select');
+
+      // Restore original behavior
+      scroller.style.scrollSnapType = originalSnapType;
+      scroller.style.scrollBehavior = originalScrollBehavior;
+
+      // If we dragged, avoid accidental clicks right after
       scroller.__justDragged = true;
-      setTimeout(()=>{ scroller.__justDragged = false; }, 200);
+      setTimeout(()=>{ scroller.__justDragged = false; }, 220);
     }
+
+    isDragging = false;
   }
 
   // Pointer Events (modern browsers)
@@ -454,7 +492,7 @@ function enableDragScroll(scroller){
     function onDown(e){
       // Only left click, but allow touch/pen
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      startDrag(e.clientX, ()=>e.preventDefault?.());
+      startDrag(e.clientX);
       // Capture pointer so we keep receiving move/up even if it leaves the element
       try{ scroller.setPointerCapture?.(e.pointerId); }catch(_){/* ignore */}
     }
@@ -473,7 +511,7 @@ function enableDragScroll(scroller){
   scroller.addEventListener('mousedown', (e)=>{
     if (window.PointerEvent) return; // already handled
     if (e.button !== 0) return;
-    startDrag(e.clientX, ()=>{ e.preventDefault(); });
+    startDrag(e.clientX);
     if (mouseMoveBound) return;
     mouseMoveBound = true;
     const onDocMove = (ev)=> moveDrag(ev.clientX, ()=>{ ev.preventDefault(); });
@@ -492,7 +530,7 @@ function enableDragScroll(scroller){
     if (window.PointerEvent) return;
     const t = e.touches && e.touches[0];
     if (!t) return;
-    startDrag(t.clientX, ()=>{ e.preventDefault(); });
+    startDrag(t.clientX);
   }, { passive:false });
   scroller.addEventListener('touchmove', (e)=>{
     if (window.PointerEvent) return;
