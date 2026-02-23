@@ -488,10 +488,12 @@ function enableDragScroll(scroller){
   }
 
   // Pointer Events (modern browsers)
+  // NOTE: Some Android WebViews / desktop browsers expose PointerEvent but behave inconsistently for mouse drags.
+  // We therefore handle mouse dragging via mousedown/mousemove/mouseup always, and reserve Pointer Events here
+  // for touch/pen only.
   if (window.PointerEvent){
     function onDown(e){
-      // Only left click, but allow touch/pen
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.pointerType === 'mouse') return; // let mouse fallback handle reliably
       startDrag(e.clientX);
       // Capture pointer so we keep receiving move/up even if it leaves the element
       try{ scroller.setPointerCapture?.(e.pointerId); }catch(_){/* ignore */}
@@ -509,7 +511,7 @@ function enableDragScroll(scroller){
   // Mouse fallback (for environments without Pointer Events)
   let mouseMoveBound = false;
   scroller.addEventListener('mousedown', (e)=>{
-    if (window.PointerEvent) return; // already handled
+    // Always handle mouse here (even if PointerEvent exists) for consistent desktop drag.
     if (e.button !== 0) return;
     startDrag(e.clientX);
     if (mouseMoveBound) return;
@@ -1506,9 +1508,10 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
 
-  // Home: show random movies by default so the grid always feels fresh
+  // Home: show random movies by default so the grid always feels fresh.
+  // IMPORTANT: Avoid random mode for series because it can be expensive (and makes Series feel "slow").
   const isHomeNoFilters = !state.q && !state.actor && !state.genre && !state.letter;
-  if (isHomeNoFilters && state.random){
+  if (isHomeNoFilters && state.random && !isTv()){
     params.set('random', '1');
   }
 
