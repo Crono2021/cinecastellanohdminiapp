@@ -517,3 +517,37 @@ body.curtain-on .curtain{
   word-break: break-word;
   min-height: 34px;
 }
+
+
+/* === FIX: títulos largos sin deformar tarjetas (grid + carruseles) === */
+.card .meta .title,
+.meta .title,
+.title{
+  font-weight: 600;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;          /* máximo 2 líneas */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 2.4em;              /* reserva altura para 2 líneas */
+}
+
+/* Carruseles (row) */
+.row-title{
+  font-weight: 750;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;          /* máximo 2 líneas */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 2.3em;
+}
+
+/* Evita que elementos flex se estiren por texto largo */
+.row-card, .card{
+  min-width: 0;
+}
