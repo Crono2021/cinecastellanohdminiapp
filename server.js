@@ -166,23 +166,27 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     tmdb_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL DEFAULT 'movie',
     created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(user_id, tmdb_id),
+    UNIQUE(user_id, tmdb_id, media_type),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_pending_user ON pending(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_pending_tmdb ON pending(tmdb_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_pending_type ON pending(media_type)`);
 
   db.run(`CREATE TABLE IF NOT EXISTS favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     tmdb_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL DEFAULT 'movie',
     created_at TEXT DEFAULT (datetime('now')),
-    UNIQUE(user_id, tmdb_id),
+    UNIQUE(user_id, tmdb_id, media_type),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_tmdb ON favorites(tmdb_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_type ON favorites(media_type)`);
 
 // --- Collections (public) ---
 db.run(`CREATE TABLE IF NOT EXISTS collections (
@@ -212,6 +216,49 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items
 
 // Lightweight schema migrations for older DBs
 
+// Migrate favorites/pending tables to support both movie & tv.
+// Older versions only stored tmdb_id and had UNIQUE(user_id, tmdb_id)
+// which caused collisions between movie and tv sharing the same TMDB id.
+function migrateFavoritesAndPendingIfNeeded(){
+  const migrateTable = (tableName) => new Promise((resolve) => {
+    db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
+      if (err || !Array.isArray(rows)) return resolve();
+      const hasMediaType = rows.some(r => r && r.name === 'media_type');
+      if (hasMediaType) return resolve();
+
+      const tmp = `${tableName}__new`;
+      db.serialize(() => {
+        db.run(`CREATE TABLE IF NOT EXISTS ${tmp} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          tmdb_id INTEGER NOT NULL,
+          media_type TEXT NOT NULL DEFAULT 'movie',
+          created_at TEXT DEFAULT (datetime('now')),
+          UNIQUE(user_id, tmdb_id, media_type),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`);
+        // Copy old rows as movie
+        db.run(
+          `INSERT OR IGNORE INTO ${tmp}(id, user_id, tmdb_id, media_type, created_at)
+           SELECT id, user_id, tmdb_id, 'movie' as media_type, created_at FROM ${tableName}`,
+          [],
+          () => {
+            db.run(`DROP TABLE ${tableName}`);
+            db.run(`ALTER TABLE ${tmp} RENAME TO ${tableName}`);
+            // Recreate indexes
+            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_user ON ${tableName}(user_id)`);
+            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_tmdb ON ${tableName}(tmdb_id)`);
+            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_type ON ${tableName}(media_type)`);
+            resolve();
+          }
+        );
+      });
+    });
+  });
+
+  return Promise.all([migrateTable('favorites'), migrateTable('pending')]);
+}
+
 // We must check PRAGMA table_info first to avoid "duplicate column name" crashes.
 function ensureColumn(table, column, typeSql){
   db.all(`PRAGMA table_info(${table})`, (err, rows) => {
@@ -221,6 +268,9 @@ function ensureColumn(table, column, typeSql){
     db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`, () => {});
   });
 }
+
+// Run migrations (best-effort)
+try{ migrateFavoritesAndPendingIfNeeded(); }catch(_){ }
 
 db.serialize(() => {
   ensureColumn('movies', 'genre_ids', 'TEXT');
@@ -313,13 +363,15 @@ async function getTvMetaFast(tmdbId){
   const key = `t:${tmdbId}`;
   const cached = metaGet(key);
   if (cached) return cached;
-  const d = await getTmdbTvDetails(tmdbId);
+  const d = await tmdbGetTvMetaOnly(tmdbId);
   const meta = {
     poster_path: d?.poster_path || null,
     backdrop_path: d?.backdrop_path || null,
     name: d?.name || d?.original_name || null,
     first_air_date: d?.first_air_date || null,
     genres: Array.isArray(d?.genres) ? d.genres : [],
+    vote_average: Number(d?.vote_average || 0),
+    vote_count: Number(d?.vote_count || 0),
   };
   metaSet(key, meta);
   return meta;
@@ -466,6 +518,24 @@ async function getTmdbTvDetails(tmdbId){
     number_of_episodes: d.number_of_episodes,
     vote_average: d.vote_average,
     cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
+  };
+}
+
+// Lightweight TV meta fetch (no credits) for fast list rendering.
+async function tmdbGetTvMetaOnly(tmdbId){
+  const url = `https://api.themoviedb.org/3/tv/${tmdbId}`;
+  const { data: d } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
+  return {
+    id: d.id,
+    name: d.name,
+    original_name: d.original_name,
+    overview: d.overview,
+    poster_path: d.poster_path,
+    backdrop_path: d.backdrop_path,
+    first_air_date: d.first_air_date,
+    genres: d.genres,
+    vote_average: d.vote_average,
+    vote_count: d.vote_count,
   };
 }
 
@@ -715,8 +785,9 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
 app.get('/api/pending/:tmdb_id', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.params.tmdb_id);
+  const mediaType = (String(req.query.type || req.query.media_type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.get('SELECT 1 as ok FROM pending WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err, row) => {
+  db.get('SELECT 1 as ok FROM pending WHERE user_id = ? AND tmdb_id = ? AND media_type = ?', [user.id, tmdbId, mediaType], (err, row) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true, pending: !!row });
   });
@@ -725,10 +796,11 @@ app.get('/api/pending/:tmdb_id', requireAuth, (req, res) => {
 app.post('/api/pending', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.body?.tmdb_id);
+  const mediaType = (String(req.body?.media_type || req.body?.type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  const sql = `INSERT INTO pending (user_id, tmdb_id) VALUES (?, ?)
-               ON CONFLICT(user_id, tmdb_id) DO NOTHING`;
-  db.run(sql, [user.id, tmdbId], (err) => {
+  const sql = `INSERT INTO pending (user_id, tmdb_id, media_type) VALUES (?, ?, ?)
+               ON CONFLICT(user_id, tmdb_id, media_type) DO NOTHING`;
+  db.run(sql, [user.id, tmdbId, mediaType], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true });
   });
@@ -737,8 +809,9 @@ app.post('/api/pending', requireAuth, (req, res) => {
 app.delete('/api/pending/:tmdb_id', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.params.tmdb_id);
+  const mediaType = (String(req.query.type || req.query.media_type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.run('DELETE FROM pending WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err) => {
+  db.run('DELETE FROM pending WHERE user_id = ? AND tmdb_id = ? AND media_type = ?', [user.id, tmdbId, mediaType], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true });
   });
@@ -754,10 +827,12 @@ app.get('/api/pending', requireAuth, (req, res) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     const total = Number(rowCount?.c || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const sql = `SELECT p.tmdb_id, p.created_at,
-                       m.title as title, m.year as year, m.link as link
+    const sql = `SELECT p.tmdb_id, p.media_type, p.created_at,
+                       m.title as m_title, m.year as m_year, m.link as m_link,
+                       s.name as s_name, s.first_air_year as s_year
                 FROM pending p
-                LEFT JOIN movies m ON m.tmdb_id = p.tmdb_id
+                LEFT JOIN movies m ON (m.tmdb_id = p.tmdb_id)
+                LEFT JOIN series s ON (s.tmdb_id = p.tmdb_id)
                 WHERE p.user_id = ?
                 ORDER BY p.created_at DESC
                 LIMIT ? OFFSET ?`;
@@ -765,14 +840,21 @@ app.get('/api/pending', requireAuth, (req, res) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
       const out = [];
       for (const r of (rows||[])) {
-        let meta = { poster_path: null, title: r.title || '' };
-        try{ meta = await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        const isTv = (r.media_type === 'tv');
+        let meta = { poster_path: null };
+        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        const title = isTv
+          ? (r.s_name || meta.name || '')
+          : (r.m_title || meta.title || '');
+        const year = isTv
+          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0,4) : null))
+          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0,4) : null));
         out.push({
-          type: 'movie',
+          type: isTv ? 'tv' : 'movie',
           tmdb_id: r.tmdb_id,
-          title: r.title || meta.title || '',
-          year: r.year || (meta.release_date ? String(meta.release_date).slice(0,4) : null),
-          link: r.link || null,
+          title,
+          year,
+          link: isTv ? null : (r.m_link || null),
           poster_path: meta.poster_path || null
         });
       }
@@ -788,8 +870,9 @@ app.get('/api/pending', requireAuth, (req, res) => {
 app.get('/api/favorites/:tmdb_id', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.params.tmdb_id);
+  const mediaType = (String(req.query.type || req.query.media_type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.get('SELECT 1 as ok FROM favorites WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err, row) => {
+  db.get('SELECT 1 as ok FROM favorites WHERE user_id = ? AND tmdb_id = ? AND media_type = ?', [user.id, tmdbId, mediaType], (err, row) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true, favorite: !!row });
   });
@@ -798,10 +881,11 @@ app.get('/api/favorites/:tmdb_id', requireAuth, (req, res) => {
 app.post('/api/favorites', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.body?.tmdb_id);
+  const mediaType = (String(req.body?.media_type || req.body?.type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  const sql = `INSERT INTO favorites (user_id, tmdb_id) VALUES (?, ?)
-               ON CONFLICT(user_id, tmdb_id) DO NOTHING`;
-  db.run(sql, [user.id, tmdbId], (err) => {
+  const sql = `INSERT INTO favorites (user_id, tmdb_id, media_type) VALUES (?, ?, ?)
+               ON CONFLICT(user_id, tmdb_id, media_type) DO NOTHING`;
+  db.run(sql, [user.id, tmdbId, mediaType], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true });
   });
@@ -810,8 +894,9 @@ app.post('/api/favorites', requireAuth, (req, res) => {
 app.delete('/api/favorites/:tmdb_id', requireAuth, (req, res) => {
   const user = getSessionUser(req);
   const tmdbId = Number(req.params.tmdb_id);
+  const mediaType = (String(req.query.type || req.query.media_type || 'movie').toLowerCase() === 'tv') ? 'tv' : 'movie';
   if (!Number.isFinite(tmdbId)) return res.status(400).json({ error: 'BAD_ID' });
-  db.run('DELETE FROM favorites WHERE user_id = ? AND tmdb_id = ?', [user.id, tmdbId], (err) => {
+  db.run('DELETE FROM favorites WHERE user_id = ? AND tmdb_id = ? AND media_type = ?', [user.id, tmdbId, mediaType], (err) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     res.json({ ok: true });
   });
@@ -827,10 +912,12 @@ app.get('/api/favorites', requireAuth, (req, res) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     const total = Number(rowCount?.c || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    const sql = `SELECT f.tmdb_id, f.created_at,
-                       m.title as title, m.year as year, m.link as link
+    const sql = `SELECT f.tmdb_id, f.media_type, f.created_at,
+                       m.title as m_title, m.year as m_year, m.link as m_link,
+                       s.name as s_name, s.first_air_year as s_year
                 FROM favorites f
-                LEFT JOIN movies m ON m.tmdb_id = f.tmdb_id
+                LEFT JOIN movies m ON (m.tmdb_id = f.tmdb_id)
+                LEFT JOIN series s ON (s.tmdb_id = f.tmdb_id)
                 WHERE f.user_id = ?
                 ORDER BY f.created_at DESC
                 LIMIT ? OFFSET ?`;
@@ -838,14 +925,21 @@ app.get('/api/favorites', requireAuth, (req, res) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
       const out = [];
       for (const r of (rows||[])) {
-        let meta = { poster_path: null, title: r.title || '' };
-        try{ meta = await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        const isTv = (r.media_type === 'tv');
+        let meta = { poster_path: null };
+        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        const title = isTv
+          ? (r.s_name || meta.name || '')
+          : (r.m_title || meta.title || '');
+        const year = isTv
+          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0,4) : null))
+          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0,4) : null));
         out.push({
-          type: 'movie',
+          type: isTv ? 'tv' : 'movie',
           tmdb_id: r.tmdb_id,
-          title: r.title || meta.title || '',
-          year: r.year || (meta.release_date ? String(meta.release_date).slice(0,4) : null),
-          link: r.link || null,
+          title,
+          year,
+          link: isTv ? null : (r.m_link || null),
           poster_path: meta.poster_path || null
         });
       }
@@ -1419,7 +1513,8 @@ app.get('/api/catalog/by-letter', async (req, res) => {
 
 
 
-app.get('/api/series', async (req, res) => {
+// Legacy /api/series handler kept for reference. The optimized handler is defined later.
+app.get('/api/series-legacy', async (req, res) => {
   try {
     const { q, genre, actor, page = 1, pageSize = 24 } = req.query;
 
@@ -1449,7 +1544,8 @@ app.get('/api/series', async (req, res) => {
       });
     });
 
-    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id)));
+    // Use lightweight cached TMDB meta (no credits) for list views
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
 
     let items = rows.map((r, i) => ({
       ...r,
@@ -1507,8 +1603,8 @@ app.get('/api/series/top-rated', async (req, res) => {
 
     if (!rows.length) return res.json({ items: [] });
 
-    // Fetch details from TMDB
-    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id).catch(_=>null)));
+    // Fetch lightweight cached meta from TMDB
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
 
     let items = rows.map((r, i) => {
       const d = details[i] || {};
@@ -1590,8 +1686,8 @@ app.get('/api/series', async (req, res) => {
 
     if (!rows.length) return res.json({ total, page: p, pageSize: ps, items: [] });
 
-    // Enrich with TMDB details (poster/backdrop). Keep it resilient.
-    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id).catch(_=>null)));
+    // Enrich with lightweight cached TMDB meta (poster/backdrop) for speed.
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
 
     const items = rows.map((r, i) => {
       const d = details[i] || {};
@@ -1599,7 +1695,7 @@ app.get('/api/series', async (req, res) => {
         type: 'tv',
         id: r.tmdb_id,
         tmdb_id: r.tmdb_id,
-        title: r.name || d.name || d.title || '',
+        title: r.name || d.name || '',
         year: r.first_air_year || (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
         poster_path: d.poster_path || null,
         backdrop_path: d.backdrop_path || null,
