@@ -6,11 +6,12 @@ header{position:sticky;top:0;background:#0f1014cc;backdrop-filter:saturate(1.2) 
 input,select,button,textarea{background:#17181f;color:#eee;border:1px solid #2b2d36;border-radius:10px;padding:10px 12px}
 button{cursor:pointer;box-shadow:var(--shadow);}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:var(--gap);padding:16px 0}
-.card{background:#15161c;border:1px solid #272933;border-radius:var(--radius);overflow:hidden;transition:transform .15s ease;}
+.card{background:#15161c;border:1px solid #272933;border-radius:var(--radius);overflow:hidden;transition:transform .15s ease;display:flex;flex-direction:column;}
 .card:hover{transform:translateY(-3px)}
 .poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:#222}
-.meta{padding:10px}
-.title{font-weight:600;font-size:.95rem;line-height:1.2}
+.meta{padding:10px;display:flex;flex-direction:column;gap:4px;min-height:3.6em}
+.title{font-weight:600;font-size:.95rem;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+.year{margin-top:auto}
 .year{opacity:.7;font-size:.85rem}
 .badge{display:inline-block;background:#242634;border:1px solid #2f3141;border-radius:999px;padding:2px 8px;font-size:.75rem;margin-right:6px}
 .pagination{display:flex;justify-content:center;gap:8px;margin:12px 0}
@@ -451,3 +452,131 @@ header{background:#0b0c10cc}
 .col-item:hover{ background: rgba(255,255,255,0.06); }
 .col-item-poster{ width: 44px; height: 66px; object-fit: cover; border-radius: 8px; background:#111; }
 .col-item-title{ font-weight: 700; }
+
+
+/* --- Catalog toggle buttons (Películas / Series) --- */
+.catalog-toggle{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  align-items:center;
+  padding:10px 0 0 0;
+}
+.catalog-toggle .cat-btn{
+  flex:1 1 220px;
+  max-width: 320px;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+  cursor: pointer;
+}
+.catalog-toggle .cat-btn.active{
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.32);
+}
+@media (max-width: 640px){
+  .catalog-toggle{
+    justify-content:space-between;
+  }
+  .catalog-toggle .cat-btn{
+    max-width:none;
+    flex: 1 1 0;
+  }
+}
+
+/* --- Curtain transition --- */
+.curtain{
+  position: fixed;
+  inset: 0;
+  background: rgba(10,10,12,0.94);
+  transform: translateX(100%);
+  transition: transform 260ms ease;
+  z-index: 9999;
+  pointer-events: none;
+}
+body.curtain-on .curtain{
+  transform: translateX(0%);
+}
+
+/* Curtain transition disabled in JS (kept for backwards-compat) */
+
+
+/* === FIX TÍTULOS LARGOS EN TARJETAS === */
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin-top: 6px;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 34px;
+}
+
+
+/* === FIX: títulos largos sin deformar tarjetas (grid + carruseles) === */
+.card .meta .title,
+.meta .title,
+.title{
+  font-weight: 600;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;          /* máximo 2 líneas */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 2.4em;              /* reserva altura para 2 líneas */
+}
+
+/* Carruseles (row) */
+.row-title{
+  font-weight: 750;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;          /* máximo 2 líneas */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+  min-height: 2.3em;
+}
+
+/* Evita que elementos flex se estiren por texto largo */
+.row-card, .card{
+  min-width: 0;
+}
+
+/* === Series: allow longer titles without stretching cards === */
+body.is-tv .card .meta .title,
+body.is-tv .meta .title,
+body.is-tv .title{
+  /* Allow a bit more room for long series names, but keep a consistent card height */
+  -webkit-line-clamp: 3;
+  min-height: 3.6em;
+}
+
+/* Ensure the card footer (year) doesn't push the grid height when titles are long */
+body.is-tv .meta{ min-height: 4.8em; }
+
+/* === Override definitivo: si aun así se deforman, cortar a 1 línea con "..." === */
+body.page-series .card .meta .title,
+body.page-series .meta .title,
+body.page-series .title,
+.card[data-type="tv"] .meta .title{
+  display:block !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  word-break:normal !important;
+  -webkit-line-clamp: unset !important;
+  min-height:0 !important;
+}
