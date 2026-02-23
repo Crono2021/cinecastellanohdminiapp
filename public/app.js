@@ -144,7 +144,27 @@ function setCatalogLabels(){
 function curtainNavigate(href){
   // Curtain transition removed (it was causing issues on mobile).
   // Keep the helper so callers don't need to change.
-  try{ window.location.href = href; }catch(_){ location.href = href; }
+  // NOTE: Some Android WebViews load this app from local assets (file:// or appassets).
+  // In that case, navigating to absolute paths like "/series" won't resolve.
+  // Map known routes to their local html files.
+  function resolveLocal(h){
+    try{
+      const proto = (location && location.protocol) ? location.protocol : '';
+      const origin = (location && typeof location.origin === 'string') ? location.origin : '';
+      const path = (location && location.pathname) ? location.pathname : '';
+      const looksLocal = (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
+      if (!looksLocal) return h;
+      if (h === '/' || h === '/index' || h === '/index.html') return 'index.html';
+      if (h === '/series' || h === '/series/' || h === '/series.html') return 'series.html';
+      // Fallback: drop leading slash so it becomes relative.
+      return (typeof h === 'string') ? h.replace(/^\//, '') : h;
+    }catch(_){
+      return h;
+    }
+  }
+
+  const target = resolveLocal(href);
+  try{ window.location.href = target; }catch(_){ location.href = target; }
 }
 
 function setupCatalogToggle(){
