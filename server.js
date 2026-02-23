@@ -1293,6 +1293,12 @@ app.get('/api/catalog', async (req, res) => {
       ...movies.map(m => ({ type:'movie', ...m })),
       ...series.map(s => ({ type:'tv', ...s })),
     ];
+    // Apply explicit type filter if requested (tv/movie)
+    if (typeFilter){
+      items = items.filter(it => it.type === typeFilter);
+      total = items.length;
+    }
+
 
     // Sort by created_at desc (fallback to tmdb_id desc)
     items.sort((a,b)=>{

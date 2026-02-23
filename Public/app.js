@@ -568,8 +568,8 @@ async function loadTopRowTv(){
         id: d.id,
         tmdb_id: d.id,
         type: 'tv',
-        title: d.name,
-        year: d.first_air_date ? String(d.first_air_date).slice(0,4) : '',
+        title: (d.title || d.name),
+        year: d.release_date ? String(d.release_date).slice(0,4) : '',
         poster_path: d.poster_path,
       };
     }catch(_){
@@ -1626,13 +1626,15 @@ async function loadUserRatingIntoModal(tmdbId){
 async function openDetails(id, type){
   // Opening the ficha should NOT count as a view.
   // We only count a view when the user presses "Reproducir".
-  // Esta app ahora muestra SOLO películas
-  currentDetail = { id: String(id), type: 'movie' };
+  const resolvedType = (type || (isTv() ? 'tv' : 'movie'));
+  currentDetail = { id: String(id), type: resolvedType };
 
-  const res = await fetch(`/api/movie/${id}`);
+  const apiUrl = (resolvedType === 'tv') ? `/api/tv/${id}` : `/api/movie/${id}`;
+  const res = await fetch(apiUrl);
   const d = await res.json();
 
-  el('modalTitle').textContent = `${(d.title||d.name||'')} ${d.release_date ? '('+String(d.release_date).slice(0,4)+')':''}`;
+  const year = d.release_date ? String(d.release_date).slice(0,4) : '';
+  el('modalTitle').textContent = `${(d.title||d.name||'')} ${year ? '('+year+')' : ''}`;
   const poster = el('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
   el('modalOverview').textContent = d.overview || 'Sin sinopsis disponible.';
@@ -1641,12 +1643,48 @@ async function openDetails(id, type){
   el('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
 
   const link = el('watchLink');
-  if (d.link) {
-    const w = toWatchUrl(d.link);
-    link.href = w || d.link;
-    link.style.display = 'inline-flex';
-  } else {
-    link.style.display = 'none';
+
+  if (resolvedType === 'tv'){
+    // Series: abrir Telegram con payload (start=)
+    const tgApp = d.telegram?.app || null;
+    const tgWeb = d.telegram?.web || null;
+
+    if (tgWeb){
+      link.href = tgWeb;
+      link.style.display = 'inline-flex';
+
+      // Intentar abrir la app de Telegram primero en móvil
+      if (!link.__tgBound){
+        link.__tgBound = true;
+        link.addEventListener('click', (ev) => {
+          if (!currentDetail?.id) return;
+          // contamos vista en el click (también para series)
+          trackView(currentDetail.id, currentDetail.type);
+
+          // Si hay esquema tg://, intentamos abrir app y caemos a web
+          if (tgApp){
+            ev.preventDefault();
+            try{
+              window.location.href = tgApp;
+              setTimeout(()=>{ window.location.href = tgWeb; }, 650);
+            }catch(_){
+              window.location.href = tgWeb;
+            }
+          }
+        });
+      }
+    }else{
+      link.style.display = 'none';
+    }
+  }else{
+    // Películas: link normal
+    if (d.link) {
+      const w = toWatchUrl(d.link);
+      link.href = w || d.link;
+      link.style.display = 'inline-flex';
+    } else {
+      link.style.display = 'none';
+    }
   }
 
   el('modal').classList.add('open');
@@ -1661,7 +1699,7 @@ async function openDetails(id, type){
   try{ await refreshFavoriteInModal(Number(id)); }catch(_){ }
 }
 
-function closeModal(){ el('modal').classList.remove('open'); }
+function closeModal(){ el('modal').classList.remove('open'); }(){ el('modal').classList.remove('open'); }
 
 // --- Auth modal ---
 let authMode = 'login';
@@ -1753,7 +1791,7 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
     watch.__trackBound = true;
     watch.addEventListener('click', () => {
       if (!currentDetail?.id) return;
-      trackView(currentDetail.id, 'movie');
+      trackView(currentDetail.id, currentDetail.type || 'movie');
       // Refresh the Top row shortly after the play is recorded
       setTimeout(() => { try{ loadTopRow(); }catch(_){ } }, 250);
     });
