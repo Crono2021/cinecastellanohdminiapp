@@ -239,10 +239,11 @@ function exitEditMode() {
 }
 
 // Keep editMode in sync with focus changes.
-document.addEventListener('focusin', function (ev) {
+// Enter edit mode only on explicit user action (OK/Enter on the field, or click/tap).
+document.addEventListener('click', function (ev) {
   var t = ev.target;
-  if (isTextField(t)) {
-    enterEditMode(t);
+  if (isTextField(t)) enterEditMode(t);
+}, true);
   }
 }, true);
 
@@ -314,12 +315,27 @@ function onKey(e) {
       back();
       return;
     }
-    if (k === 'Enter' || k === 'NumpadEnter' || k === ' ') {
-      e.preventDefault();
-      e.stopPropagation();
-      enter();
-      return;
-    }
+    if (k === 'Enter' || k === 'NumpadEnter') {
+  var ma = document.activeElement;
+  if (isTextField(ma)) {
+    e.preventDefault();
+    e.stopPropagation();
+    enterEditMode(ma);
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  enter();
+  return;
+}
+if (k === ' ') {
+  var ma2 = document.activeElement;
+  if (isTextField(ma2)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  enter();
+  return;
+}
     if (k === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); move('left'); return; }
     if (k === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); move('right'); return; }
     if (k === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); move('up'); return; }
@@ -334,11 +350,27 @@ function onKey(e) {
     back();
     return;
   }
-  if (k === 'Enter' || k === 'NumpadEnter' || k === ' ') {
+  if (k === 'Enter' || k === 'NumpadEnter') {
+  var a = document.activeElement;
+  if (isTextField(a)) {
+    // Explicit OK on a text field => enter edit mode (do not click underlying cards).
     e.preventDefault();
-    enter();
+    e.stopPropagation();
+    enterEditMode(a);
     return;
   }
+  e.preventDefault();
+  enter();
+  return;
+}
+// Space acts like OK for cards/buttons, but should NOT trigger edit mode on text fields.
+if (k === ' ') {
+  var a2 = document.activeElement;
+  if (isTextField(a2)) return; // allow actual space only once in edit mode; here we ignore.
+  e.preventDefault();
+  enter();
+  return;
+}
   if (k === 'ArrowLeft') { e.preventDefault(); move('left'); return; }
   if (k === 'ArrowRight') { e.preventDefault(); move('right'); return; }
   if (k === 'ArrowUp') { e.preventDefault(); move('up'); return; }
