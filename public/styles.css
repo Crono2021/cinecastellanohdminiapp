@@ -566,3 +566,17 @@ body.is-tv .title{
 
 /* Ensure the card footer (year) doesn't push the grid height when titles are long */
 body.is-tv .meta{ min-height: 4.8em; }
+
+/* === Override definitivo: si aun así se deforman, cortar a 1 línea con "..." === */
+body.page-series .card .meta .title,
+body.page-series .meta .title,
+body.page-series .title,
+.card[data-type="tv"] .meta .title{
+  display:block !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  word-break:normal !important;
+  -webkit-line-clamp: unset !important;
+  min-height:0 !important;
+}

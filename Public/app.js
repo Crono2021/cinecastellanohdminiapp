@@ -89,19 +89,21 @@ function showToast(message, kind = 'success'){
   }, 2200);
 }
 
-async function markPendingWatched(tmdbId){
+async function markPendingWatched(tmdbId, mediaType = 'movie'){
   if (!auth.user){ openAuth(); return; }
   try{
-    await apiJson('/api/pending/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+    const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
+    await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
     showToast('Marcada como vista');
     if (state.view === 'pending') loadExplore();
   }catch(_){ }
 }
 
-async function removeFavoriteFromList(tmdbId){
+async function removeFavoriteFromList(tmdbId, mediaType = 'movie'){
   if (!auth.user){ openAuth(); return; }
   try{
-    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+    const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
+    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
     showToast('Quitada de favoritos');
     if (state.view === 'favorites') loadExplore();
   }catch(_){ }
@@ -1260,9 +1262,9 @@ async function loadExplore(){
               ? `<div class="year">Favorita</div>`
               : `<div class="year">${item.year || ''}</div>`));
         const actions = (state.view === 'pending')
-          ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}">Marcar como vista</button></div>`
+          ? `<div class="card-actions"><button class="ghost" data-action="watched" data-id="${item.tmdb_id}" data-type="${esc(String(item?.type || 'movie'))}">Marcar como vista</button></div>`
           : (state.view === 'favorites')
-            ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}">Quitar</button></div>`
+            ? `<div class="card-actions"><button class="ghost" data-action="unfav" data-id="${item.tmdb_id}" data-type="${esc(String(item?.type || 'movie'))}">Quitar</button></div>`
             : (state.view === 'myratings')
               ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
               : '';
@@ -1285,14 +1287,14 @@ async function loadExplore(){
           if (btn){
             e.preventDefault();
             e.stopPropagation();
-            markPendingWatched(btn.dataset.id);
+            markPendingWatched(btn.dataset.id, btn.dataset.type || elc.dataset.type || 'movie');
             return;
           }
           const btn2 = e.target?.closest?.('button[data-action="unfav"]');
           if (btn2){
             e.preventDefault();
             e.stopPropagation();
-            removeFavoriteFromList(btn2.dataset.id);
+            removeFavoriteFromList(btn2.dataset.id, btn2.dataset.type || elc.dataset.type || 'movie');
             return;
           }
           const btn3 = e.target?.closest?.('button[data-action="delrating"]');
