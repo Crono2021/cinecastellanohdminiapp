@@ -19,6 +19,12 @@ function toWatchUrl(link){
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
+function getCatalogType(){
+  return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
+}
+function isTv(){ return getCatalogType()==='tv'; }
+
+
 // Explore state (grid)
 // "random" is used for the Home explore grid so users see new titles every time.
 let state = { page: 1, pageSize: 30, q: '', actor: '', genre: '', letter: '', random: true, view: 'home' };
@@ -115,6 +121,43 @@ async function removeRatingFromList(tmdbId){
 }
 
 function el(id){ return document.getElementById(id); }
+
+
+function setCatalogLabels(){
+  const tv = isTv();
+  const set = (id, txt)=>{ const e=el(id); if(e) e.textContent = txt; };
+  set('lblTop', tv ? 'Series más vistas hoy' : 'Películas más vistas hoy');
+  set('lblBest', tv ? 'Series mejor valoradas' : 'Películas mejor valoradas');
+  set('lblPremieres', tv ? 'Estrenos (series)' : 'Estrenos');
+  set('lblRecent', tv ? 'Añadidas recientemente (series)' : 'Añadidas recientemente');
+  set('lblExplore', tv ? 'Explorar catálogo de series' : 'Explorar catálogo');
+}
+
+function curtainNavigate(href){
+  try{
+    document.body.classList.add('curtain-on');
+    setTimeout(()=>{ window.location.href = href; }, 220);
+  }catch(_){ window.location.href = href; }
+}
+
+function setupCatalogToggle(){
+  const bM = el('btnMovies');
+  const bS = el('btnSeries');
+  if (!bM || !bS) return;
+  const tv = isTv();
+  bM.classList.toggle('active', !tv);
+  bS.classList.toggle('active', tv);
+
+  bM.addEventListener('click', ()=>{
+    if (!isTv()) return;
+    curtainNavigate('/');
+  });
+  bS.addEventListener('click', ()=>{
+    if (isTv()) return;
+    curtainNavigate('/series');
+  });
+}
+
 
 function updateExploreHeader(){
   const row = el('rowExplore');
@@ -414,6 +457,7 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
   for (let p = 1; p <= maxPages; p++){
     const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
     if (genreId) params.set('genre', genreId);
+    if (isTv()) params.set('type','tv'); else params.set('type','movie');
     const res = await fetch('/api/catalog?' + params.toString());
     if (!res.ok) break;
     const data = await res.json();
@@ -444,20 +488,29 @@ async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPa
 }
 
 async function loadPremieresRow(){
-  const res = await fetch('/api/estrenos?' + new URLSearchParams({ limit: 30 }).toString());
+  const url = isTv() ? '/api/estrenos-tv' : '/api/estrenos';
+  const res = await fetch(url + '?' + new URLSearchParams({ limit: 30 }).toString());
   const data = await res.json();
-  const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
-  renderRow(el('premieresRow'), movies);
+  const items = (data.items || []).filter(it => isTv() ? ((it?.type||'tv')==='tv') : ((it?.type||'movie')!=='tv'));
+  renderRow(el('premieresRow'), items);
 }
 
 async function loadRecentRow(){
-  const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
+  if (isTv()){
+    const res = await fetch('/api/series?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
+    const data = await res.json();
+    const items = (data.items || []).map(it => ({ ...it, type:'tv', title: it.title || it.name }));
+    renderRow(el('recentRow'), items);
+    return;
+  }
+  const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30, type:'movie' }).toString());
   const data = await res.json();
   const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
   renderRow(el('recentRow'), movies);
 }
 
 async function loadTopRow(){
+  if (isTv()) return loadTopRowTv();
   // Pedimos más y luego filtramos para quedarnos SOLO con películas
   const topRaw = await fetchTopToday(50);
   const top = topRaw.filter(t => (t?.type || 'movie') !== 'tv').slice(0, 10);
@@ -493,6 +546,59 @@ async function loadTopRow(){
   }));
 
   renderRow(row, items, { top10: true });
+}
+
+async function loadTopRowTv(){
+  const topRaw = await fetchTopToday(50);
+  const top = topRaw.filter(t => (t?.type || 'movie') === 'tv').slice(0, 10);
+  const empty = el('topEmpty');
+  const row = el('topRow');
+  if (!top.length){
+    if (row) row.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  const items = await Promise.all(top.map(async (t) => {
+    try{
+      const id = t.id || t.tmdb_id;
+      const r = await fetch(`/api/tv/${id}`);
+      const d = await r.json();
+      return {
+        id: d.id,
+        tmdb_id: d.id,
+        type: 'tv',
+        title: d.name,
+        year: d.first_air_date ? String(d.first_air_date).slice(0,4) : '',
+        poster_path: d.poster_path,
+      };
+    }catch(_){
+      const id = t.id || t.tmdb_id;
+      return { tmdb_id: id, id, type: 'tv', title: `#${id}`, poster_path: null, year:'' };
+    }
+  }));
+  renderRow(row, items, { top10: true });
+}
+
+async function loadBestSeriesRow(){
+  const row = el('bestAppRow');
+  const empty = el('bestAppEmpty');
+  if (!row) return;
+  try{
+    const r = await fetch('/api/series/top-rated?' + new URLSearchParams({ limit: 10 }).toString());
+    const data = await r.json();
+    const items = Array.isArray(data) ? data : (data.items || []);
+    if (!items.length){
+      row.innerHTML = '';
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    renderRow(row, items, { top10: false });
+  }catch(_){
+    row.innerHTML = '';
+    if (empty) empty.style.display = '';
+  }
 }
 
 async function loadBestAppRow(){
@@ -1925,7 +2031,7 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   enableDragScroll(el('recentRow'));
   await Promise.all([
     loadTopRow(),
-    loadBestAppRow(),
+    (isTv() ? loadBestSeriesRow() : loadBestAppRow()),
     loadPremieresRow(),
     loadRecentRow(),
     loadExplore(),

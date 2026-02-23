@@ -40,13 +40,18 @@
                   </div>
       </div>
     </div>
+
+      <div class="catalog-toggle" id="catalogToggle" aria-label="Cambiar catálogo">
+        <button id="btnMovies" class="cat-btn" type="button">Películas</button>
+        <button id="btnSeries" class="cat-btn" type="button">Series</button>
+      </div>
   </header>
 
   <main>
     <div class="container">
       <section class="row-section" id="rowTop">
         <div class="row-head">
-          <h3>Películas más vistas hoy</h3>
+          <h3><span id="lblTop">Películas más vistas hoy</span></h3>
           <div class="row-ctrl">
             <button class="row-btn" data-row="top" data-dir="-1">◀</button>
             <button class="row-btn" data-row="top" data-dir="1">▶</button>
@@ -58,7 +63,7 @@
 
       <section class="row-section" id="rowBestApp">
         <div class="row-head">
-          <h3>Películas mejor valoradas</h3>
+          <h3><span id="lblBest">Películas mejor valoradas</span></h3>
           <div class="row-ctrl">
             <button class="row-btn" data-row="bestapp" data-dir="-1">◀</button>
             <button class="row-btn" data-row="bestapp" data-dir="1">▶</button>
@@ -71,7 +76,7 @@
       
       <section class="row-section" id="rowPremieres">
         <div class="row-head">
-          <h3>Estrenos</h3>
+          <h3><span id="lblPremieres">Estrenos</span></h3>
           <div class="row-ctrl">
             <button class="row-btn" data-row="premieres" data-dir="-1">◀</button>
             <button class="row-btn" data-row="premieres" data-dir="1">▶</button>
@@ -82,7 +87,7 @@
 
       <section class="row-section" id="rowRecent">
         <div class="row-head">
-          <h3>Añadidas recientemente</h3>
+          <h3><span id="lblRecent">Añadidas recientemente</span></h3>
           <div class="row-ctrl">
             <button class="row-btn" data-row="recent" data-dir="-1">◀</button>
             <button class="row-btn" data-row="recent" data-dir="1">▶</button>
@@ -93,7 +98,7 @@
 
       <section class="row-section" id="rowExplore">
         <div class="row-head">
-          <h3>Explorar catálogo</h3>
+          <h3><span id="lblExplore">Explorar catálogo</span></h3>
           <div class="row-tools">
             <small class="mute" id="pageInfo"></small>
             <div class="filter-wrap">
@@ -210,5 +215,6 @@
 
   <!-- Toast container -->
   <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
+  <div class="curtain" aria-hidden="true"></div>
 </body>
 </html>

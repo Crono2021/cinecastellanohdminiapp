@@ -451,3 +451,51 @@ header{background:#0b0c10cc}
 .col-item:hover{ background: rgba(255,255,255,0.06); }
 .col-item-poster{ width: 44px; height: 66px; object-fit: cover; border-radius: 8px; background:#111; }
 .col-item-title{ font-weight: 700; }
+
+
+/* --- Catalog toggle buttons (Películas / Series) --- */
+.catalog-toggle{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  align-items:center;
+  padding:10px 0 0 0;
+}
+.catalog-toggle .cat-btn{
+  flex:1 1 220px;
+  max-width: 320px;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: inherit;
+  cursor: pointer;
+}
+.catalog-toggle .cat-btn.active{
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.32);
+}
+@media (max-width: 640px){
+  .catalog-toggle{
+    justify-content:space-between;
+  }
+  .catalog-toggle .cat-btn{
+    max-width:none;
+    flex: 1 1 0;
+  }
+}
+
+/* --- Curtain transition --- */
+.curtain{
+  position: fixed;
+  inset: 0;
+  background: rgba(10,10,12,0.94);
+  transform: translateX(100%);
+  transition: transform 260ms ease;
+  z-index: 9999;
+  pointer-events: none;
+}
+body.curtain-on .curtain{
+  transform: translateX(0%);
+}

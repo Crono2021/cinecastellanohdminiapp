@@ -566,9 +566,12 @@ async function tmdbSearchPersonByName(name) {
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Hidden (not linked) catalog for series
+// Series catalog (same layout as películas)
 app.get('/series', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'series.html'));
+  // Serve the same home UI; JS will detect /series and switch to TV mode
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 });
 
 // --------------------
@@ -1241,7 +1244,8 @@ app.get('/api/catalog', async (req, res) => {
   } return _json(payload); };
 
   try {
-    const { q, genre, page = 1, pageSize = 24 } = req.query;
+    const { q, genre, type, page = 1, pageSize = 24 } = req.query;
+    const typeFilter = (String(type||'').toLowerCase()==='tv' ? 'tv' : (String(type||'').toLowerCase()==='movie' ? 'movie' : ''));
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
@@ -1774,6 +1778,70 @@ app.get('/api/estrenos', async (req, res) => {
     res.status(500).json({ error: 'No se pudieron obtener los estrenos' });
   }
 });
+
+// GET /api/estrenos-tv?limit=30
+// Series cuyo primer episodio (first_air_date) cae en el último año (aprox), dentro del catálogo.
+app.get('/api/estrenos-tv', async (req, res) => {
+  const key = req.originalUrl;
+  const cached = mcGet(key);
+  if (cached) return res.json(cached);
+  const _json = res.json.bind(res);
+  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+
+  try{
+    const limit = Math.min(parseInt(req.query.limit) || 30, 60);
+
+    const recentCatalog = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT tmdb_id, link, created_at, payload FROM series ORDER BY datetime(created_at) DESC LIMIT 800`,
+        [],
+        (err, rows) => err ? reject(err) : resolve(rows || [])
+      );
+    });
+
+    const today = new Date();
+    const lte = ymdLocal(today);
+    const from = new Date(today.getTime() - 365*24*60*60*1000);
+    const gte = ymdLocal(from);
+    const gteTs = new Date(gte + 'T00:00:00').getTime();
+    const lteTs = new Date(lte + 'T23:59:59').getTime();
+
+    const collected = [];
+    for (const row of recentCatalog){
+      if (collected.length >= limit) break;
+      const id = Number(row.tmdb_id);
+      if (!id) continue;
+
+      const meta = await getTmdbTvDetails(id);
+      const estreno = meta.first_air_date ? String(meta.first_air_date).slice(0,10) : null;
+      if (!estreno) continue;
+      const ts = new Date(estreno + 'T00:00:00').getTime();
+      if (!(ts >= gteTs && ts <= lteTs)) continue;
+
+      collected.push({
+        type: 'tv',
+        tmdb_id: id,
+        id,
+        title: meta.name,
+        year: (meta.first_air_date || '').slice(0,4) ? Number(String(meta.first_air_date).slice(0,4)) : null,
+        poster_path: meta.poster_path,
+        overview: meta.overview,
+        cast: (meta.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character })),
+        link: row.link,
+        payload: row.payload,
+        estreno,
+        created_at: row.created_at,
+      });
+    }
+
+    res.json({ items: collected, gte, lte });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron obtener los estrenos de series' });
+  }
+});
+
+
 
 app.post('/api/admin/add', adminGuard, async (req, res) => {
   try {
