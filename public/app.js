@@ -275,7 +275,7 @@ function renderRow(container, items, { top10 = false } = {}){
     const id = it.tmdb_id || it.id;
 
     return `
-  <div class="row-card tv-card" tabindex="0" data-id="${id}" data-type="${type}">
+      <div class="row-card" data-id="${id}" data-type="${type}">
         ${top10 ? `<div class="rank-num">${idx+1}</div>` : ''}
         <img class="row-poster" src="${poster}" onerror="this.src='';this.style.background='#222'" />
         <div class="row-meta">
@@ -575,7 +575,7 @@ async function loadCollections(){
     const cover = c.cover_image || '';
     const img = cover ? `<img class="collection-cover" src="${cover}" />` : `<div class="collection-cover placeholder"></div>`;
     return `
-      <div class="collection-card tv-card" tabindex="0" data-id="${c.id}">
+      <div class="collection-card" data-id="${c.id}">
         ${img}
         <div class="collection-meta">
           <div class="collection-name">${esc(c.name)}</div>
@@ -620,7 +620,7 @@ async function loadMyCollections(){
     const cover = c.cover_image || '';
     const img = cover ? `<img class="collection-cover" src="${cover}" />` : `<div class="collection-cover placeholder"></div>`;
     return `
-      <div class="collection-card tv-card" tabindex="0" data-id="${c.id}">
+      <div class="collection-card" data-id="${c.id}">
         ${img}
         <div class="collection-meta">
           <div class="collection-name">${esc(c.name)}</div>
@@ -1083,7 +1083,7 @@ async function loadExplore(){
 
       const items = (state.collectionItems || []).filter(it => (it?.type || 'movie') !== 'tv');
       grid.innerHTML = items.map(item => `
-        <div class="card tv-card" tabindex="0" data-id="${item.tmdb_id}" data-type="movie">
+        <div class="card" data-id="${item.tmdb_id}" data-type="movie">
           <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
           <div class="meta">
             <div class="title">${esc(item.title)}</div>
@@ -1157,7 +1157,7 @@ async function loadExplore(){
               ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
               : '';
         return `
-          <div class="card tv-card" tabindex="0" data-id="${item.tmdb_id}" data-type="movie">
+          <div class="card" data-id="${item.tmdb_id}" data-type="movie">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
             <div class="meta">
               <div class="title">${esc(item.title)}</div>
@@ -1231,7 +1231,7 @@ async function loadExplore(){
 
     const movies = (data.items || []).filter(item => (item?.type || 'movie') !== 'tv');
     grid.innerHTML = movies.map(item => `
-  <div class="card tv-card" tabindex="0" data-id="${item.tmdb_id}" data-type="movie">
+      <div class="card" data-id="${item.tmdb_id}" data-type="movie">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${esc(item.title)}</div>
@@ -1293,7 +1293,7 @@ async function loadExplore(){
   // In the main explore grid we don't show per-card action buttons.
   const actions = '';
   grid.innerHTML = movies.map(item => `
-  <div class="card tv-card" tabindex="0" data-id="${item.tmdb_id}" data-type="movie">
+    <div class="card" data-id="${item.tmdb_id}" data-type="movie">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${esc(item.title)}</div>
