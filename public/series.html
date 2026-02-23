@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Series · Cine en Castellano HD</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="nav-top">
+        <div class="brand">
+          <div class="logo">Series (modo pruebas)</div>
+          <div class="tag">Catálogo oculto</div>
+        </div>
+        <div class="user-wrap">
+          <a class="ghost" href="/">← Volver a Películas</a>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <div class="searchbar">
+          <input id="q" placeholder="Buscar serie por título…" />
+          <button id="searchBtn">Buscar</button>
+          <button id="resetBtn" class="ghost">Reset</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <section class="row-section" id="rowExplore">
+        <div class="row-head">
+          <h3>Explorar catálogo de series</h3>
+          <div class="row-tools">
+            <small class="mute" id="pageInfo"></small>
+          </div>
+        </div>
+        <div id="grid" class="grid"></div>
+        <div class="pagination">
+          <button id="prev">◀︎</button>
+          <button id="next">▶︎</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="modal" class="modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <strong id="modalTitle"></strong>
+        <button id="closeModal">Cerrar</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail">
+          <img id="modalPoster" class="poster-lg" />
+          <div>
+            <p id="modalOverview"></p>
+            <p><small class="mute" id="modalMeta"></small></p>
+            <div id="modalGenres"></div>
+
+            <h4>Reparto principal</h4>
+            <div id="modalCast" class="cast"></div>
+
+            <p>
+              <a id="watchLink" class="link" target="_blank" rel="noopener">▶ Reproducir (Telegram)</a>
+            </p>
+            <small class="mute">Se abrirá conversación con <b>@videoclubpacobot</b> con el comando pre-escrito.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/series.js"></script>
+</body>
+</html>

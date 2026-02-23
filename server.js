@@ -46,6 +46,17 @@ const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
 const PORT = process.env.PORT || 3000;
 
+// --- Telegram bot (Series playback deep-link) ---
+// Requested bot: @videoclubpacobot
+// Command format: /s Titulo (año)
+const TELEGRAM_BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'videoclubpacobot';
+function telegramSeriesLink(title, year){
+  const safeTitle = String(title || '').trim();
+  const safeYear = year ? String(year).trim() : '';
+  const cmd = `/s ${safeTitle}${safeYear ? ` (${safeYear})` : ''}`;
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?text=${encodeURIComponent(cmd)}`;
+}
+
 // --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
 function normalizeForLetters(input){
   // Remove accent marks, but keep Ñ/ñ as a distinct letter.
@@ -552,6 +563,11 @@ async function tmdbSearchPersonByName(name) {
 
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Pretty route (kept unlinked from the UI on purpose)
+app.get('/series', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'series.html'));
+});
 
 // --------------------
 // Auth
@@ -1889,6 +1905,103 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
+  }
+});
+
+
+// POST /api/admin/importSeriesTitles
+// Paste lines like: "Titulo (2019)" (one per line). Year is optional.
+// It syncs with TMDB (TV) and stores entries into the hidden series catalog.
+app.post('/api/admin/importSeriesTitles', adminGuard, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Falta text' });
+
+    const lines = String(text)
+      .split(/\r?\n/)
+      .map(l => String(l || '').trim())
+      .filter(Boolean);
+
+    const imported = [];
+    const errors = [];
+
+    async function searchTvBest(title, year){
+      const url = 'https://api.themoviedb.org/3/search/tv';
+      const { data } = await axios.get(url, {
+        params: {
+          api_key: TMDB_API_KEY,
+          query: title,
+          include_adult: true,
+          language: 'es-ES'
+        }
+      });
+      const results = (data && data.results) ? data.results : [];
+      if (!results.length) return null;
+      const wantYear = year ? String(year) : '';
+      const norm = (s)=>String(s||'').trim().toLowerCase();
+      const qn = norm(title);
+
+      // Prefer exact year match when provided
+      if (wantYear){
+        const exactYear = results.find(r => (r.first_air_date || '').startsWith(wantYear));
+        if (exactYear) return exactYear;
+      }
+      // Prefer title match (name or original_name)
+      const exactName = results.find(r => norm(r.name) === qn || norm(r.original_name) === qn);
+      if (exactName) return exactName;
+
+      // Fallback: first result
+      return results[0];
+    }
+
+    for (const raw of lines) {
+      try {
+        const m = String(raw).match(/^(.*?)(?:\s*\((\d{4})\)\s*)?$/);
+        const title = (m && m[1]) ? m[1].trim() : raw.trim();
+        const year = (m && m[2]) ? parseInt(m[2], 10) : null;
+        if (!title) continue;
+
+        const best = await searchTvBest(title, year || null);
+        if (!best || !best.id) {
+          errors.push({ input: raw, title, year, error: 'No TMDB match' });
+          continue;
+        }
+
+        const d = await getTmdbTvDetails(best.id);
+        const realName = d?.name || best.name || title;
+        const realYear = (d?.first_air_date || best.first_air_date || '').slice(0,4);
+        const yNum = realYear ? parseInt(realYear, 10) : (year || null);
+
+        const link = telegramSeriesLink(realName, yNum);
+
+        await new Promise((resolve, reject) => {
+          const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, genre_ids) VALUES (?, ?, ?, ?, ?)';
+          db.run(sql, [ best.id, realName, yNum || null, normalizeLink(link), null ], (err) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        });
+
+        // Cache genre ids for faster filtering (best-effort)
+        try{
+          const enc = encodeGenreIds(d?.genres || []);
+          db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, best.id], ()=>{});
+        }catch(_){ }
+
+        imported.push({ tmdb_id: best.id, title: realName, year: yNum || null });
+      } catch (e) {
+        console.error('Series import error', raw, e?.message || e);
+        errors.push({ input: raw, error: e?.message || String(e) });
+      }
+    }
+
+    // Clear caches that might show old data
+    try{ mcDelPrefix('/api/series'); }catch(_){ }
+
+    res.json({ ok: true, imported: imported.length, items: imported, errors });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudieron importar las series' });
   }
 });
 

@@ -63,6 +63,24 @@ document.getElementById('doBulk').onclick = async ()=>{
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
 
+// Import series titles (Titulo (año))
+(function(){
+  const btn = document.getElementById('importSeriesTitles');
+  if (!btn) return;
+  btn.onclick = async ()=>{
+    const text = document.getElementById('seriesTitles')?.value || '';
+    const out = document.getElementById('seriesTitlesOut');
+    if (out) out.textContent = 'Importando...';
+    try{
+      const r = await post('/api/admin/importSeriesTitles', { text });
+      if (out) out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
+      console.log(r);
+    }catch(e){
+      if (out) out.textContent = 'Error: ' + (e?.message || e);
+    }
+  };
+})();
+
 document.getElementById('exportBtn').onclick = async ()=>{
   const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
   if(!res.ok) return alert('Error exportando');
