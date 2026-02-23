@@ -55,9 +55,16 @@
     </div>
 
     <div class="box">
-      <h3>Importar pegando tu TXT</h3>
-      <textarea id="bulk" rows="8" placeholder="Pega aquí líneas tipo: [Título (1999)](https://pixeldrain.net/...)&#10;Puedes pegar todo tu fichero."></textarea>
-      <div class="hstack"><button id="doBulk">Importar</button><div id="bulkOut" class="mute"></div></div>
+      <h3>📺 Importar series (oculto)</h3>
+      <small class="mute">Pega una serie por línea en formato: <b>Título (año) | Payload</b>. El payload debe coincidir con el del bot (deep-link /start).</small>
+      <textarea id="bulkTv" rows="8" placeholder="Ejemplo:\nBreaking Bad (2008) | s1234\nThe Boys (2019) | s9876"></textarea>
+      <div class="hstack"><button id="doBulkTv">Importar series</button><div id="bulkTvOut" class="mute"></div></div>
+    </div>
+
+    <div class="box">
+      <h3>🎬 Importar películas pegando tu TXT</h3>
+      <textarea id="bulk" rows="8" placeholder="Pega aquí líneas tipo: [Título (1999)](https://pixeldrain.net/...)\nPuedes pegar todo tu fichero."></textarea>
+      <div class="hstack"><button id="doBulk">Importar películas</button><div id="bulkOut" class="mute"></div></div>
     </div>
 
     <div class="box">
@@ -76,5 +83,6 @@
     
   </div>
   <script src="/admin.js"></script>
+<!-- App version 1.1.0 -->
 </body>
 </html>

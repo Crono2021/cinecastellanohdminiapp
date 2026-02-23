@@ -6,10 +6,23 @@ function getContentType(){
   return el ? el.value : 'movie';
 }
 
+function refreshBulkBoxes(){
+  const t = getContentType();
+  const tvBox = document.getElementById('bulkTv')?.closest('.box');
+  const movieBox = document.getElementById('bulk')?.closest('.box');
+  if (tvBox) tvBox.style.display = (t === 'tv') ? '' : 'none';
+  if (movieBox) movieBox.style.display = (t === 'movie') ? '' : 'none';
+}
+
 
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
 document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
+
+document.querySelectorAll('input[name="contentType"]').forEach(r => {
+  r.addEventListener('change', refreshBulkBoxes);
+});
+refreshBulkBoxes();
 
 async function post(url, body){
   const res = await fetch(url, {
@@ -62,6 +75,24 @@ document.getElementById('doBulk').onclick = async ()=>{
     console.log(r);
   }catch(e){ out.textContent = 'Error: ' + e.message; }
 };
+
+// Import TV (Titulo (año) | Payload)
+(function(){
+  const btn = document.getElementById('doBulkTv');
+  if (!btn) return;
+  btn.onclick = async ()=>{
+    const text = document.getElementById('bulkTv').value;
+    const out = document.getElementById('bulkTvOut');
+    out.textContent = 'Importando series...';
+    try{
+      const r = await post('/api/admin/bulkImport', { text, type: 'tv' });
+      out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
+      console.log(r);
+    }catch(e){
+      out.textContent = 'Error: ' + e.message;
+    }
+  };
+})();
 
 document.getElementById('exportBtn').onclick = async ()=>{
   const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
