@@ -173,7 +173,8 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_pending_user ON pending(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_pending_tmdb ON pending(tmdb_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_pending_type ON pending(media_type)`);
+  // NOTE: Older DBs may not have media_type yet; creating this index would crash.
+  // It will be created after migrations if/when the column exists.
 
   db.run(`CREATE TABLE IF NOT EXISTS favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,7 +187,8 @@ db.serialize(() => {
   )`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_tmdb ON favorites(tmdb_id)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_favorites_type ON favorites(media_type)`);
+  // NOTE: Older DBs may not have media_type yet; creating this index would crash.
+  // It will be created after migrations if/when the column exists.
 
 // --- Collections (public) ---
 db.run(`CREATE TABLE IF NOT EXISTS collections (
@@ -257,7 +259,10 @@ function migrateFavoritesAndPendingIfNeeded(){
           if (copyErr){
             // Fallback: at least add the column so the app can run.
             // NOTE: can't adjust UNIQUE constraint via ALTER TABLE in SQLite.
-            db.run(`ALTER TABLE ${tableName} ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'`, () => resolve());
+            db.run(`ALTER TABLE ${tableName} ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'`, () => {
+              // Best-effort index creation (won't exist in old DBs)
+              db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_type ON ${tableName}(media_type)`, () => resolve());
+            });
             return;
           }
           db.run(`DROP TABLE ${tableName}`, (dropErr) => {
@@ -278,6 +283,18 @@ function migrateFavoritesAndPendingIfNeeded(){
   });
 
   return Promise.all([migrateTable('favorites'), migrateTable('pending')]);
+}
+
+// Create an index only if a column exists (prevents startup crashes on older DBs)
+function createIndexIfColumnExists(table, column, indexSql){
+  return new Promise((resolve) => {
+    db.all(`PRAGMA table_info(${table})`, (err, rows) => {
+      if (err || !Array.isArray(rows)) return resolve();
+      const exists = rows.some(r => r && r.name === column);
+      if (!exists) return resolve();
+      db.run(indexSql, () => resolve());
+    });
+  });
 }
 
 // We must check PRAGMA table_info first to avoid "duplicate column name" crashes.
@@ -2599,6 +2616,12 @@ app.delete('/api/collections/:id', requireAuth, (req, res) => {
 (async () => {
   try{
     if (__migrationsPromise) await __migrationsPromise;
+  }catch(_){ /* best-effort */ }
+
+  // After migrations, safely create media_type indexes if possible.
+  try{
+    await createIndexIfColumnExists('pending', 'media_type', `CREATE INDEX IF NOT EXISTS idx_pending_type ON pending(media_type)`);
+    await createIndexIfColumnExists('favorites', 'media_type', `CREATE INDEX IF NOT EXISTS idx_favorites_type ON favorites(media_type)`);
   }catch(_){ /* best-effort */ }
 
   app.listen(PORT, () => {
