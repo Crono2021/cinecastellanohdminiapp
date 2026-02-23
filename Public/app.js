@@ -342,43 +342,6 @@ function renderRow(container, items, { top10 = false } = {}){
     });
   });
 }
- = {}){
-  if (!container) return;
-  // Ocultamos series: solo mostramos películas
-  const moviesOnly = (items || []).filter(it => (it?.type || 'movie') !== 'tv');
-  container.innerHTML = moviesOnly.map((it, idx) => {
-    const title = esc(it.title || it.name || '');
-    const year = it.year || (it.release_date ? String(it.release_date).slice(0,4) : '');
-    const poster = it.poster_path ? `${imgBase}${it.poster_path}` : '';
-    const type = 'movie';
-    const id = it.tmdb_id || it.id;
-
-    return `
-      <div class="row-card" data-id="${id}" data-type="${type}">
-        ${top10 ? `<div class="rank-num">${idx+1}</div>` : ''}
-        <img class="row-poster" src="${poster}" onerror="this.src='';this.style.background='#222'" />
-        <div class="row-meta">
-          <div class="row-title">${title}</div>
-          <div class="row-sub">${year || ''}</div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  // Avoid native image drag on desktop
-  container.querySelectorAll('img').forEach(img => img.setAttribute('draggable','false'));
-
-  // Click handling via event delegation (works even when the scroller is handling pointer events)
-  if (!container.__rowClickBound){
-    container.__rowClickBound = true;
-    container.addEventListener('click', (e) => {
-      if (container.__justDragged) return;
-      const card = e.target?.closest?.('.row-card');
-      if (!card || !container.contains(card)) return;
-      openDetails(card.dataset.id, card.dataset.type);
-    });
-  }
-}
 
 function wireRowButtons(){
   document.querySelectorAll('.row-btn').forEach(btn => {
