@@ -1541,6 +1541,79 @@ app.get('/api/series/top-rated', async (req, res) => {
 
 
 
+
+// GET /api/series?page=1&pageSize=24&q=...&random=1
+// Devuelve series del catálogo (tabla series) con posters desde TMDB.
+app.get('/api/series', async (req, res) => {
+  try{
+    const { q, random, page = 1, pageSize = 24 } = req.query;
+    const p = Math.max(1, parseInt(page) || 1);
+    const ps = Math.max(1, Math.min(60, parseInt(pageSize) || 24));
+
+    let where = [];
+    let params = [];
+
+    if (q){
+      where.push('LOWER(name) LIKE ?');
+      params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
+    const orderSql = (String(random||'') === '1' || String(random||'').toLowerCase()==='true')
+      ? "ORDER BY RANDOM()"
+      : "ORDER BY datetime(created_at) DESC";
+
+    const total = await new Promise((resolve, reject) => {
+      db.get(`SELECT COUNT(*) AS c FROM series ${whereSql}`, params, (err, row) => {
+        if (err) return reject(err);
+        resolve((row && row.c) || 0);
+      });
+    });
+
+    const offset = (p - 1) * ps;
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT tmdb_id, name, first_air_year, payload, created_at
+         FROM series
+         ${whereSql}
+         ${orderSql}
+         LIMIT ? OFFSET ?`,
+        [...params, ps, offset],
+        (err, rows) => err ? reject(err) : resolve(rows || [])
+      );
+    });
+
+    if (!rows.length) return res.json({ total, page: p, pageSize: ps, items: [] });
+
+    // Enrich with TMDB details (poster/backdrop). Keep it resilient.
+    const details = await Promise.all(rows.map(r => getTmdbTvDetails(r.tmdb_id).catch(_=>null)));
+
+    const items = rows.map((r, i) => {
+      const d = details[i] || {};
+      return {
+        type: 'tv',
+        id: r.tmdb_id,
+        tmdb_id: r.tmdb_id,
+        title: r.name || d.name || d.title || '',
+        year: r.first_air_year || (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        poster_path: d.poster_path || null,
+        backdrop_path: d.backdrop_path || null,
+        payload: r.payload || null,
+        telegram: buildTelegramForPayload(r.payload) || null,
+        created_at: r.created_at
+      };
+    });
+
+    res.json({ total, page: p, pageSize: ps, items });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo obtener el catálogo de series' });
+  }
+});
+
+
+
 app.get('/api/movies', async (req, res) => {
   try {
     const { q, genre, actor, random, page = 1, pageSize = 24 } = req.query;

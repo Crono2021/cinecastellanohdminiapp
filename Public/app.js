@@ -536,7 +536,7 @@ async function loadTopRow(){
         tmdb_id: d.id,
         type,
         title: d.title,
-        year: d.release_date ? String(d.release_date).slice(0,4) : '',
+        year: (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
         poster_path: d.poster_path,
       };
     }catch(_){
@@ -569,7 +569,7 @@ async function loadTopRowTv(){
         tmdb_id: d.id,
         type: 'tv',
         title: (d.title || d.name),
-        year: d.release_date ? String(d.release_date).slice(0,4) : '',
+        year: (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
         poster_path: d.poster_path,
       };
     }catch(_){
@@ -1639,7 +1639,7 @@ async function openDetails(id, type){
   const res = await fetch(apiUrl);
   const d = await res.json();
 
-  const year = d.release_date ? String(d.release_date).slice(0,4) : '';
+  const year = (resolvedType==='tv' ? (d.first_air_date ? String(d.first_air_date).slice(0,4) : '') : (d.release_date ? String(d.release_date).slice(0,4) : ''));
   el('modalTitle').textContent = `${(d.title||d.name||'')} ${year ? '('+year+')' : ''}`;
   const poster = el('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
