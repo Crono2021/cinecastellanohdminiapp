@@ -19,8 +19,26 @@ function toWatchUrl(link){
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
+function isLocalAssetMode(){
+  try{
+    const proto = (location && location.protocol) ? location.protocol : '';
+    const origin = (location && typeof location.origin === 'string') ? location.origin : '';
+    const path = (location && location.pathname) ? location.pathname : '';
+    return (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
+  }catch(_){
+    return false;
+  }
+}
+
 function getCatalogType(){
-  return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
+  if (!isLocalAssetMode()){
+    return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
+  }
+  try{
+    const v = localStorage.getItem('catalogType');
+    if (v === 'tv' || v === 'movie') return v;
+  }catch(_){ }
+  return 'movie';
 }
 function isTv(){ return getCatalogType()==='tv'; }
 
@@ -147,24 +165,16 @@ function curtainNavigate(href){
   // NOTE: Some Android WebViews load this app from local assets (file:// or appassets).
   // In that case, navigating to absolute paths like "/series" won't resolve.
   // Map known routes to their local html files.
-  function resolveLocal(h){
+  if (isLocalAssetMode()){
     try{
-      const proto = (location && location.protocol) ? location.protocol : '';
-      const origin = (location && typeof location.origin === 'string') ? location.origin : '';
-      const path = (location && location.pathname) ? location.pathname : '';
-      const looksLocal = (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
-      if (!looksLocal) return h;
-      if (h === '/' || h === '/index' || h === '/index.html') return 'index.html';
-      if (h === '/series' || h === '/series/' || h === '/series.html') return 'series.html';
-      // Fallback: drop leading slash so it becomes relative.
-      return (typeof h === 'string') ? h.replace(/^\//, '') : h;
-    }catch(_){
-      return h;
-    }
+      if (href === '/series' || href === '/series/' || href === '/series.html') localStorage.setItem('catalogType','tv');
+      if (href === '/' || href === '/index' || href === '/index.html') localStorage.setItem('catalogType','movie');
+    }catch(_){ }
+    try{ window.location.reload(); }catch(_){ location.reload(); }
+    return;
   }
 
-  const target = resolveLocal(href);
-  try{ window.location.href = target; }catch(_){ location.href = target; }
+  try{ window.location.href = href; }catch(_){ location.href = href; }
 }
 
 function setupCatalogToggle(){
@@ -412,6 +422,10 @@ function enableDragScroll(scroller){
   let startLeft = 0;
   let moved = 0;
 
+  // Preserve original inline styles so we can restore them
+  const originalSnapType = scroller.style.scrollSnapType;
+  const originalScrollBehavior = scroller.style.scrollBehavior;
+
   function startDrag(clientX, prevent){
     if (prevent) prevent();
     isDown = true;
@@ -419,19 +433,33 @@ function enableDragScroll(scroller){
     startX = clientX;
     startLeft = scroller.scrollLeft;
     scroller.classList.add('dragging');
+
+    // Avoid text/image selection jank while dragging (esp. desktop)
+    document.body.classList.add('no-select');
+
+    // Disable snap + smooth scrolling during drag to prevent "jumping"
+    scroller.style.scrollSnapType = 'none';
+    scroller.style.scrollBehavior = 'auto';
   }
 
   function moveDrag(clientX, prevent){
     if (!isDown) return;
     const dx = clientX - startX;
     moved = Math.max(moved, Math.abs(dx));
+    // Write scrollLeft directly for the lowest latency feel.
     scroller.scrollLeft = startLeft - dx;
-    if (moved > 6 && prevent) prevent();
+    if (prevent) prevent();
   }
 
   function endDrag(){
     isDown = false;
     scroller.classList.remove('dragging');
+    document.body.classList.remove('no-select');
+
+    // Restore original behavior
+    scroller.style.scrollSnapType = originalSnapType;
+    scroller.style.scrollBehavior = originalScrollBehavior;
+
     // If we dragged, avoid accidental clicks right after
     if (moved > 6){
       scroller.__justDragged = true;
