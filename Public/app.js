@@ -308,6 +308,42 @@ function toggleUserMenu(){
 
 function renderRow(container, items, { top10 = false } = {}){
   if (!container) return;
+
+  // En home mostramos el tipo correspondiente al catálogo actual
+  const tvMode = isTv();
+  const filtered = (items || []).filter(it => {
+    const t = (it?.type || (tvMode ? 'tv' : 'movie'));
+    return tvMode ? (t === 'tv') : (t !== 'tv');
+  });
+
+  container.innerHTML = filtered.map((it, idx) => {
+    const title = esc(it.title || it.name || '');
+    const year = it.year || (it.first_air_date ? String(it.first_air_date).slice(0,4) : (it.release_date ? String(it.release_date).slice(0,4) : ''));
+    const poster = it.poster_path ? `${imgBase}${it.poster_path}` : '';
+    const type = (it?.type || (tvMode ? 'tv' : 'movie'));
+    const id = it.tmdb_id || it.id;
+
+    return `
+      <div class="row-card" data-id="${id}" data-type="${type}">
+        ${top10 ? `<div class="rank-num">${idx+1}</div>` : ''}
+        <img class="row-poster" src="${poster}" alt="${title}" loading="lazy" />
+        <div class="row-title">${title}</div>
+        ${year ? `<div class="row-year">${year}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Bind clicks (open details)
+  container.querySelectorAll('.row-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = card.getAttribute('data-id');
+      const type = card.getAttribute('data-type');
+      openDetails(id, type);
+    });
+  });
+}
+ = {}){
+  if (!container) return;
   // Ocultamos series: solo mostramos películas
   const moviesOnly = (items || []).filter(it => (it?.type || 'movie') !== 'tv');
   container.innerHTML = moviesOnly.map((it, idx) => {
