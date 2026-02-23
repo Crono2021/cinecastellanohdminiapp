@@ -226,6 +226,10 @@ function migrateFavoritesAndPendingIfNeeded(){
       const hasMediaType = rows.some(r => r && r.name === 'media_type');
       if (hasMediaType) return resolve();
 
+      // Older installs may not have created_at and/or id. We must handle both.
+      const hasId = rows.some(r => r && r.name === 'id');
+      const hasCreatedAt = rows.some(r => r && r.name === 'created_at');
+
       const tmp = `${tableName}__new`;
       db.serialize(() => {
         db.run(`CREATE TABLE IF NOT EXISTS ${tmp} (
@@ -237,21 +241,38 @@ function migrateFavoritesAndPendingIfNeeded(){
           UNIQUE(user_id, tmdb_id, media_type),
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )`);
-        // Copy old rows as movie
-        db.run(
-          `INSERT OR IGNORE INTO ${tmp}(id, user_id, tmdb_id, media_type, created_at)
-           SELECT id, user_id, tmdb_id, 'movie' as media_type, created_at FROM ${tableName}`,
-          [],
-          () => {
-            db.run(`DROP TABLE ${tableName}`);
-            db.run(`ALTER TABLE ${tmp} RENAME TO ${tableName}`);
-            // Recreate indexes
-            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_user ON ${tableName}(user_id)`);
-            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_tmdb ON ${tableName}(tmdb_id)`);
-            db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_type ON ${tableName}(media_type)`);
-            resolve();
+
+        // Copy old rows as movie (best-effort across historical schemas)
+        const insertCols = [];
+        const selectCols = [];
+        if (hasId){
+          insertCols.push('id');
+          selectCols.push('id');
+        }
+        insertCols.push('user_id','tmdb_id','media_type','created_at');
+        selectCols.push('user_id','tmdb_id',"'movie' as media_type", hasCreatedAt ? 'created_at' : "datetime('now') as created_at");
+
+        const sql = `INSERT OR IGNORE INTO ${tmp}(${insertCols.join(', ')})\nSELECT ${selectCols.join(', ')} FROM ${tableName}`;
+        db.run(sql, [], (copyErr) => {
+          if (copyErr){
+            // Fallback: at least add the column so the app can run.
+            // NOTE: can't adjust UNIQUE constraint via ALTER TABLE in SQLite.
+            db.run(`ALTER TABLE ${tableName} ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'`, () => resolve());
+            return;
           }
-        );
+          db.run(`DROP TABLE ${tableName}`, (dropErr) => {
+            if (dropErr){
+              return resolve();
+            }
+            db.run(`ALTER TABLE ${tmp} RENAME TO ${tableName}`, () => {
+              // Recreate indexes
+              db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_user ON ${tableName}(user_id)`);
+              db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_tmdb ON ${tableName}(tmdb_id)`);
+              db.run(`CREATE INDEX IF NOT EXISTS idx_${tableName}_type ON ${tableName}(media_type)`);
+              resolve();
+            });
+          });
+        });
       });
     });
   });
@@ -269,8 +290,9 @@ function ensureColumn(table, column, typeSql){
   });
 }
 
-// Run migrations (best-effort)
-try{ migrateFavoritesAndPendingIfNeeded(); }catch(_){ }
+// Run migrations (best-effort) - awaited before listen (see bottom of file)
+let __migrationsPromise = null;
+try{ __migrationsPromise = migrateFavoritesAndPendingIfNeeded(); }catch(_){ __migrationsPromise = Promise.resolve(); }
 
 db.serialize(() => {
   ensureColumn('movies', 'genre_ids', 'TEXT');
@@ -2573,9 +2595,16 @@ app.delete('/api/collections/:id', requireAuth, (req, res) => {
   );
 });
 
-app.listen(PORT, () => {
-  console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
-  // Best-effort background task to populate genre_ids so category filtering works reliably.
-  // It runs once on start and keeps the server responsive.
-  backfillGenreIdsInBackground().catch(()=>{});
-});
+// Start server after lightweight migrations so older DBs don't crash on startup.
+(async () => {
+  try{
+    if (__migrationsPromise) await __migrationsPromise;
+  }catch(_){ /* best-effort */ }
+
+  app.listen(PORT, () => {
+    console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
+    // Best-effort background task to populate genre_ids so category filtering works reliably.
+    // It runs once on start and keeps the server responsive.
+    backfillGenreIdsInBackground().catch(()=>{});
+  });
+})();
