@@ -144,7 +144,27 @@ function setCatalogLabels(){
 function curtainNavigate(href){
   // Curtain transition removed (it was causing issues on mobile).
   // Keep the helper so callers don't need to change.
-  try{ window.location.href = href; }catch(_){ location.href = href; }
+  // NOTE: Some Android WebViews load this app from local assets (file:// or appassets).
+  // In that case, navigating to absolute paths like "/series" won't resolve.
+  // Map known routes to their local html files.
+  function resolveLocal(h){
+    try{
+      const proto = (location && location.protocol) ? location.protocol : '';
+      const origin = (location && typeof location.origin === 'string') ? location.origin : '';
+      const path = (location && location.pathname) ? location.pathname : '';
+      const looksLocal = (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
+      if (!looksLocal) return h;
+      if (h === '/' || h === '/index' || h === '/index.html') return 'index.html';
+      if (h === '/series' || h === '/series/' || h === '/series.html') return 'series.html';
+      // Fallback: drop leading slash so it becomes relative.
+      return (typeof h === 'string') ? h.replace(/^\//, '') : h;
+    }catch(_){
+      return h;
+    }
+  }
+
+  const target = resolveLocal(href);
+  try{ window.location.href = target; }catch(_){ location.href = target; }
 }
 
 function setupCatalogToggle(){
@@ -155,14 +175,30 @@ function setupCatalogToggle(){
   bM.classList.toggle('active', !tv);
   bS.classList.toggle('active', tv);
 
-  bM.addEventListener('click', ()=>{
-    if (!isTv()) return;
-    curtainNavigate('/');
-  });
-  bS.addEventListener('click', ()=>{
-    if (isTv()) return;
-    curtainNavigate('/series');
-  });
+  // Some mobile WebViews can fail to generate "click" reliably.
+  // Bind touch/pointer end as well, and guard against double-trigger.
+  let justNavigated = false;
+  function guard(fn){
+    return (ev)=>{
+      if (justNavigated) return;
+      try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){ }
+      justNavigated = true;
+      setTimeout(()=>{ justNavigated = false; }, 350);
+      fn();
+    };
+  }
+
+  const goMovies = guard(()=>{ if (isTv()) curtainNavigate('/'); });
+  const goSeries = guard(()=>{ if (!isTv()) curtainNavigate('/series'); });
+
+  // Click (desktop)
+  bM.addEventListener('click', goMovies);
+  bS.addEventListener('click', goSeries);
+  // Touch/pointer (mobile WebViews)
+  bM.addEventListener('touchend', goMovies, { passive:false });
+  bS.addEventListener('touchend', goSeries, { passive:false });
+  bM.addEventListener('pointerup', goMovies, { passive:false });
+  bS.addEventListener('pointerup', goSeries, { passive:false });
 }
 
 
@@ -343,6 +379,8 @@ function renderRow(container, items, { top10 = false } = {}){
   // Bind clicks (open details)
   container.querySelectorAll('.row-card').forEach(card => {
     card.addEventListener('click', () => {
+      // If the user was dragging the scroller, ignore the click
+      if (container.__justDragged) return;
       const id = card.getAttribute('data-id');
       const type = card.getAttribute('data-type');
       openDetails(id, type);
@@ -374,25 +412,24 @@ function enableDragScroll(scroller){
   let startLeft = 0;
   let moved = 0;
 
-  function onDown(e){
-    // Only left click, but allow touch/pen
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+  function startDrag(clientX, prevent){
+    if (prevent) prevent();
     isDown = true;
     moved = 0;
-    startX = e.clientX;
+    startX = clientX;
     startLeft = scroller.scrollLeft;
     scroller.classList.add('dragging');
   }
 
-  function onMove(e){
+  function moveDrag(clientX, prevent){
     if (!isDown) return;
-    const dx = e.clientX - startX;
+    const dx = clientX - startX;
     moved = Math.max(moved, Math.abs(dx));
     scroller.scrollLeft = startLeft - dx;
-    if (moved > 6) e.preventDefault?.();
+    if (moved > 6 && prevent) prevent();
   }
 
-  function onUp(){
+  function endDrag(){
     isDown = false;
     scroller.classList.remove('dragging');
     // If we dragged, avoid accidental clicks right after
@@ -402,11 +439,59 @@ function enableDragScroll(scroller){
     }
   }
 
-  scroller.addEventListener('pointerdown', onDown, { passive: true });
-  scroller.addEventListener('pointermove', onMove, { passive: false });
-  scroller.addEventListener('pointerup', onUp, { passive: true });
-  scroller.addEventListener('pointercancel', onUp, { passive: true });
-  scroller.addEventListener('mouseleave', onUp, { passive: true });
+  // Pointer Events (modern browsers)
+  if (window.PointerEvent){
+    function onDown(e){
+      // Only left click, but allow touch/pen
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startDrag(e.clientX, ()=>e.preventDefault?.());
+      // Capture pointer so we keep receiving move/up even if it leaves the element
+      try{ scroller.setPointerCapture?.(e.pointerId); }catch(_){/* ignore */}
+    }
+    function onMove(e){
+      moveDrag(e.clientX, ()=>e.preventDefault?.());
+    }
+    scroller.addEventListener('pointerdown', onDown, { passive: false });
+    scroller.addEventListener('pointermove', onMove, { passive: false });
+    scroller.addEventListener('pointerup', endDrag, { passive: true });
+    scroller.addEventListener('pointercancel', endDrag, { passive: true });
+    scroller.addEventListener('mouseleave', endDrag, { passive: true });
+  }
+
+  // Mouse fallback (for environments without Pointer Events)
+  let mouseMoveBound = false;
+  scroller.addEventListener('mousedown', (e)=>{
+    if (window.PointerEvent) return; // already handled
+    if (e.button !== 0) return;
+    startDrag(e.clientX, ()=>{ e.preventDefault(); });
+    if (mouseMoveBound) return;
+    mouseMoveBound = true;
+    const onDocMove = (ev)=> moveDrag(ev.clientX, ()=>{ ev.preventDefault(); });
+    const onDocUp = ()=>{
+      endDrag();
+      document.removeEventListener('mousemove', onDocMove);
+      document.removeEventListener('mouseup', onDocUp);
+      mouseMoveBound = false;
+    };
+    document.addEventListener('mousemove', onDocMove, { passive:false });
+    document.addEventListener('mouseup', onDocUp, { passive:true });
+  }, { passive:false });
+
+  // Touch fallback (for older iOS Safari without Pointer Events)
+  scroller.addEventListener('touchstart', (e)=>{
+    if (window.PointerEvent) return;
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    startDrag(t.clientX, ()=>{ e.preventDefault(); });
+  }, { passive:false });
+  scroller.addEventListener('touchmove', (e)=>{
+    if (window.PointerEvent) return;
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    moveDrag(t.clientX, ()=>{ e.preventDefault(); });
+  }, { passive:false });
+  scroller.addEventListener('touchend', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
+  scroller.addEventListener('touchcancel', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
 
   // Prevent image dragging ghost on desktop
   scroller.querySelectorAll('img').forEach(img => {
