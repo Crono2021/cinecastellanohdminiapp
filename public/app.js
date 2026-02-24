@@ -31,9 +31,18 @@ function isLocalAssetMode(){
 }
 
 function getCatalogType(){
+  // Normal web: rely on path routing
   if (!isLocalAssetMode()){
     return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
   }
+  // Local asset / WebView mode: don't depend on localStorage (often disabled in some WebViews).
+  // Use URL hash as the source of truth: #series or #movies
+  try{
+    const h = String(location.hash || '').toLowerCase();
+    if (h.includes('series') || h.includes('tv')) return 'tv';
+    if (h.includes('movie') || h.includes('peliculas')) return 'movie';
+  }catch(_){ }
+  // Fallback (legacy) if storage is available
   try{
     const v = localStorage.getItem('catalogType');
     if (v === 'tv' || v === 'movie') return v;
