@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SAM · Subir series</title>
+  <style>
+    :root{ color-scheme: dark; }
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 20px; background:#0b0d10; color:#e8eef5; }
+    .wrap{ max-width: 980px; margin: 0 auto; }
+    .box{ background:#121722; border:1px solid #1f2a3a; border-radius:12px; padding:16px; margin: 14px 0; }
+    label{ display:block; font-size:14px; opacity:.9; margin-bottom:6px; }
+    input, textarea{ width:100%; background:#0b0f18; color:#e8eef5; border:1px solid #283449; border-radius:10px; padding:10px 12px; font-size:14px; }
+    textarea{ min-height: 240px; resize: vertical; }
+    button{ background:#2a7bff; border:0; color:white; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600; }
+    button:active{ transform: translateY(1px); }
+    .row{ display:flex; gap:10px; align-items:center; }
+    .row > *{ flex: 1; }
+    .row button{ flex: 0 0 auto; }
+    .hint{ font-size:13px; opacity:.85; line-height:1.4; }
+    pre{ background:#0b0f18; border:1px solid #283449; border-radius:10px; padding:10px 12px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 style="margin:0 0 6px">SAM · Subir series</h1>
+    <div class="hint">Panel secundario. Solo permite importar <b>series</b> con el formato: <code>Titulo (año) | Payload</code></div>
+
+    <div class="box">
+      <label>Token (Railway: <code>SAM_TOKEN</code>)</label>
+      <div class="row">
+        <input id="token" placeholder="Pega aquí el token" />
+        <button id="saveToken">Guardar</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Se guarda en <code>localStorage</code> del navegador.</div>
+    </div>
+
+    <div class="box">
+      <label>Importación masiva (Series)</label>
+      <div class="hint">Ejemplo:</div>
+      <pre>Breaking Bad (2008) | s1234
+The Office (2005) | s9876</pre>
+      <textarea id="bulkTv" placeholder="Pega aquí tus líneas..."></textarea>
+      <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+        <button id="doBulkTv">Importar series</button>
+        <div id="bulkTvOut" class="hint"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/sam.js"></script>
+</body>
+</html>

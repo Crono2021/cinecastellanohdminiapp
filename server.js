@@ -44,6 +44,8 @@ app.use(express.urlencoded({ extended: true }));
 // --- Config ---
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
+// Secondary admin panel (/sam) token (set in Railway as SAM_TOKEN)
+const SAM_TOKEN = process.env.SAM_TOKEN || '';
 const PORT = process.env.PORT || 3000;
 
 // --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
@@ -520,6 +522,17 @@ function adminGuard(req, res, next) {
   next();
 }
 
+function samGuard(req, res, next) {
+  // If SAM_TOKEN is not configured, keep the panel locked down.
+  if (!SAM_TOKEN) return res.status(403).json({ error: 'SAM_TOKEN no configurado' });
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (token !== SAM_TOKEN) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  next();
+}
+
 async function tmdbSearchTv(name, year){
   const url = 'https://api.themoviedb.org/3/search/tv';
   const { data } = await axios.get(url, {
@@ -678,6 +691,11 @@ async function tmdbSearchPersonByName(name) {
 
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Secondary admin panel (series uploader only)
+app.get(['/sam', '/sam/'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'sam.html'));
+});
 
 // Series catalog (same layout as películas)
 app.get('/series', (req, res) => {
@@ -2321,6 +2339,65 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
     }
 
     res.json({ ok: true, imported: out.length, items: out, errors });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'No se pudo importar' });
+  }
+});
+
+// POST /api/sam/bulkImport (TV only: "Titulo (año) | Payload")
+app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: 'Falta text' });
+
+    const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const errors = [];
+    const out = [];
+
+    for (const line of lines){
+      const m = line.match(/^(.+?)\s*\((\d{4})\)\s*\|\s*(\S+)\s*$/);
+      if (!m){
+        errors.push({ line, error: 'Formato inválido. Usa: Titulo (año) | Payload' });
+        continue;
+      }
+      const rawTitle = m[1].trim();
+      const year = parseInt(m[2], 10);
+      const payload = m[3].trim();
+
+      try{
+        const t = await tmdbSearchTv(rawTitle, year);
+        if (!t){
+          errors.push({ title: rawTitle, year, payload, error: 'No TMDB match' });
+          continue;
+        }
+
+        const tv_id = t.id;
+        const realName = t.name;
+        const realYear = t.first_air_date ? parseInt(String(t.first_air_date).slice(0,4), 10) : year || null;
+        const tg = buildTelegramForPayload(payload);
+        const link = tg?.web || '';
+
+        await new Promise((resolve, reject)=>{
+          const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, payload, genre_ids) VALUES (?, ?, ?, ?, ?, ?)';
+          db.run(sql, [ tv_id, realName || rawTitle, realYear, normalizeLink(link), payload, null ], (err)=> err?reject(err):resolve());
+        });
+
+        // genres best-effort
+        try{
+          const d = await getTmdbTvDetails(tv_id);
+          const enc = encodeGenreIds(d?.genres || []);
+          db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], ()=>{});
+        }catch(_){ }
+
+        out.push({ tmdb_id: tv_id, title: realName, year: realYear, payload });
+      }catch(e){
+        console.error('SAM TV import error', line, e.message);
+        errors.push({ title: rawTitle, year, payload, error: e.message });
+      }
+    }
+
+    return res.json({ ok: true, imported: out.length, items: out, errors });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo importar' });
