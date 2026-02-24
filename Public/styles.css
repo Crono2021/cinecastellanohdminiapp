@@ -267,8 +267,8 @@ header{background:#0b0c10cc}
 .row-card{flex:0 0 auto;scroll-snap-align:start;position:relative;border-radius:16px;overflow:hidden;border:1px solid #272933;background:#15161c;cursor:pointer;transition:transform .16s ease, box-shadow .2s ease}
 .row-card:hover{transform:translateY(-4px) scale(1.01);box-shadow:0 14px 38px rgba(0,0,0,.35)}
 .row-poster{width:150px;aspect-ratio:2/3;object-fit:cover;background:#222;display:block}
-.row-meta{padding:8px 10px 10px;max-width:150px}
-.row-title{font-weight:750;font-size:.9rem;line-height:1.15}
+.row-meta{padding:8px 10px 10px;max-width:150px;width:150px;min-width:0;overflow:hidden;box-sizing:border-box}
+.row-title{font-weight:750;font-size:.9rem;line-height:1.15;white-space:normal !important;overflow-wrap:anywhere;word-break:break-word;max-width:100%;display:block}
 .row-sub{opacity:.7;font-size:.8rem;margin-top:2px}
 
 /* Top 10 style: big rank number like Netflix */
@@ -298,7 +298,7 @@ header{background:#0b0c10cc}
   .searchbar #actor{flex:1 1 calc(50% - 6px); min-width:0}
   .hero h1{font-size:1.35rem}
   .row-poster{width:132px}
-  .row-meta{max-width:132px}
+  .row-meta{max-width:132px;width:132px}
   .rank-num{font-size:74px}
 }
 
@@ -546,12 +546,15 @@ body.curtain-on .curtain{
 .row-title{
   font-weight: 750;
   line-height: 1.15;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 2;          /* máximo 2 líneas */
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
-  word-break: break-word;
   min-height: 2.3em;
 }
 
