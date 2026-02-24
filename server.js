@@ -44,8 +44,8 @@ app.use(express.urlencoded({ extended: true }));
 // --- Config ---
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cchd-admin-token-cambialo';
-// Secondary admin panel (/sam) token (set in Railway as SAM_TOKEN)
-const SAM_TOKEN = process.env.SAM_TOKEN || '';
+// Secondary admin panel (/sam) fixed token
+const SAM_TOKEN = 'Sofista13';
 const PORT = process.env.PORT || 3000;
 
 // --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
@@ -523,10 +523,8 @@ function adminGuard(req, res, next) {
 }
 
 function samGuard(req, res, next) {
-  // If SAM_TOKEN is not configured, keep the panel locked down.
-  if (!SAM_TOKEN) return res.status(403).json({ error: 'SAM_TOKEN no configurado' });
   const auth = req.headers.authorization || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
   if (token !== SAM_TOKEN) {
     return res.status(401).json({ error: 'No autorizado' });
   }
@@ -690,8 +688,6 @@ async function tmdbSearchPersonByName(name) {
 }
 
 // --- API ---
-// Serve static files. Some deployments (and earlier zips) include both `public/` and `Public/`.
-// On Linux these are different folders, so we serve both to avoid 404s (e.g. /sam).
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'Public')));
 
@@ -2354,7 +2350,9 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
   }
 });
 
-// POST /api/sam/bulkImport (TV only: "Titulo (año) | Payload")
+
+// DELETE /api/admin/delete
+
 app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
   try {
     const { text } = req.body;
@@ -2413,8 +2411,6 @@ app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
   }
 });
 
-
-// DELETE /api/admin/delete
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
     const { title, year, type } = req.body; const isTv = (type==='tv');
