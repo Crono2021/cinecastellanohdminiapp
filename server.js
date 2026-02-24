@@ -789,8 +789,8 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     const total = Number(rowCount?.c || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    // Ratings can be for both movies and series (TV). Historically the ratings table didn't store type.
-    // We infer type by checking whether the id exists in the series table.
+
+    // NOTE: ratings can be for movies OR series. Join both tables and decide per-row.
     const sql = `SELECT r.tmdb_id, r.rating, r.updated_at,
                        m.title as m_title, m.year as m_year, m.link as m_link,
                        s.name as s_name, s.first_air_year as s_year, s.link as s_link
@@ -800,23 +800,31 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
                 WHERE r.user_id = ?
                 ORDER BY r.updated_at DESC
                 LIMIT ? OFFSET ?`;
+
     db.all(sql, [user.id, pageSize, offset], async (err2, rows) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
+
       const out = [];
-      for (const r of (rows||[])){
-        const isTv = !!(r.s_name && String(r.s_name).trim());
+      for (const r of (rows || [])) {
+        const isTv = !!(r.s_name && !r.m_title); // prefer series when only series exists
+        const type = isTv ? 'tv' : 'movie';
+
         let meta = { poster_path: null };
-        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        try {
+          meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id);
+        } catch (_) { }
+
         out.push({
-          type: isTv ? 'tv' : 'movie',
+          type,
           tmdb_id: r.tmdb_id,
-          title: (isTv ? (r.s_name || '') : (r.m_title || '')),
-          year: (isTv ? (r.s_year || null) : (r.m_year || null)),
-          link: (isTv ? (r.s_link || null) : (r.m_link || null)),
-          poster_path: meta.poster_path || null,
+          title: (r.m_title || r.s_name || ''),
+          year: (r.m_year || r.s_year || null),
+          link: (r.m_link || r.s_link || null),
+          poster_path: meta?.poster_path || null,
           user_rating: Number(r.rating)
         });
       }
+
       res.json({ ok: true, page, pageSize, totalPages, totalResults: total, results: out });
     });
   });
