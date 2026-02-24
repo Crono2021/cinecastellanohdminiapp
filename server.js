@@ -789,10 +789,14 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     const total = Number(rowCount?.c || 0);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    // Ratings can be for both movies and series (TV). Historically the ratings table didn't store type.
+    // We infer type by checking whether the id exists in the series table.
     const sql = `SELECT r.tmdb_id, r.rating, r.updated_at,
-                       m.title as title, m.year as year, m.link as link
+                       m.title as m_title, m.year as m_year, m.link as m_link,
+                       s.name as s_name, s.first_air_year as s_year, s.link as s_link
                 FROM ratings r
                 LEFT JOIN movies m ON m.tmdb_id = r.tmdb_id
+                LEFT JOIN series s ON s.tmdb_id = r.tmdb_id
                 WHERE r.user_id = ?
                 ORDER BY r.updated_at DESC
                 LIMIT ? OFFSET ?`;
@@ -800,14 +804,15 @@ app.get('/api/my-ratings', requireAuth, (req, res) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
       const out = [];
       for (const r of (rows||[])){
+        const isTv = !!(r.s_name && String(r.s_name).trim());
         let meta = { poster_path: null };
-        try{ meta = await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
         out.push({
-          type: 'movie',
+          type: isTv ? 'tv' : 'movie',
           tmdb_id: r.tmdb_id,
-          title: r.title || '',
-          year: r.year || null,
-          link: r.link || null,
+          title: (isTv ? (r.s_name || '') : (r.m_title || '')),
+          year: (isTv ? (r.s_year || null) : (r.m_year || null)),
+          link: (isTv ? (r.s_link || null) : (r.m_link || null)),
           poster_path: meta.poster_path || null,
           user_rating: Number(r.rating)
         });

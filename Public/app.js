@@ -19,35 +19,8 @@ function toWatchUrl(link){
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
-function isLocalAssetMode(){
-  try{
-    const proto = (location && location.protocol) ? location.protocol : '';
-    const origin = (location && typeof location.origin === 'string') ? location.origin : '';
-    const path = (location && location.pathname) ? location.pathname : '';
-    return (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
-  }catch(_){
-    return false;
-  }
-}
-
 function getCatalogType(){
-  // Normal web: rely on path routing
-  if (!isLocalAssetMode()){
-    return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
-  }
-  // Local asset / WebView mode: don't depend on localStorage (often disabled in some WebViews).
-  // Use URL hash as the source of truth: #series or #movies
-  try{
-    const h = String(location.hash || '').toLowerCase();
-    if (h.includes('series') || h.includes('tv')) return 'tv';
-    if (h.includes('movie') || h.includes('peliculas')) return 'movie';
-  }catch(_){ }
-  // Fallback (legacy) if storage is available
-  try{
-    const v = localStorage.getItem('catalogType');
-    if (v === 'tv' || v === 'movie') return v;
-  }catch(_){ }
-  return 'movie';
+  return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
 }
 function isTv(){ return getCatalogType()==='tv'; }
 
@@ -171,18 +144,6 @@ function setCatalogLabels(){
 function curtainNavigate(href){
   // Curtain transition removed (it was causing issues on mobile).
   // Keep the helper so callers don't need to change.
-  // NOTE: Some Android WebViews load this app from local assets (file:// or appassets).
-  // In that case, navigating to absolute paths like "/series" won't resolve.
-  // Map known routes to their local html files.
-  if (isLocalAssetMode()){
-    try{
-      if (href === '/series' || href === '/series/' || href === '/series.html') localStorage.setItem('catalogType','tv');
-      if (href === '/' || href === '/index' || href === '/index.html') localStorage.setItem('catalogType','movie');
-    }catch(_){ }
-    try{ window.location.reload(); }catch(_){ location.reload(); }
-    return;
-  }
-
   try{ window.location.href = href; }catch(_){ location.href = href; }
 }
 
@@ -194,30 +155,14 @@ function setupCatalogToggle(){
   bM.classList.toggle('active', !tv);
   bS.classList.toggle('active', tv);
 
-  // Some mobile WebViews can fail to generate "click" reliably.
-  // Bind touch/pointer end as well, and guard against double-trigger.
-  let justNavigated = false;
-  function guard(fn){
-    return (ev)=>{
-      if (justNavigated) return;
-      try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){ }
-      justNavigated = true;
-      setTimeout(()=>{ justNavigated = false; }, 350);
-      fn();
-    };
-  }
-
-  const goMovies = guard(()=>{ if (isTv()) curtainNavigate('/'); });
-  const goSeries = guard(()=>{ if (!isTv()) curtainNavigate('/series'); });
-
-  // Click (desktop)
-  bM.addEventListener('click', goMovies);
-  bS.addEventListener('click', goSeries);
-  // Touch/pointer (mobile WebViews)
-  bM.addEventListener('touchend', goMovies, { passive:false });
-  bS.addEventListener('touchend', goSeries, { passive:false });
-  bM.addEventListener('pointerup', goMovies, { passive:false });
-  bS.addEventListener('pointerup', goSeries, { passive:false });
+  bM.addEventListener('click', ()=>{
+    if (!isTv()) return;
+    curtainNavigate('/');
+  });
+  bS.addEventListener('click', ()=>{
+    if (isTv()) return;
+    curtainNavigate('/series');
+  });
 }
 
 
@@ -371,10 +316,6 @@ function toggleUserMenu(){
 function renderRow(container, items, { top10 = false } = {}){
   if (!container) return;
 
-  // Ensure every horizontal row is drag-scrollable, even if rows are re-rendered.
-  // (Binding is idempotent via container.__dragBound.)
-  enableDragScroll(container);
-
   // En home mostramos el tipo correspondiente al catálogo actual
   const tvMode = isTv();
   const filtered = (items || []).filter(it => {
@@ -402,8 +343,6 @@ function renderRow(container, items, { top10 = false } = {}){
   // Bind clicks (open details)
   container.querySelectorAll('.row-card').forEach(card => {
     card.addEventListener('click', () => {
-      // If the user was dragging the scroller, ignore the click
-      if (container.__justDragged) return;
       const id = card.getAttribute('data-id');
       const type = card.getAttribute('data-type');
       openDetails(id, type);
@@ -431,153 +370,48 @@ function enableDragScroll(scroller){
   scroller.__dragBound = true;
 
   let isDown = false;
-  let isDragging = false;
   let startX = 0;
   let startLeft = 0;
   let moved = 0;
-  const DRAG_THRESHOLD = 6;
 
-  // Preserve original inline styles so we can restore them
-  const originalSnapType = scroller.style.scrollSnapType;
-  const originalScrollBehavior = scroller.style.scrollBehavior;
-
-  function startDrag(clientX){
+  function onDown(e){
+    // Only left click, but allow touch/pen
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     isDown = true;
-    isDragging = false;
     moved = 0;
-    startX = clientX;
+    startX = e.clientX;
     startLeft = scroller.scrollLeft;
-  }
-
-  function beginDragging(){
-    if (isDragging) return;
-    isDragging = true;
     scroller.classList.add('dragging');
-
-    // Avoid text/image selection jank while dragging (esp. desktop)
-    document.body.classList.add('no-select');
-
-    // Disable snap + smooth scrolling during drag to prevent "jumping"
-    scroller.style.scrollSnapType = 'none';
-    scroller.style.scrollBehavior = 'auto';
   }
 
-  function moveDrag(clientX, prevent){
+  function onMove(e){
     if (!isDown) return;
-    const dx = clientX - startX;
+    const dx = e.clientX - startX;
     moved = Math.max(moved, Math.abs(dx));
-
-    // Only start "real" dragging after a small threshold.
-    // This keeps cards clickable on tap/click.
-    if (!isDragging && moved >= DRAG_THRESHOLD){
-      beginDragging();
-    }
-
-    if (isDragging){
-      // Write scrollLeft directly for the lowest latency feel.
-      scroller.scrollLeft = startLeft - dx;
-      if (prevent) prevent();
-    }
+    scroller.scrollLeft = startLeft - dx;
+    if (moved > 6) e.preventDefault?.();
   }
 
-  function endDrag(){
-    if (!isDown) return;
+  function onUp(){
     isDown = false;
-
-    if (isDragging){
-      scroller.classList.remove('dragging');
-      document.body.classList.remove('no-select');
-
-      // Restore original behavior
-      scroller.style.scrollSnapType = originalSnapType;
-      scroller.style.scrollBehavior = originalScrollBehavior;
-
-      // If we dragged, avoid accidental clicks right after
+    scroller.classList.remove('dragging');
+    // If we dragged, avoid accidental clicks right after
+    if (moved > 6){
       scroller.__justDragged = true;
-      setTimeout(()=>{ scroller.__justDragged = false; }, 220);
+      setTimeout(()=>{ scroller.__justDragged = false; }, 200);
     }
-
-    isDragging = false;
   }
 
-  // Pointer Events (modern browsers)
-  // NOTE: Some Android WebViews / desktop browsers expose PointerEvent but behave inconsistently for mouse drags.
-  // We therefore handle mouse dragging via mousedown/mousemove/mouseup always, and reserve Pointer Events here
-  // for touch/pen only.
-  if (window.PointerEvent){
-    function onDown(e){
-      if (e.pointerType === 'mouse') return; // let mouse fallback handle reliably
-      startDrag(e.clientX);
-      // Capture pointer so we keep receiving move/up even if it leaves the element
-      try{ scroller.setPointerCapture?.(e.pointerId); }catch(_){/* ignore */}
-    }
-    function onMove(e){
-      moveDrag(e.clientX, ()=>e.preventDefault?.());
-    }
-    // Use capture so we still receive the event even if inner elements stop propagation.
-    scroller.addEventListener('pointerdown', onDown, { passive: false, capture: true });
-    scroller.addEventListener('pointermove', onMove, { passive: false, capture: true });
-    scroller.addEventListener('pointerup', endDrag, { passive: true });
-    scroller.addEventListener('pointercancel', endDrag, { passive: true });
-    scroller.addEventListener('mouseleave', endDrag, { passive: true });
-  }
-
-  // Mouse fallback (for environments without Pointer Events)
-  let mouseMoveBound = false;
-  scroller.addEventListener('mousedown', (e)=>{
-    // Always handle mouse here (even if PointerEvent exists) for consistent desktop drag.
-    if (e.button !== 0) return;
-    startDrag(e.clientX);
-    if (mouseMoveBound) return;
-    mouseMoveBound = true;
-    const onDocMove = (ev)=> moveDrag(ev.clientX, ()=>{ ev.preventDefault(); });
-    const onDocUp = ()=>{
-      endDrag();
-      document.removeEventListener('mousemove', onDocMove);
-      document.removeEventListener('mouseup', onDocUp);
-      mouseMoveBound = false;
-    };
-    document.addEventListener('mousemove', onDocMove, { passive:false });
-    document.addEventListener('mouseup', onDocUp, { passive:true });
-  }, { passive:false, capture:true });
-
-  // If we dragged, cancel the click in capture phase so cards remain clickable otherwise.
-  scroller.addEventListener('click', (e)=>{
-    if (!scroller.__justDragged) return;
-    try{ e.preventDefault(); }catch(_){ }
-    try{ e.stopPropagation(); }catch(_){ }
-  }, true);
-
-  // Prevent browser "ghost" drag behavior (images/links) from hijacking mouse drags.
-  scroller.addEventListener('dragstart', (e)=>{
-    try{ e.preventDefault(); }catch(_){ }
-  });
-
-  // Touch fallback (for older iOS Safari without Pointer Events)
-  scroller.addEventListener('touchstart', (e)=>{
-    if (window.PointerEvent) return;
-    const t = e.touches && e.touches[0];
-    if (!t) return;
-    startDrag(t.clientX);
-  }, { passive:false });
-  scroller.addEventListener('touchmove', (e)=>{
-    if (window.PointerEvent) return;
-    const t = e.touches && e.touches[0];
-    if (!t) return;
-    moveDrag(t.clientX, ()=>{ e.preventDefault(); });
-  }, { passive:false });
-  scroller.addEventListener('touchend', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
-  scroller.addEventListener('touchcancel', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
+  scroller.addEventListener('pointerdown', onDown, { passive: true });
+  scroller.addEventListener('pointermove', onMove, { passive: false });
+  scroller.addEventListener('pointerup', onUp, { passive: true });
+  scroller.addEventListener('pointercancel', onUp, { passive: true });
+  scroller.addEventListener('mouseleave', onUp, { passive: true });
 
   // Prevent image dragging ghost on desktop
   scroller.querySelectorAll('img').forEach(img => {
     img.setAttribute('draggable', 'false');
   });
-}
-
-// Bind drag-scroll to every carousel on the page (and any that get added later).
-function bindAllCarousels(){
-  document.querySelectorAll('.row-scroller').forEach(s => enableDragScroll(s));
 }
 
 // --- Data fetchers ---
@@ -1539,7 +1373,7 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
   if (state.actor) params.set('actor', state.actor);
   if (state.genre) params.set('genre', state.genre);
 
-  // Home: show random titles by default so the grid always feels fresh.
+  // Home: show random movies by default so the grid always feels fresh
   const isHomeNoFilters = !state.q && !state.actor && !state.genre && !state.letter;
   if (isHomeNoFilters && state.random){
     params.set('random', '1');
@@ -2246,21 +2080,10 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   setCatalogLabels();
   setupCatalogToggle();
   wireEvents();
-  bindAllCarousels();
-
-  // Auto-bind for any carousels that get rendered later
-  try{
-    const mo = new MutationObserver((mutations)=>{
-      for (const m of mutations){
-        for (const n of (m.addedNodes || [])){
-          if (!n || n.nodeType !== 1) continue;
-          if (n.classList?.contains('row-scroller')) enableDragScroll(n);
-          n.querySelectorAll?.('.row-scroller')?.forEach(s => enableDragScroll(s));
-        }
-      }
-    });
-    mo.observe(document.body, { childList:true, subtree:true });
-  }catch(_){/* ignore */}
+  enableDragScroll(el('topRow'));
+  enableDragScroll(el('bestAppRow'));
+  enableDragScroll(el('premieresRow'));
+  enableDragScroll(el('recentRow'));
   await Promise.all([
     loadTopRow(),
     (isTv() ? loadBestSeriesRow() : loadBestAppRow()),
