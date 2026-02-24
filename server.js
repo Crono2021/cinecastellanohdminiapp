@@ -2411,6 +2411,32 @@ app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
   }
 });
 
+// SAM: borrar una serie por titulo + año
+app.post('/api/sam/deleteSeries', samGuard, (req, res) => {
+  try{
+    const title = String(req.body?.title || '').trim();
+    const year = parseInt(req.body?.year, 10);
+
+    if (!title || !Number.isFinite(year)){
+      return res.status(400).json({ error: 'Falta title o year' });
+    }
+
+    const sql = 'DELETE FROM series WHERE name = ? COLLATE NOCASE AND first_air_year = ?';
+    db.run(sql, [title, year], function(err){
+      if (err){
+        console.error('SAM deleteSeries error', err);
+        return res.status(500).json({ error: 'No se pudo borrar' });
+      }
+      return res.json({ ok: true, deleted: this.changes || 0 });
+    });
+  }catch(e){
+    console.error('SAM deleteSeries exception', e);
+    return res.status(500).json({ error: 'No se pudo borrar' });
+  }
+});
+
+
+
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
     const { title, year, type } = req.body; const isTv = (type==='tv');

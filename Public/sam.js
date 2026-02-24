@@ -41,3 +41,45 @@ async function post(url, body){
     }
   };
 })();
+
+
+
+async function samDeleteSeries(title, year){
+  const token = getToken();
+  const r = await fetch('/api/sam/deleteSeries', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
+    body: JSON.stringify({ title, year })
+  });
+  const j = await r.json().catch(()=> ({}));
+  if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+  return j;
+}
+
+const delBtn = document.getElementById('doDeleteTv');
+if (delBtn){
+  delBtn.onclick = async ()=>{
+    const out = document.getElementById('deleteOut');
+    const title = (document.getElementById('delTitle')?.value || '').trim();
+    const yearStr = (document.getElementById('delYear')?.value || '').trim();
+    const year = parseInt(yearStr, 10);
+
+    if (!title || !yearStr || !Number.isFinite(year)){
+      if (out) out.textContent = 'Pon título y año válidos.';
+      return;
+    }
+
+    if (!confirm(`¿Borrar la serie "${title}" (${year})?`)) return;
+
+    try{
+      if (out) out.textContent = 'Borrando...';
+      const res = await samDeleteSeries(title, year);
+      if (out) out.textContent = res.deleted ? `OK: borrada (${res.deleted}).` : 'No se encontró ninguna serie con ese título y año.';
+    }catch(e){
+      if (out) out.textContent = 'Error: ' + (e?.message || e);
+    }
+  };
+}
