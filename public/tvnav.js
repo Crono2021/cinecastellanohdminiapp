@@ -1,4 +1,20 @@
 (function () {
+  // Disable TV input/navigation on desktop browsers (PC). It causes issues with mouse interaction.
+  var isDesktopBrowser = (function () {
+    try {
+      var ua = (navigator.userAgent || '').toLowerCase();
+      var isMobileUA = /android|iphone|ipad|ipod|mobile|tablet/.test(ua);
+      var hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 0);
+      // Consider "desktop" when it's not a mobile/tablet UA and there is no touch capability.
+      return !isMobileUA && !hasTouch;
+    } catch (e) { return false; }
+  })();
+  if (isDesktopBrowser) {
+    window.TVNav = { __ok: true, disabled: true };
+    return;
+  }
+
+
   if (window.TVNav && window.TVNav.__ok) return;
 
   // Visible focus for TV.
