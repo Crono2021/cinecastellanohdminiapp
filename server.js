@@ -690,11 +690,20 @@ async function tmdbSearchPersonByName(name) {
 }
 
 // --- API ---
+// Serve static files. Some deployments (and earlier zips) include both `public/` and `Public/`.
+// On Linux these are different folders, so we serve both to avoid 404s (e.g. /sam).
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'Public')));
 
 // Secondary admin panel (series uploader only)
-app.get(['/sam', '/sam/'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'sam.html'));
+app.get(['/sam', '/sam/', '/sam.html'], (req, res) => {
+  // Prefer `public/` but fall back to `Public/` if needed.
+  const p1 = path.join(__dirname, 'public', 'sam.html');
+  const p2 = path.join(__dirname, 'Public', 'sam.html');
+  res.sendFile(p1, (err) => {
+    if (!err) return;
+    res.sendFile(p2);
+  });
 });
 
 // Series catalog (same layout as películas)
