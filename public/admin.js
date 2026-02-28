@@ -40,6 +40,50 @@ async function post(url, body){
   return res.json();
 }
 
+async function getJson(url){
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': 'Bearer ' + getToken()
+    }
+  });
+  if (!res.ok){
+    const e = await res.json().catch(()=>({error:'Error desconocido'}));
+    throw new Error(e.error||('HTTP '+res.status));
+  }
+  return res.json();
+}
+
+// --- Pixeldrain mode toggle (/u/ <-> /api/file) ---
+(function(){
+  const statusEl = document.getElementById('pdModeStatus');
+  const btn = document.getElementById('pdModeToggle');
+  if (!statusEl || !btn) return;
+
+  async function refresh(){
+    try{
+      const r = await getJson('/api/admin/config');
+      const mode = (r && r.pixeldrain_mode === 'api') ? 'api' : 'u';
+      statusEl.textContent = (mode === 'api') ? '/api/file (activo)' : '/u/ (activo)';
+    }catch(e){
+      statusEl.textContent = '—';
+    }
+  }
+
+  btn.onclick = async ()=>{
+    btn.disabled = true;
+    try{
+      await post('/api/admin/config', { toggle: true });
+      await refresh();
+    }catch(e){
+      alert('Error: ' + e.message);
+    }finally{
+      btn.disabled = false;
+    }
+  };
+
+  refresh();
+})();
+
 document.getElementById('addOne').onclick = async ()=>{
   const title = document.getElementById('title').value.trim();
   const year = document.getElementById('year').value.trim();

@@ -1,8 +1,24 @@
 /* eslint-disable */
 
+// Runtime config (fetched from /api/config)
+let __PIXELDRAIN_USE_API_FILE__ = false; // false => keep original /u/ links
+
+async function fetchAppConfig(){
+  try{
+    const r = await fetch('/api/config');
+    if (!r.ok) return;
+    const d = await r.json();
+    __PIXELDRAIN_USE_API_FILE__ = Boolean(d && d.use_api_file);
+  }catch(_){ /* ignore */ }
+}
+
 // --- Build direct PixelDrain URL using /api for fullscreen (no server-side proxy) ---
 function toWatchUrl(link){
   if (!link) return null;
+
+  // Default: do NOT convert. Send users to the original link stored in the catalog.
+  if (!__PIXELDRAIN_USE_API_FILE__) return link;
+
   try{
     const u = new URL(link);
     const host = (u.hostname || '').replace(/^www\./,'');
@@ -2241,6 +2257,7 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
 
 // --- Boot ---
 (async function init(){
+  await fetchAppConfig();
   await refreshMe();
   await fetchGenres();
   setCatalogLabels();

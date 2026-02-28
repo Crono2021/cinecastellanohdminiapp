@@ -216,7 +216,39 @@ db.run(`CREATE TABLE IF NOT EXISTS collection_items (
 db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items(tmdb_id)`);
 
+  // --- App config (simple key/value) ---
+  // Used for small runtime toggles controlled from the admin panel.
+  db.run(`CREATE TABLE IF NOT EXISTS app_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`);
+
 });
+
+// --- App config helpers ---
+function getConfigValue(key, fallback){
+  return new Promise((resolve)=>{
+    db.get('SELECT value FROM app_config WHERE key = ?', [key], (err, row)=>{
+      if (err || !row) return resolve(fallback);
+      resolve(row.value);
+    });
+  });
+}
+
+function setConfigValue(key, value){
+  return new Promise((resolve, reject)=>{
+    db.run(
+      `INSERT INTO app_config (key, value, updated_at) VALUES (?, ?, datetime('now'))
+       ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
+      [key, String(value)],
+      (err)=>{
+        if (err) return reject(err);
+        resolve();
+      }
+    );
+  });
+}
 
 // Lightweight schema migrations for older DBs
 
@@ -690,6 +722,40 @@ async function tmdbSearchPersonByName(name) {
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'Public')));
+
+// Public app config (read-only)
+// pixeldrain_mode: 'u' (original link) | 'api' (/api/file/{id})
+app.get('/api/config', async (req, res) => {
+  try{
+    const mode = String(await getConfigValue('pixeldrain_mode', 'u') || 'u');
+    const m = (mode === 'api') ? 'api' : 'u';
+    res.json({ ok: true, pixeldrain_mode: m, use_api_file: m === 'api' });
+  }catch(_){
+    res.json({ ok: true, pixeldrain_mode: 'u', use_api_file: false });
+  }
+});
+
+// Admin config endpoints
+app.get('/api/admin/config', adminGuard, async (req, res) => {
+  const mode = String(await getConfigValue('pixeldrain_mode', 'u') || 'u');
+  const m = (mode === 'api') ? 'api' : 'u';
+  res.json({ ok: true, pixeldrain_mode: m, use_api_file: m === 'api' });
+});
+
+app.post('/api/admin/config', adminGuard, async (req, res) => {
+  try{
+    const current = String(await getConfigValue('pixeldrain_mode', 'u') || 'u');
+    const cur = (current === 'api') ? 'api' : 'u';
+    const want = String(req.body?.pixeldrain_mode || '').trim();
+    const toggle = Boolean(req.body?.toggle);
+    const next = toggle ? (cur === 'api' ? 'u' : 'api') : (want === 'api' ? 'api' : 'u');
+    await setConfigValue('pixeldrain_mode', next);
+    res.json({ ok: true, pixeldrain_mode: next, use_api_file: next === 'api' });
+  }catch(e){
+    console.error('admin config error', e);
+    res.status(500).json({ error: 'SERVER_ERROR' });
+  }
+});
 
 // Secondary admin panel (series uploader only)
 app.get(['/sam', '/sam/', '/sam.html'], (req, res) => {
