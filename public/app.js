@@ -212,8 +212,14 @@ function setupCatalogToggle() {
   const bS = el('btnSeries');
   if (!bM || !bS) return;
   const tv = isTv();
-  bM.classList.toggle('active', !tv);
-  bS.classList.toggle('active', tv);
+
+  if (tv) {
+    bM.classList.add('ghost');
+    bS.classList.remove('ghost');
+  } else {
+    bS.classList.add('ghost');
+    bM.classList.remove('ghost');
+  }
 
   let justNavigated = false;
   function triggerNav(dest) {

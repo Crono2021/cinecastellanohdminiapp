@@ -461,36 +461,24 @@ header{background:#0b0c10cc}
 /* --- Catalog toggle buttons (Películas / Series) --- */
 .catalog-toggle{
   display:flex;
-  gap:10px;
+  gap:12px;
   justify-content:center;
   align-items:center;
-  padding:10px 0 0 0;
+  padding:12px 16px;
   position: relative;
   z-index: 11;
-  pointer-events: auto;
 }
-.catalog-toggle .cat-btn{
-  flex:1 1 220px;
-  max-width: 320px;
-  border-radius: 14px;
-  padding: 10px 14px;
+.catalog-toggle button {
+  flex: 1;
+  max-width: 200px;
+  padding: 12px 16px;
+  font-size: 1.05rem;
   font-weight: 700;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: inherit;
-  cursor: pointer;
-}
-.catalog-toggle .cat-btn.active{
-  background: rgba(255,255,255,.14);
-  border-color: rgba(255,255,255,.32);
+  border-radius: 12px;
 }
 @media (max-width: 640px){
   .catalog-toggle{
     justify-content:space-between;
-  }
-  .catalog-toggle .cat-btn{
-    max-width:none;
-    flex: 1 1 0;
   }
 }
 
