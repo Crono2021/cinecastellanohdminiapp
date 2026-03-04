@@ -15,27 +15,27 @@ const app = express();
 // In-memory micro cache
 const microCache = new Map();
 const MC_TTL_MS = 60 * 1000; // 60s
-function mcGet(key){ const v = microCache.get(key); if(!v) return null; if(Date.now()-v.t>MC_TTL_MS){ microCache.delete(key); return null;} return v.d; }
-function mcSet(key, data){ microCache.set(key, {t:Date.now(), d:data}); }
-function mcDelPrefix(prefix){
-  try{
-    for (const k of microCache.keys()){
+function mcGet(key) { const v = microCache.get(key); if (!v) return null; if (Date.now() - v.t > MC_TTL_MS) { microCache.delete(key); return null; } return v.d; }
+function mcSet(key, data) { microCache.set(key, { t: Date.now(), d: data }); }
+function mcDelPrefix(prefix) {
+  try {
+    for (const k of microCache.keys()) {
       if (String(k).startsWith(prefix)) microCache.delete(k);
     }
-  }catch(_){ }
+  } catch (_) { }
 }
 
 // Per-user recommendations cache (kept separate from microCache)
 const recCache = new Map();
 const REC_TTL_MS = 15 * 60 * 1000; // 15 min
-function recGet(userId){
+function recGet(userId) {
   const v = recCache.get(String(userId));
   if (!v) return null;
-  if (Date.now() - v.t > REC_TTL_MS){ recCache.delete(String(userId)); return null; }
+  if (Date.now() - v.t > REC_TTL_MS) { recCache.delete(String(userId)); return null; }
   return v.d;
 }
-function recSet(userId, data){ recCache.set(String(userId), { t: Date.now(), d: data }); }
-function recDel(userId){ try{ recCache.delete(String(userId)); }catch(_){ } }
+function recSet(userId, data) { recCache.set(String(userId), { t: Date.now(), d: data }); }
+function recDel(userId) { try { recCache.delete(String(userId)); } catch (_) { } }
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
@@ -49,7 +49,7 @@ const SAM_TOKEN = 'Sofista13';
 const PORT = process.env.PORT || 3000;
 
 // --- Helpers: normalize titles for accent-insensitive letter filtering/sorting ---
-function normalizeForLetters(input){
+function normalizeForLetters(input) {
   // Remove accent marks, but keep Ñ/ñ as a distinct letter.
   let s = String(input || '').trim();
   if (!s) return '';
@@ -59,7 +59,7 @@ function normalizeForLetters(input){
   return s.toUpperCase();
 }
 
-function firstBucketLetter(title){
+function firstBucketLetter(title) {
   const t = normalizeForLetters(title);
   if (!t) return '#';
   const ch = t[0];
@@ -101,7 +101,7 @@ db.serialize(() => {
     db.run("PRAGMA temp_store=MEMORY");
     db.run("PRAGMA cache_size=-16000"); // ~16MB cache
     db.run("PRAGMA foreign_keys=ON");
-  } catch(_){}
+  } catch (_) { }
   // Indices to speed up common lookups and filters
   db.run("CREATE INDEX IF NOT EXISTS idx_movies_tmdb ON movies(tmdb_id)");
   db.run("CREATE INDEX IF NOT EXISTS idx_movies_title ON movies(title)");
@@ -192,8 +192,8 @@ db.serialize(() => {
   // NOTE: Older DBs may not have media_type yet; creating this index would crash.
   // It will be created after migrations if/when the column exists.
 
-// --- Collections (public) ---
-db.run(`CREATE TABLE IF NOT EXISTS collections (
+  // --- Collections (public) ---
+  db.run(`CREATE TABLE IF NOT EXISTS collections (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   name TEXT NOT NULL,
@@ -201,10 +201,10 @@ db.run(`CREATE TABLE IF NOT EXISTS collections (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )`);
-db.run(`CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id)`);
-db.run(`CREATE INDEX IF NOT EXISTS idx_collections_created ON collections(created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_collections_created ON collections(created_at)`);
 
-db.run(`CREATE TABLE IF NOT EXISTS collection_items (
+  db.run(`CREATE TABLE IF NOT EXISTS collection_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   collection_id INTEGER NOT NULL,
   tmdb_id INTEGER NOT NULL,
@@ -213,8 +213,8 @@ db.run(`CREATE TABLE IF NOT EXISTS collection_items (
   UNIQUE(collection_id, tmdb_id),
   FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
 )`);
-db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id)`);
-db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items(tmdb_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items(tmdb_id)`);
 
   // --- App config (simple key/value) ---
   // Used for small runtime toggles controlled from the admin panel.
@@ -227,22 +227,22 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_collection_items_tmdb ON collection_items
 });
 
 // --- App config helpers ---
-function getConfigValue(key, fallback){
-  return new Promise((resolve)=>{
-    db.get('SELECT value FROM app_config WHERE key = ?', [key], (err, row)=>{
+function getConfigValue(key, fallback) {
+  return new Promise((resolve) => {
+    db.get('SELECT value FROM app_config WHERE key = ?', [key], (err, row) => {
       if (err || !row) return resolve(fallback);
       resolve(row.value);
     });
   });
 }
 
-function setConfigValue(key, value){
-  return new Promise((resolve, reject)=>{
+function setConfigValue(key, value) {
+  return new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO app_config (key, value, updated_at) VALUES (?, ?, datetime('now'))
        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')`,
       [key, String(value)],
-      (err)=>{
+      (err) => {
         if (err) return reject(err);
         resolve();
       }
@@ -255,7 +255,7 @@ function setConfigValue(key, value){
 // Migrate favorites/pending tables to support both movie & tv.
 // Older versions only stored tmdb_id and had UNIQUE(user_id, tmdb_id)
 // which caused collisions between movie and tv sharing the same TMDB id.
-function migrateFavoritesAndPendingIfNeeded(){
+function migrateFavoritesAndPendingIfNeeded() {
   const migrateTable = (tableName) => new Promise((resolve) => {
     db.all(`PRAGMA table_info(${tableName})`, (err, rows) => {
       if (err || !Array.isArray(rows)) return resolve();
@@ -281,16 +281,16 @@ function migrateFavoritesAndPendingIfNeeded(){
         // Copy old rows as movie (best-effort across historical schemas)
         const insertCols = [];
         const selectCols = [];
-        if (hasId){
+        if (hasId) {
           insertCols.push('id');
           selectCols.push('id');
         }
-        insertCols.push('user_id','tmdb_id','media_type','created_at');
-        selectCols.push('user_id','tmdb_id',"'movie' as media_type", hasCreatedAt ? 'created_at' : "datetime('now') as created_at");
+        insertCols.push('user_id', 'tmdb_id', 'media_type', 'created_at');
+        selectCols.push('user_id', 'tmdb_id', "'movie' as media_type", hasCreatedAt ? 'created_at' : "datetime('now') as created_at");
 
         const sql = `INSERT OR IGNORE INTO ${tmp}(${insertCols.join(', ')})\nSELECT ${selectCols.join(', ')} FROM ${tableName}`;
         db.run(sql, [], (copyErr) => {
-          if (copyErr){
+          if (copyErr) {
             // Fallback: at least add the column so the app can run.
             // NOTE: can't adjust UNIQUE constraint via ALTER TABLE in SQLite.
             db.run(`ALTER TABLE ${tableName} ADD COLUMN media_type TEXT NOT NULL DEFAULT 'movie'`, () => {
@@ -300,7 +300,7 @@ function migrateFavoritesAndPendingIfNeeded(){
             return;
           }
           db.run(`DROP TABLE ${tableName}`, (dropErr) => {
-            if (dropErr){
+            if (dropErr) {
               return resolve();
             }
             db.run(`ALTER TABLE ${tmp} RENAME TO ${tableName}`, () => {
@@ -320,7 +320,7 @@ function migrateFavoritesAndPendingIfNeeded(){
 }
 
 // Create an index only if a column exists (prevents startup crashes on older DBs)
-function createIndexIfColumnExists(table, column, indexSql){
+function createIndexIfColumnExists(table, column, indexSql) {
   return new Promise((resolve) => {
     db.all(`PRAGMA table_info(${table})`, (err, rows) => {
       if (err || !Array.isArray(rows)) return resolve();
@@ -332,18 +332,18 @@ function createIndexIfColumnExists(table, column, indexSql){
 }
 
 // We must check PRAGMA table_info first to avoid "duplicate column name" crashes.
-function ensureColumn(table, column, typeSql){
+function ensureColumn(table, column, typeSql) {
   db.all(`PRAGMA table_info(${table})`, (err, rows) => {
     if (err || !Array.isArray(rows)) return;
     const exists = rows.some(r => r && r.name === column);
     if (exists) return;
-    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`, () => {});
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeSql}`, () => { });
   });
 }
 
 // Run migrations (best-effort) - awaited before listen (see bottom of file)
 let __migrationsPromise = null;
-try{ __migrationsPromise = migrateFavoritesAndPendingIfNeeded(); }catch(_){ __migrationsPromise = Promise.resolve(); }
+try { __migrationsPromise = migrateFavoritesAndPendingIfNeeded(); } catch (_) { __migrationsPromise = Promise.resolve(); }
 
 db.serialize(() => {
   ensureColumn('movies', 'genre_ids', 'TEXT');
@@ -352,50 +352,50 @@ db.serialize(() => {
   ensureColumn('series', 'payload', 'TEXT');
 });
 
-function ymdLocal(d = new Date()){
+function ymdLocal(d = new Date()) {
   const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
-function getSessionUser(req){
+function getSessionUser(req) {
   const u = req?.session?.user;
   if (!u || !u.id) return null;
   return u;
 }
 
-function requireAuth(req, res, next){
+function requireAuth(req, res, next) {
   const u = getSessionUser(req);
   if (!u) return res.status(401).json({ error: 'NO_AUTH' });
   next();
 }
 
 
-function normalizeLink(link){
-  try{
+function normalizeLink(link) {
+  try {
     if (!link) return link;
     // Force https for t.me
     if (link.startsWith('http://t.me/')) return 'https' + link.slice(4);
     if (link.startsWith('https://t.me/')) return link;
 
     // Convert tg:// or tg:resolve?domain=...&post=...&thread=...
-    if (link.startsWith('tg://') || link.startsWith('tg:')){
-      const raw = link.replace(/^tg:\/\//,'tg:');
+    if (link.startsWith('tg://') || link.startsWith('tg:')) {
+      const raw = link.replace(/^tg:\/\//, 'tg:');
       const qIdx = raw.indexOf('?');
-      const qs = new URLSearchParams(raw.slice(qIdx+1));
+      const qs = new URLSearchParams(raw.slice(qIdx + 1));
       const domain = qs.get('domain');
       const post = qs.get('post');
       const thread = qs.get('thread');
-      if (domain && post){
+      if (domain && post) {
         return `https://t.me/${domain}/${post}` + (thread ? `?thread=${thread}` : '');
       }
     }
     return link;
-  }catch(_){ return link; }
+  } catch (_) { return link; }
 }
 
-function buildTelegramForPayload(payload){
+function buildTelegramForPayload(payload) {
   const p = String(payload || '').trim();
   if (!p) return null;
   const enc = encodeURIComponent(p);
@@ -408,15 +408,15 @@ function buildTelegramForPayload(payload){
 // --- TMDB micro-cache (to avoid repeated calls when filtering by genre) ---
 const tmdbMetaCache = new Map();
 const TMDB_META_TTL_MS = 6 * 60 * 60 * 1000; // 6h
-function metaGet(key){
+function metaGet(key) {
   const v = tmdbMetaCache.get(key);
   if (!v) return null;
-  if (Date.now() - v.t > TMDB_META_TTL_MS){ tmdbMetaCache.delete(key); return null; }
+  if (Date.now() - v.t > TMDB_META_TTL_MS) { tmdbMetaCache.delete(key); return null; }
   return v.d;
 }
-function metaSet(key, data){ tmdbMetaCache.set(key, { t: Date.now(), d: data }); }
+function metaSet(key, data) { tmdbMetaCache.set(key, { t: Date.now(), d: data }); }
 
-async function getMovieMetaFast(tmdbId){
+async function getMovieMetaFast(tmdbId) {
   const key = `m:${tmdbId}`;
   const cached = metaGet(key);
   if (cached) return cached;
@@ -432,7 +432,7 @@ async function getMovieMetaFast(tmdbId){
   return meta;
 }
 
-async function getTvMetaFast(tmdbId){
+async function getTvMetaFast(tmdbId) {
   const key = `t:${tmdbId}`;
   const cached = metaGet(key);
   if (cached) return cached;
@@ -450,83 +450,83 @@ async function getTvMetaFast(tmdbId){
   return meta;
 }
 
-function encodeGenreIds(genres){
+function encodeGenreIds(genres) {
   const ids = (genres || []).map(g => Number(g && g.id)).filter(n => Number.isFinite(n) && n > 0);
   // comma delimited with leading/trailing comma to allow LIKE matching: ",16,35,"
   return ids.length ? (',' + ids.join(',') + ',') : ',';
 }
 
-async function ensureGenreIdsForRow(row){
+async function ensureGenreIdsForRow(row) {
   // Returns { genre_ids: string, meta: {poster_path, genres} } with lazy DB update
   const isTv = row.type === 'tv';
   const tmdbId = Number(row.tmdb_id);
   if (!tmdbId) return { genre_ids: ',', meta: { poster_path: null, backdrop_path: null, genres: [] } };
 
-  if (row.genre_ids && String(row.genre_ids).trim()){
-    try{
+  if (row.genre_ids && String(row.genre_ids).trim()) {
+    try {
       const meta = isTv ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
       return { genre_ids: row.genre_ids, meta };
-    }catch(_){
+    } catch (_) {
       return { genre_ids: row.genre_ids, meta: { poster_path: null, backdrop_path: null, genres: [] } };
     }
   }
 
-  try{
+  try {
     const meta = isTv ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
     const enc = encodeGenreIds(meta.genres);
     await new Promise((resolve) => {
       const sql = isTv
         ? 'UPDATE series SET genre_ids = ? WHERE tmdb_id = ?'
         : 'UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?';
-      db.run(sql, [enc, tmdbId], ()=> resolve());
+      db.run(sql, [enc, tmdbId], () => resolve());
     });
     return { genre_ids: enc, meta };
-  }catch(_){
+  } catch (_) {
     return { genre_ids: ',', meta: { poster_path: null, backdrop_path: null, genres: [] } };
   }
 }
 
 // --- Backfill genre_ids in background (best-effort) ---
 // This makes genre filtering fast and progressively more complete.
-async function backfillGenreIdsInBackground(){
-  try{
-    const movieRows = await new Promise((resolve, reject)=>{
+async function backfillGenreIdsInBackground() {
+  try {
+    const movieRows = await new Promise((resolve, reject) => {
       db.all(
         "SELECT tmdb_id FROM movies WHERE genre_ids IS NULL OR TRIM(genre_ids) = '' OR TRIM(genre_ids) = ','",
         [],
-        (err, rows)=> err ? reject(err) : resolve(rows||[])
+        (err, rows) => err ? reject(err) : resolve(rows || [])
       );
     });
 
-    const tvRows = await new Promise((resolve, reject)=>{
+    const tvRows = await new Promise((resolve, reject) => {
       db.all(
         "SELECT tmdb_id FROM series WHERE genre_ids IS NULL OR TRIM(genre_ids) = '' OR TRIM(genre_ids) = ','",
         [],
-        (err, rows)=> err ? reject(err) : resolve(rows||[])
+        (err, rows) => err ? reject(err) : resolve(rows || [])
       );
     });
 
-    const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const CONCURRENCY = 4;
 
-    async function runQueue(rows, type){
+    async function runQueue(rows, type) {
       let idx = 0;
-      async function worker(){
-        while (true){
+      async function worker() {
+        while (true) {
           const i = idx++;
           if (i >= rows.length) break;
           const tmdbId = Number(rows[i].tmdb_id);
           if (!tmdbId) continue;
-          try{
+          try {
             const meta = (type === 'tv') ? await getTvMetaFast(tmdbId) : await getMovieMetaFast(tmdbId);
             const enc = encodeGenreIds(meta.genres);
-            await new Promise((resolve)=>{
+            await new Promise((resolve) => {
               const sql = (type === 'tv')
                 ? 'UPDATE series SET genre_ids = ? WHERE tmdb_id = ?'
                 : 'UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?';
-              db.run(sql, [enc, tmdbId], ()=> resolve());
+              db.run(sql, [enc, tmdbId], () => resolve());
             });
-          }catch(_){
+          } catch (_) {
             // ignore
           }
           // Gentle pacing for TMDB
@@ -534,13 +534,13 @@ async function backfillGenreIdsInBackground(){
         }
       }
 
-      const workers = Array.from({ length: Math.min(CONCURRENCY, rows.length) }, ()=> worker());
+      const workers = Array.from({ length: Math.min(CONCURRENCY, rows.length) }, () => worker());
       await Promise.all(workers);
     }
 
     await runQueue(movieRows, 'movie');
     await runQueue(tvRows, 'tv');
-  }catch(e){
+  } catch (e) {
     console.error('backfillGenreIdsInBackground error:', e);
   }
 }
@@ -563,7 +563,7 @@ function samGuard(req, res, next) {
   next();
 }
 
-async function tmdbSearchTv(name, year){
+async function tmdbSearchTv(name, year) {
   const url = 'https://api.themoviedb.org/3/search/tv';
   const { data } = await axios.get(url, {
     params: {
@@ -578,7 +578,7 @@ async function tmdbSearchTv(name, year){
   return r ? { id: r.id, name: r.name, first_air_date: r.first_air_date } : null;
 }
 
-async function getTmdbTvDetails(tmdbId){
+async function getTmdbTvDetails(tmdbId) {
   const url = `https://api.themoviedb.org/3/tv/${tmdbId}`;
   const creditsUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/credits`;
   const [detailsResp, creditsResp] = await Promise.all([
@@ -599,12 +599,12 @@ async function getTmdbTvDetails(tmdbId){
     number_of_seasons: d.number_of_seasons,
     number_of_episodes: d.number_of_episodes,
     vote_average: d.vote_average,
-    cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
+    cast: (c.cast || []).slice(0, 10).map(x => ({ id: x.id, name: x.name, character: x.character }))
   };
 }
 
 // Lightweight TV meta fetch (no credits) for fast list rendering.
-async function tmdbGetTvMetaOnly(tmdbId){
+async function tmdbGetTvMetaOnly(tmdbId) {
   const url = `https://api.themoviedb.org/3/tv/${tmdbId}`;
   const { data: d } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
   return {
@@ -641,7 +641,7 @@ async function tmdbSearchMovie(title, year) {
 }
 
 
-async function tmdbDiscoverMovies(params){
+async function tmdbDiscoverMovies(params) {
   const url = 'https://api.themoviedb.org/3/discover/movie';
   const resp = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES', ...params } });
   return resp.data;
@@ -673,7 +673,7 @@ async function tmdbGetMovieDetails(tmdbId) {
 }
 
 // Movie details + credits + release_dates (single request via append_to_response)
-async function tmdbGetMovieDetailsWithReleaseDates(tmdbId){
+async function tmdbGetMovieDetailsWithReleaseDates(tmdbId) {
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
   const { data: d } = await axios.get(url, {
     params: {
@@ -703,7 +703,7 @@ async function tmdbGetMovieDetailsWithReleaseDates(tmdbId){
 let _genresCache = { data: null, ts: 0 };
 async function tmdbGetGenres() {
   const now = Date.now();
-  if (_genresCache.data && (now - _genresCache.ts) < 60*60*1000) {
+  if (_genresCache.data && (now - _genresCache.ts) < 60 * 60 * 1000) {
     return _genresCache.data;
   }
   const url = `https://api.themoviedb.org/3/genre/movie/list`;
@@ -726,11 +726,11 @@ app.use(express.static(path.join(__dirname, 'Public')));
 // Public app config (read-only)
 // pixeldrain_mode: 'u' (original link) | 'api' (/api/file/{id})
 app.get('/api/config', async (req, res) => {
-  try{
+  try {
     const mode = String(await getConfigValue('pixeldrain_mode', 'u') || 'u');
     const m = (mode === 'api') ? 'api' : 'u';
     res.json({ ok: true, pixeldrain_mode: m, use_api_file: m === 'api' });
-  }catch(_){
+  } catch (_) {
     res.json({ ok: true, pixeldrain_mode: 'u', use_api_file: false });
   }
 });
@@ -743,7 +743,7 @@ app.get('/api/admin/config', adminGuard, async (req, res) => {
 });
 
 app.post('/api/admin/config', adminGuard, async (req, res) => {
-  try{
+  try {
     const current = String(await getConfigValue('pixeldrain_mode', 'u') || 'u');
     const cur = (current === 'api') ? 'api' : 'u';
     const want = String(req.body?.pixeldrain_mode || '').trim();
@@ -751,7 +751,7 @@ app.post('/api/admin/config', adminGuard, async (req, res) => {
     const next = toggle ? (cur === 'api' ? 'u' : 'api') : (want === 'api' ? 'api' : 'u');
     await setConfigValue('pixeldrain_mode', next);
     res.json({ ok: true, pixeldrain_mode: next, use_api_file: next === 'api' });
-  }catch(e){
+  } catch (e) {
     console.error('admin config error', e);
     res.status(500).json({ error: 'SERVER_ERROR' });
   }
@@ -785,21 +785,21 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  try{
+  try {
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'USERNAME_INVALID' });
     if (password.length < 6 || password.length > 72) return res.status(400).json({ error: 'PASSWORD_INVALID' });
     const hash = await bcrypt.hash(password, 10);
-    db.run('INSERT INTO users (username, password_hash) VALUES (?, ?)', [username, hash], function(err){
-      if (err){
-        if (String(err.message||'').toLowerCase().includes('unique')) return res.status(409).json({ error: 'USERNAME_TAKEN' });
+    db.run('INSERT INTO users (username, password_hash) VALUES (?, ?)', [username, hash], function (err) {
+      if (err) {
+        if (String(err.message || '').toLowerCase().includes('unique')) return res.status(409).json({ error: 'USERNAME_TAKEN' });
         return res.status(500).json({ error: 'DB_ERROR' });
       }
       req.session.user = { id: this.lastID, username };
       res.json({ ok: true, user: { id: this.lastID, username } });
     });
-  }catch(_){
+  } catch (_) {
     res.status(500).json({ error: 'SERVER_ERROR' });
   }
 });
@@ -811,12 +811,12 @@ app.post('/api/auth/login', (req, res) => {
   db.get('SELECT id, username, password_hash FROM users WHERE username = ?', [username], async (err, row) => {
     if (err) return res.status(500).json({ error: 'DB_ERROR' });
     if (!row) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
-    try{
+    try {
       const ok = await bcrypt.compare(password, row.password_hash);
       if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
       req.session.user = { id: row.id, username: row.username };
       res.json({ ok: true, user: { id: row.id, username: row.username } });
-    }catch(_){
+    } catch (_) {
       res.status(500).json({ error: 'SERVER_ERROR' });
     }
   });
@@ -824,6 +824,30 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.post('/api/auth/change-password', requireAuth, (req, res) => {
+  const user = getSessionUser(req);
+  const oldPassword = String(req.body?.oldPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  if (!oldPassword || !newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: 'BAD_REQUEST' });
+  }
+  db.get('SELECT password_hash FROM users WHERE id = ?', [user.id], async (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB_ERROR' });
+    if (!row) return res.status(404).json({ error: 'USER_NOT_FOUND' });
+    try {
+      const ok = await bcrypt.compare(oldPassword, row.password_hash);
+      if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+      const newHash = await bcrypt.hash(newPassword, 10);
+      db.run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, user.id], (err2) => {
+        if (err2) return res.status(500).json({ error: 'DB_ERROR' });
+        res.json({ ok: true });
+      });
+    } catch (_) {
+      res.status(500).json({ error: 'SERVER_ERROR' });
+    }
+  });
 });
 
 // --------------------
@@ -980,16 +1004,16 @@ app.get('/api/pending', requireAuth, (req, res) => {
     db.all(sql, [user.id, pageSize, offset], async (err2, rows) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
       const out = [];
-      for (const r of (rows||[])) {
+      for (const r of (rows || [])) {
         const isTv = (r.media_type === 'tv');
         let meta = { poster_path: null };
-        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        try { meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); } catch (_) { }
         const title = isTv
           ? (r.s_name || meta.name || '')
           : (r.m_title || meta.title || '');
         const year = isTv
-          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0,4) : null))
-          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0,4) : null));
+          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0, 4) : null))
+          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0, 4) : null));
         out.push({
           type: isTv ? 'tv' : 'movie',
           tmdb_id: r.tmdb_id,
@@ -1065,16 +1089,16 @@ app.get('/api/favorites', requireAuth, (req, res) => {
     db.all(sql, [user.id, pageSize, offset], async (err2, rows) => {
       if (err2) return res.status(500).json({ error: 'DB_ERROR' });
       const out = [];
-      for (const r of (rows||[])) {
+      for (const r of (rows || [])) {
         const isTv = (r.media_type === 'tv');
         let meta = { poster_path: null };
-        try{ meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); }catch(_){ }
+        try { meta = isTv ? await getTvMetaFast(r.tmdb_id) : await getMovieMetaFast(r.tmdb_id); } catch (_) { }
         const title = isTv
           ? (r.s_name || meta.name || '')
           : (r.m_title || meta.title || '');
         const year = isTv
-          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0,4) : null))
-          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0,4) : null));
+          ? (r.s_year || (meta.first_air_date ? String(meta.first_air_date).slice(0, 4) : null))
+          : (r.m_year || (meta.release_date ? String(meta.release_date).slice(0, 4) : null));
         out.push({
           type: isTv ? 'tv' : 'movie',
           tmdb_id: r.tmdb_id,
@@ -1089,7 +1113,7 @@ app.get('/api/favorites', requireAuth, (req, res) => {
   });
 });
 
-async function fetchTmdbRecommendationsForMovie(tmdbId){
+async function fetchTmdbRecommendationsForMovie(tmdbId) {
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}/recommendations`;
   const { data } = await axios.get(url, { params: { api_key: TMDB_API_KEY, language: 'es-ES', page: 1 } });
   return Array.isArray(data?.results) ? data.results : [];
@@ -1101,24 +1125,24 @@ app.get('/api/recommended', requireAuth, async (req, res) => {
   const pageSize = Math.min(60, Math.max(1, parseInt(req.query.pageSize || '30', 10)));
 
   const cached = recGet(user.id);
-  if (cached){
+  if (cached) {
     const start = (page - 1) * pageSize;
     const slice = cached.results.slice(start, start + pageSize);
     const totalPages = Math.max(1, Math.ceil(cached.results.length / pageSize));
     return res.json({ ok: true, page, pageSize, totalPages, totalResults: cached.results.length, results: slice });
   }
 
-  try{
+  try {
     const rated = await new Promise((resolve) => {
       db.all('SELECT tmdb_id, rating FROM ratings WHERE user_id = ? AND rating >= 8 ORDER BY updated_at DESC LIMIT 10', [user.id], (e, rows) => resolve(rows || []));
     });
     const ratedIds = new Set(rated.map(r => Number(r.tmdb_id)));
-    if (!rated.length) return res.json({ ok:true, page, pageSize, totalPages: 1, totalResults: 0, results: [] });
+    if (!rated.length) return res.json({ ok: true, page, pageSize, totalPages: 1, totalResults: 0, results: [] });
 
     const pool = new Map();
-    for (const r of rated.slice(0, 5)){
+    for (const r of rated.slice(0, 5)) {
       const recs = await fetchTmdbRecommendationsForMovie(r.tmdb_id);
-      for (const it of recs){
+      for (const it of recs) {
         const id = Number(it?.id);
         if (!id || ratedIds.has(id)) continue;
         const base = (it?.popularity || 0) * 0.02 + (it?.vote_average || 0);
@@ -1128,28 +1152,28 @@ app.get('/api/recommended', requireAuth, async (req, res) => {
       }
     }
 
-    const idsSorted = Array.from(pool.entries()).sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+    const idsSorted = Array.from(pool.entries()).sort((a, b) => b[1] - a[1]).map(x => x[0]);
     const results = [];
-    for (const id of idsSorted.slice(0, 240)){
-      try{
+    for (const id of idsSorted.slice(0, 240)) {
+      try {
         const d = await getTmdbMovieDetails(id);
         results.push({
           type: 'movie',
           tmdb_id: id,
           title: d?.title || '',
-          year: d?.release_date ? Number(String(d.release_date).slice(0,4)) : null,
+          year: d?.release_date ? Number(String(d.release_date).slice(0, 4)) : null,
           link: null,
           poster_path: d?.poster_path || null
         });
-      }catch(_){ }
+      } catch (_) { }
     }
 
     recSet(user.id, { results });
     const start = (page - 1) * pageSize;
     const slice = results.slice(start, start + pageSize);
     const totalPages = Math.max(1, Math.ceil(results.length / pageSize));
-    res.json({ ok:true, page, pageSize, totalPages, totalResults: results.length, results: slice });
-  }catch(e){
+    res.json({ ok: true, page, pageSize, totalPages, totalResults: results.length, results: slice });
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'RECS_ERROR' });
   }
@@ -1169,7 +1193,7 @@ app.get('/api/genres', async (req, res) => {
 // --- Global Top (shared across all users) ---
 // POST /api/view  { tmdb_id, type }
 app.post('/api/view', (req, res) => {
-  try{
+  try {
     const tmdb_id = Number(req.body && (req.body.tmdb_id ?? req.body.id));
     const typeRaw = String((req.body && req.body.type) || 'movie').toLowerCase();
     const type = (typeRaw === 'tv' || typeRaw === 'series') ? 'tv' : 'movie';
@@ -1189,11 +1213,11 @@ app.post('/api/view', (req, res) => {
           return res.status(500).json({ error: 'No se pudo registrar la vista' });
         }
         // Invalidate micro-cache keys related to today's top
-        try{ microCache.delete(`top:${date}:10`); }catch(_){ }
+        try { microCache.delete(`top:${date}:10`); } catch (_) { }
         res.json({ ok: true });
       }
     );
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo registrar la vista' });
   }
@@ -1229,8 +1253,8 @@ app.get('/api/top', (req, res) => {
 // GET /api/app-top-rated?limit=10
 // Devuelve las películas mejor valoradas *dentro de la app* (media de ratings de usuarios).
 // Orden: media desc, nº de votos desc. Limitado a 50.
-async function handleAppTopRated(req, res){
-  try{
+async function handleAppTopRated(req, res) {
+  try {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
     const key = `appTopRated:${limit}`;
     const cached = mcGet(key);
@@ -1252,7 +1276,7 @@ async function handleAppTopRated(req, res){
       );
     });
 
-    if (!rows.length){
+    if (!rows.length) {
       mcSet(key, []);
       return res.json([]);
     }
@@ -1260,19 +1284,19 @@ async function handleAppTopRated(req, res){
     // Enrich con datos TMDB (título/poster/año). 10-50 llamadas máx.
     const items = await Promise.all(rows.map(async (r) => {
       const tmdbId = Number(r.tmdb_id);
-      try{
+      try {
         const d = await getTmdbMovieDetails(tmdbId);
         return {
           tmdb_id: d.id,
           id: d.id,
           type: 'movie',
           title: d.title,
-          year: d.release_date ? String(d.release_date).slice(0,4) : '',
+          year: d.release_date ? String(d.release_date).slice(0, 4) : '',
           poster_path: d.poster_path,
           avg_rating: Number(r.avg_rating || 0),
           votes: Number(r.votes || 0),
         };
-      }catch(_){
+      } catch (_) {
         return {
           tmdb_id: tmdbId,
           id: tmdbId,
@@ -1288,7 +1312,7 @@ async function handleAppTopRated(req, res){
 
     mcSet(key, items);
     res.json(items);
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el top de la app' });
   }
@@ -1317,7 +1341,7 @@ app.get('/api/movies/by-actor', async (req, res) => {
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/movie_credits`;
     const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
+    const ids = Array.from(new Set([...(data.cast || []), ...(data.crew || [])].map(m => m.id)));
     if (ids.length === 0) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Intersect with our DB and apply optional title filter 'q'
@@ -1325,13 +1349,19 @@ app.get('/api/movies/by-actor', async (req, res) => {
     let params = [];
 
     const limited = ids.slice(0, 900); // SQLite params safety
-    const placeholders = limited.map(()=>'?').join(',');
+    const placeholders = limited.map(() => '?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
       params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const wantedGenre = genre ? String(genre) : '';
+    if (wantedGenre) {
+      where.push('genre_ids LIKE ?');
+      params.push(`%,${wantedGenre},%`);
     }
 
     const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
@@ -1358,15 +1388,10 @@ app.get('/api/movies/by-actor', async (req, res) => {
       });
     });
 
-    // Enrich to allow optional genre filter (consistent with /api/movies)
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
-
-    if (genre) {
-      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
-    }
-
-    items = items.map(({ _details, ...rest }) => rest);
+    const items = await Promise.all(rows.map(async r => {
+      const d = await getMovieMetaFast(r.tmdb_id).catch(_ => null);
+      return { ...r, type: 'movie', poster_path: d?.poster_path || null };
+    }));
 
     res.json({ total, page: Number(page), pageSize: limit, items });
   } catch (e) {
@@ -1388,7 +1413,7 @@ app.get('/api/series/by-actor', async (req, res) => {
     // Get movie credits and build tmdb_id set
     const creditsUrl = `https://api.themoviedb.org/3/person/${person.id}/tv_credits`;
     const { data } = await axios.get(creditsUrl, { params: { api_key: TMDB_API_KEY, language: 'es-ES' } });
-    const ids = Array.from(new Set([...(data.cast||[]), ...(data.crew||[])].map(m => m.id)));
+    const ids = Array.from(new Set([...(data.cast || []), ...(data.crew || [])].map(m => m.id)));
     if (ids.length === 0) return res.json({ total: 0, page: Number(page), pageSize: Number(pageSize) || 24, items: [] });
 
     // Intersect with our DB and apply optional title filter 'q'
@@ -1396,13 +1421,19 @@ app.get('/api/series/by-actor', async (req, res) => {
     let params = [];
 
     const limited = ids.slice(0, 900); // SQLite params safety
-    const placeholders = limited.map(()=>'?').join(',');
+    const placeholders = limited.map(() => '?').join(',');
     where.push(`tmdb_id IN (${placeholders})`);
     params.push(...limited);
 
     if (q) {
       where.push('LOWER(title) LIKE ?');
       params.push('%' + String(q).toLowerCase() + '%');
+    }
+
+    const wantedGenre = genre ? String(genre) : '';
+    if (wantedGenre) {
+      where.push('genre_ids LIKE ?');
+      params.push(`%,${wantedGenre},%`);
     }
 
     const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
@@ -1429,15 +1460,10 @@ app.get('/api/series/by-actor', async (req, res) => {
       });
     });
 
-    // Enrich to allow optional genre filter (consistent with /api/movies)
-    const details = await Promise.all(rows.map(r => tmdbGetMovieDetails(r.tmdb_id)));
-    let items = rows.map((r, i) => ({ ...r, poster_path: details[i]?.poster_path || null, _details: details[i] || null }));
-
-    if (genre) {
-      items = items.filter(it => it._details?.genres?.some(g => String(g.id) == String(genre)));
-    }
-
-    items = items.map(({ _details, ...rest }) => rest);
+    const items = await Promise.all(rows.map(async r => {
+      const d = await getTvMetaFast(r.tmdb_id).catch(_ => null);
+      return { ...r, type: 'tv', poster_path: d?.poster_path || null };
+    }));
 
     res.json({ total, page: Number(page), pageSize: limit, items });
   } catch (e) {
@@ -1450,7 +1476,7 @@ app.get('/api/series/by-actor', async (req, res) => {
 
 // GET /api/movies/search-lite?q=...&limit=20  (for live search in collections)
 app.get('/api/movies/search-lite', (req, res) => {
-  try{
+  try {
     const q = String(req.query.q || '').trim().toLowerCase();
     const limit = Math.min(Math.max(parseInt(req.query.limit || '20', 10) || 20, 1), 50);
     if (!q) return res.json([]);
@@ -1462,7 +1488,7 @@ app.get('/api/movies/search-lite', (req, res) => {
         res.json(rows || []);
       }
     );
-  }catch(_){
+  } catch (_) {
     res.status(500).json({ error: 'SERVER_ERROR' });
   }
 });
@@ -1478,109 +1504,94 @@ app.get('/api/catalog', async (req, res) => {
 
   // Intercept res.json to store in cache
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){
-  } return _json(payload); };
+  res.json = (payload) => {
+    try { mcSet(key, payload); } catch (_) {
+    } return _json(payload);
+  };
 
   try {
     const { q, genre, type, page = 1, pageSize = 24 } = req.query;
-    const typeFilter = (String(type||'').toLowerCase()==='tv' ? 'tv' : (String(type||'').toLowerCase()==='movie' ? 'movie' : ''));
+    const typeFilter = (String(type || '').toLowerCase() === 'tv' ? 'tv' : (String(type || '').toLowerCase() === 'movie' ? 'movie' : ''));
     const limit = Math.min(parseInt(pageSize) || 24, 100);
     const pageNum = Math.max(1, parseInt(page) || 1);
 
     const qLike = q ? '%' + String(q).toLowerCase() + '%' : null;
+    const gLike = genre ? '%,' + String(genre) + ',%' : null;
 
-    const totalMovies = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-      const params = qLike ? [qLike] : [];
-      db.get(`SELECT COUNT(*) as c FROM movies ${where}`, params, (err, row) => {
-        if (err) return reject(err);
-        resolve(row ? row.c : 0);
+    let m_wheres = [];
+    let s_wheres = [];
+    let m_params = [];
+    let s_params = [];
+
+    if (qLike) {
+      m_wheres.push("LOWER(title) LIKE ?");
+      s_wheres.push("LOWER(name) LIKE ?");
+      m_params.push(qLike);
+      s_params.push(qLike);
+    }
+    if (gLike) {
+      m_wheres.push("genre_ids LIKE ?");
+      s_wheres.push("genre_ids LIKE ?");
+      m_params.push(gLike);
+      s_params.push(gLike);
+    }
+
+    const m_whereSql = m_wheres.length ? "WHERE " + m_wheres.join(" AND ") : "";
+    const s_whereSql = s_wheres.length ? "WHERE " + s_wheres.join(" AND ") : "";
+
+    let parts = [];
+    let unionParams = [];
+    let totalCount = 0;
+
+    if (!typeFilter || typeFilter === 'movie') {
+      const c = await new Promise((resolve) => {
+        db.get(`SELECT COUNT(*) as c FROM movies ${m_whereSql}`, m_params, (err, row) => resolve(row ? row.c : 0));
       });
-    });
+      totalCount += c;
+      parts.push(`SELECT tmdb_id, title, year, link, genre_ids, created_at, 'movie' as type FROM movies ${m_whereSql}`);
+      unionParams.push(...m_params);
+    }
 
-    const totalSeries = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const params = qLike ? [qLike] : [];
-      db.get(`SELECT COUNT(*) as c FROM series ${where}`, params, (err, row) => {
-        if (err) return reject(err);
-        resolve(row ? row.c : 0);
+    if (!typeFilter || typeFilter === 'tv') {
+      const c = await new Promise((resolve) => {
+        db.get(`SELECT COUNT(*) as c FROM series ${s_whereSql}`, s_params, (err, row) => resolve(row ? row.c : 0));
       });
-    });
+      totalCount += c;
+      parts.push(`SELECT tmdb_id, name AS title, first_air_year AS year, link, genre_ids, created_at, 'tv' as type FROM series ${s_whereSql}`);
+      unionParams.push(...s_params);
+    }
 
-    let total = Number(totalMovies) + Number(totalSeries);
+    if (!parts.length) {
+      return res.json({ total: 0, totalPages: 1, page: pageNum, pageSize: limit, items: [] });
+    }
 
-    // Fetch a generous window from both, order by rowid desc to approximate recency
-    const movies = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(title) LIKE ?" : "";
-      const params = qLike ? [qLike] : [];
-      db.all(`SELECT tmdb_id, title, year, link, genre_ids, created_at FROM movies ${where} ORDER BY rowid DESC`, params, (err, rows) => {
+    const unionSql = parts.join(" UNION ALL ");
+    const offset = (pageNum - 1) * limit;
+    const finalSql = `SELECT * FROM (${unionSql}) ORDER BY created_at DESC, tmdb_id DESC LIMIT ? OFFSET ?`;
+
+    const pageItems = await new Promise((resolve, reject) => {
+      db.all(finalSql, [...unionParams, limit, offset], (err, rows) => {
         if (err) return reject(err);
         resolve(rows || []);
       });
     });
-
-    const series = await new Promise((resolve, reject) => {
-      const where = qLike ? "WHERE LOWER(name) LIKE ?" : "";
-      const params = qLike ? [qLike] : [];
-      db.all(`SELECT tmdb_id, name AS title, first_air_year AS year, link, genre_ids, created_at FROM series ${where} ORDER BY rowid DESC`, params, (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
-      });
-    });
-
-    let items = [
-      ...movies.map(m => ({ type:'movie', ...m })),
-      ...series.map(s => ({ type:'tv', ...s })),
-    ];
-    // Apply explicit type filter if requested (tv/movie)
-    if (typeFilter){
-      items = items.filter(it => it.type === typeFilter);
-      total = items.length;
-    }
-
-
-    // Sort by created_at desc (fallback to tmdb_id desc)
-    items.sort((a,b)=>{
-      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const dbb = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (dbb !== da) return dbb - da;
-      return (b.tmdb_id||0) - (a.tmdb_id||0);
-    });
-
-    const wantedGenre = genre ? String(genre) : '';
-
-    // If genre filter is requested, filter BEFORE paginating so it works across the full catalog.
-    let filteredItems = items;
-    if (wantedGenre){
-      const out = [];
-      for (const it of items){
-        const { genre_ids } = await ensureGenreIdsForRow({ ...it, genre_ids: it.genre_ids });
-        if (String(genre_ids || '').includes(`,${wantedGenre},`)) out.push(it);
-      }
-      filteredItems = out;
-      total = filteredItems.length;
-    }
-
-    // Enrich only the current page to keep it fast
-    const startIdx = (pageNum - 1) * limit;
-    const pageItems = filteredItems.slice(startIdx, startIdx + limit);
 
     const enriched = await Promise.all(pageItems.map(async (it) => {
-      try{
-        if (it.type === 'tv'){
+      try {
+        if (it.type === 'tv') {
           const meta = await getTvMetaFast(it.tmdb_id);
           return { ...it, poster_path: meta?.poster_path || null };
-        }else{
+        } else {
           const meta = await getMovieMetaFast(it.tmdb_id);
           return { ...it, poster_path: meta?.poster_path || null };
         }
-      }catch(_){
+      } catch (_) {
         return { ...it, poster_path: null };
       }
     }));
 
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    res.json({ total, totalPages, page: pageNum, pageSize: limit, items: enriched });
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    res.json({ total: totalCount, totalPages, page: pageNum, pageSize: limit, items: enriched });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo' });
@@ -1595,11 +1606,11 @@ app.get('/api/catalog/by-letter', async (req, res) => {
   if (cached) return res.json(cached);
 
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+  res.json = (payload) => { try { mcSet(key, payload); } catch (_) { } return _json(payload); };
 
-  try{
+  try {
     const letterRaw = String(req.query.letter || '').trim();
-    const letter = (letterRaw === '#' ? '#' : normalizeForLetters(letterRaw).slice(0,1));
+    const letter = (letterRaw === '#' ? '#' : normalizeForLetters(letterRaw).slice(0, 1));
     const pageNum = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(parseInt(req.query.pageSize) || 30, 100);
 
@@ -1617,7 +1628,7 @@ app.get('/api/catalog/by-letter', async (req, res) => {
     });
 
     // Alphabetical sort by normalized title (accent-insensitive), then year, then tmdb_id.
-    filtered.sort((a,b) => {
+    filtered.sort((a, b) => {
       const na = normalizeForLetters(a.title);
       const nb = normalizeForLetters(b.title);
       if (na < nb) return -1;
@@ -1625,7 +1636,7 @@ app.get('/api/catalog/by-letter', async (req, res) => {
       const ya = Number(a.year) || 0;
       const yb = Number(b.year) || 0;
       if (ya !== yb) return ya - yb;
-      return (a.tmdb_id||0) - (b.tmdb_id||0);
+      return (a.tmdb_id || 0) - (b.tmdb_id || 0);
     });
 
     const total = filtered.length;
@@ -1637,16 +1648,16 @@ app.get('/api/catalog/by-letter', async (req, res) => {
 
     // Enrich posters only for the current page.
     const enriched = await Promise.all(pageItems.map(async (it) => {
-      try{
+      try {
         const d = await getTmdbMovieDetails(it.tmdb_id);
         return { type: 'movie', ...it, poster_path: d?.poster_path || null };
-      }catch(_){
+      } catch (_) {
         return { type: 'movie', ...it, poster_path: null };
       }
     }));
 
     res.json({ total, page: safePage, pageSize: limit, totalPages, letter, items: enriched });
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo filtrar el catálogo por letra' });
   }
@@ -1686,7 +1697,7 @@ app.get('/api/series-legacy', async (req, res) => {
     });
 
     // Use lightweight cached TMDB meta (no credits) for list views
-    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_ => null)));
 
     let items = rows.map((r, i) => ({
       ...r,
@@ -1730,9 +1741,9 @@ app.get('/api/series/top-rated', async (req, res) => {
   if (cached) return res.json(cached);
 
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+  res.json = (payload) => { try { mcSet(key, payload); } catch (_) { } return _json(payload); };
 
-  try{
+  try {
     const limit = Math.max(1, Math.min(50, parseInt(req.query.limit) || 10));
 
     const rows = await new Promise((resolve, reject) => {
@@ -1745,7 +1756,7 @@ app.get('/api/series/top-rated', async (req, res) => {
     if (!rows.length) return res.json({ items: [] });
 
     // Fetch lightweight cached meta from TMDB
-    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_ => null)));
 
     let items = rows.map((r, i) => {
       const d = details[i] || {};
@@ -1758,7 +1769,7 @@ app.get('/api/series/top-rated', async (req, res) => {
         tmdb_id: r.tmdb_id,
         id: r.tmdb_id,
         title: r.title,
-        year: r.year || (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        year: r.year || (d.first_air_date ? String(d.first_air_date).slice(0, 4) : ''),
         poster_path: d.poster_path || null,
         backdrop_path: d.backdrop_path || null,
         vote_average,
@@ -1769,11 +1780,11 @@ app.get('/api/series/top-rated', async (req, res) => {
       };
     });
 
-    items.sort((a,b) => (b._score||0) - (a._score||0));
-    items = items.slice(0, limit).map(({_score, ...rest}) => rest);
+    items.sort((a, b) => (b._score || 0) - (a._score || 0));
+    items = items.slice(0, limit).map(({ _score, ...rest }) => rest);
 
     res.json({ items });
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el top de series' });
   }
@@ -1786,21 +1797,27 @@ app.get('/api/series/top-rated', async (req, res) => {
 // GET /api/series?page=1&pageSize=24&q=...&random=1
 // Devuelve series del catálogo (tabla series) con posters desde TMDB.
 app.get('/api/series', async (req, res) => {
-  try{
-    const { q, random, page = 1, pageSize = 24 } = req.query;
+  try {
+    const { q, genre, random, page = 1, pageSize = 24 } = req.query;
     const p = Math.max(1, parseInt(page) || 1);
     const ps = Math.max(1, Math.min(60, parseInt(pageSize) || 24));
 
     let where = [];
     let params = [];
 
-    if (q){
+    if (q) {
       where.push('LOWER(name) LIKE ?');
       params.push('%' + String(q).toLowerCase() + '%');
     }
 
+    const wantedGenre = genre ? String(genre) : '';
+    if (wantedGenre) {
+      where.push('genre_ids LIKE ?');
+      params.push(`%,${wantedGenre},%`);
+    }
+
     const whereSql = where.length ? ('WHERE ' + where.join(' AND ')) : '';
-    const orderSql = (String(random||'') === '1' || String(random||'').toLowerCase()==='true')
+    const orderSql = (String(random || '') === '1' || String(random || '').toLowerCase() === 'true')
       ? "ORDER BY RANDOM()"
       : "ORDER BY datetime(created_at) DESC";
 
@@ -1828,7 +1845,7 @@ app.get('/api/series', async (req, res) => {
     if (!rows.length) return res.json({ total, page: p, pageSize: ps, items: [] });
 
     // Enrich with lightweight cached TMDB meta (poster/backdrop) for speed.
-    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_=>null)));
+    const details = await Promise.all(rows.map(r => getTvMetaFast(r.tmdb_id).catch(_ => null)));
 
     const items = rows.map((r, i) => {
       const d = details[i] || {};
@@ -1837,7 +1854,7 @@ app.get('/api/series', async (req, res) => {
         id: r.tmdb_id,
         tmdb_id: r.tmdb_id,
         title: r.name || d.name || '',
-        year: r.first_air_year || (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        year: r.first_air_year || (d.first_air_date ? String(d.first_air_date).slice(0, 4) : ''),
         poster_path: d.poster_path || null,
         backdrop_path: d.backdrop_path || null,
         payload: r.payload || null,
@@ -1847,7 +1864,7 @@ app.get('/api/series', async (req, res) => {
     });
 
     res.json({ total, page: p, pageSize: ps, items });
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo obtener el catálogo de series' });
   }
@@ -1868,7 +1885,7 @@ app.get('/api/movies', async (req, res) => {
     }
 
     const wantedGenre = genre ? String(genre) : '';
-    if (wantedGenre){
+    if (wantedGenre) {
       // Use cached genre_ids for speed. A background backfill progressively completes the cache.
       where.push('genre_ids LIKE ?');
       params.push(`%,${wantedGenre},%`);
@@ -1919,7 +1936,7 @@ app.get('/api/movies', async (req, res) => {
     // (Genre filter already applied via SQL when possible.)
     let slice = baseRows;
     let totalOut = Number(total);
-    if (actorIds){
+    if (actorIds) {
       slice = baseRows.filter(r => actorIds.has(Number(r.tmdb_id)));
       totalOut = slice.length; // best-effort for this page; exact total would require scanning all
     }
@@ -1928,12 +1945,12 @@ app.get('/api/movies', async (req, res) => {
 
     // Enrich with poster_path (cached)
     const items = await Promise.all(slice.map(async (r) => {
-      try{
+      try {
         const meta = await getMovieMetaFast(r.tmdb_id);
         // opportunistically backfill genre_ids on rows that still miss it
-        if (!r.genre_ids || String(r.genre_ids).trim()==='' || String(r.genre_ids).trim()===','){
+        if (!r.genre_ids || String(r.genre_ids).trim() === '' || String(r.genre_ids).trim() === ',') {
           const enc = encodeGenreIds(meta.genres);
-          try{ db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, Number(r.tmdb_id)]); }catch(_){ }
+          try { db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, Number(r.tmdb_id)]); } catch (_) { }
         }
         return {
           tmdb_id: r.tmdb_id,
@@ -1944,8 +1961,8 @@ app.get('/api/movies', async (req, res) => {
           poster_path: meta.poster_path,
           backdrop_path: meta.backdrop_path,
         };
-      }catch(_){
-        return { tmdb_id: r.tmdb_id, title: r.title, year: r.year, link: r.link, type:'movie', poster_path:null, backdrop_path:null };
+      } catch (_) {
+        return { tmdb_id: r.tmdb_id, title: r.title, year: r.year, link: r.link, type: 'movie', poster_path: null, backdrop_path: null };
       }
     }));
 
@@ -2006,7 +2023,7 @@ app.get('/api/movie/:id', async (req, res) => {
       });
     });
 
-    if (movieRow){
+    if (movieRow) {
       const d = await getTmdbMovieDetails(tmdbId);
       return res.json({ ...d, link: normalizeLink(movieRow.link) });
     }
@@ -2018,7 +2035,7 @@ app.get('/api/movie/:id', async (req, res) => {
       });
     });
 
-    if (seriesRow){
+    if (seriesRow) {
       const d = await getTmdbTvDetails(tmdbId);
       return res.json({
         id: d.id,
@@ -2045,7 +2062,7 @@ app.get('/api/movie/:id', async (req, res) => {
   }
 });
 
-async function getTmdbMovieDetails(tmdbId){
+async function getTmdbMovieDetails(tmdbId) {
   const url = `https://api.themoviedb.org/3/movie/${tmdbId}`;
   const creditsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/credits`;
   const [detailsResp, creditsResp] = await Promise.all([
@@ -2065,7 +2082,7 @@ async function getTmdbMovieDetails(tmdbId){
     genres: d.genres,
     runtime: d.runtime,
     vote_average: d.vote_average,
-    cast: (c.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character }))
+    cast: (c.cast || []).slice(0, 10).map(x => ({ id: x.id, name: x.name, character: x.character }))
   };
 }
 
@@ -2081,9 +2098,9 @@ app.get('/api/estrenos', async (req, res) => {
   const cached = mcGet(key);
   if (cached) return res.json(cached);
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+  res.json = (payload) => { try { mcSet(key, payload); } catch (_) { } return _json(payload); };
 
-  try{
+  try {
     const limit = Math.min(parseInt(req.query.limit) || 30, 60);
 
     // Cogemos una ventana de películas añadidas recientemente (por si hay muchas entradas)
@@ -2101,36 +2118,36 @@ app.get('/api/estrenos', async (req, res) => {
 
     const today = new Date();
     const lte = ymdLocal(today);
-    const from = new Date(today.getTime() - 365*24*60*60*1000);
+    const from = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
     const gte = ymdLocal(from);
     const gteTs = new Date(gte + 'T00:00:00').getTime();
     const lteTs = new Date(lte + 'T23:59:59').getTime();
 
-    function pickSpainTheatricalDate(releaseDatesObj){
-      try{
+    function pickSpainTheatricalDate(releaseDatesObj) {
+      try {
         const results = releaseDatesObj?.results || [];
         const es = results.find(x => x && x.iso_3166_1 === 'ES');
         const dates = (es?.release_dates || [])
           .filter(x => x && (x.type === 3) && x.release_date)
-          .map(x => String(x.release_date).slice(0,10));
+          .map(x => String(x.release_date).slice(0, 10));
         if (!dates.length) return null;
         // fecha de estreno (primera fecha de estreno en cines)
         dates.sort();
         return dates[0];
-      }catch(_){
+      } catch (_) {
         return null;
       }
     }
 
     const collected = [];
-    for (const row of recentCatalog){
+    for (const row of recentCatalog) {
       if (collected.length >= limit) break;
       const id = Number(row.tmdb_id);
       if (!id) continue;
 
       // Detalles + release_dates en una sola llamada
       const meta = await tmdbGetMovieDetailsWithReleaseDates(id);
-      const estreno_es = pickSpainTheatricalDate(meta.release_dates) || (meta.release_date ? String(meta.release_date).slice(0,10) : null);
+      const estreno_es = pickSpainTheatricalDate(meta.release_dates) || (meta.release_date ? String(meta.release_date).slice(0, 10) : null);
       if (!estreno_es) continue;
       const ts = new Date(estreno_es + 'T00:00:00').getTime();
       if (!(ts >= gteTs && ts <= lteTs)) continue;
@@ -2140,10 +2157,10 @@ app.get('/api/estrenos', async (req, res) => {
         tmdb_id: id,
         id,
         title: meta.title,
-        year: (meta.release_date || '').slice(0,4) ? Number(String(meta.release_date).slice(0,4)) : null,
+        year: (meta.release_date || '').slice(0, 4) ? Number(String(meta.release_date).slice(0, 4)) : null,
         poster_path: meta.poster_path,
         overview: meta.overview,
-        cast: (meta.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character })),
+        cast: (meta.cast || []).slice(0, 10).map(x => ({ id: x.id, name: x.name, character: x.character })),
         link: row.link,
         estreno_es,
         created_at: row.created_at,
@@ -2151,7 +2168,7 @@ app.get('/api/estrenos', async (req, res) => {
     }
 
     res.json({ items: collected, gte, lte });
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los estrenos' });
   }
@@ -2164,9 +2181,9 @@ app.get('/api/estrenos-tv', async (req, res) => {
   const cached = mcGet(key);
   if (cached) return res.json(cached);
   const _json = res.json.bind(res);
-  res.json = (payload) => { try{ mcSet(key, payload); }catch(_){ } return _json(payload); };
+  res.json = (payload) => { try { mcSet(key, payload); } catch (_) { } return _json(payload); };
 
-  try{
+  try {
     const limit = Math.min(parseInt(req.query.limit) || 30, 60);
 
     const recentCatalog = await new Promise((resolve, reject) => {
@@ -2179,19 +2196,19 @@ app.get('/api/estrenos-tv', async (req, res) => {
 
     const today = new Date();
     const lte = ymdLocal(today);
-    const from = new Date(today.getTime() - 365*24*60*60*1000);
+    const from = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
     const gte = ymdLocal(from);
     const gteTs = new Date(gte + 'T00:00:00').getTime();
     const lteTs = new Date(lte + 'T23:59:59').getTime();
 
     const collected = [];
-    for (const row of recentCatalog){
+    for (const row of recentCatalog) {
       if (collected.length >= limit) break;
       const id = Number(row.tmdb_id);
       if (!id) continue;
 
       const meta = await getTmdbTvDetails(id);
-      const estreno = meta.first_air_date ? String(meta.first_air_date).slice(0,10) : null;
+      const estreno = meta.first_air_date ? String(meta.first_air_date).slice(0, 10) : null;
       if (!estreno) continue;
       const ts = new Date(estreno + 'T00:00:00').getTime();
       if (!(ts >= gteTs && ts <= lteTs)) continue;
@@ -2201,10 +2218,10 @@ app.get('/api/estrenos-tv', async (req, res) => {
         tmdb_id: id,
         id,
         title: meta.name,
-        year: (meta.first_air_date || '').slice(0,4) ? Number(String(meta.first_air_date).slice(0,4)) : null,
+        year: (meta.first_air_date || '').slice(0, 4) ? Number(String(meta.first_air_date).slice(0, 4)) : null,
         poster_path: meta.poster_path,
         overview: meta.overview,
-        cast: (meta.cast || []).slice(0, 10).map(x=>({ id:x.id, name:x.name, character:x.character })),
+        cast: (meta.cast || []).slice(0, 10).map(x => ({ id: x.id, name: x.name, character: x.character })),
         link: row.link,
         payload: row.payload,
         estreno,
@@ -2213,7 +2230,7 @@ app.get('/api/estrenos-tv', async (req, res) => {
     }
 
     res.json({ items: collected, gte, lte });
-  }catch(e){
+  } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudieron obtener los estrenos de series' });
   }
@@ -2227,7 +2244,7 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
     if (!link) return res.status(400).json({ error: 'Falta link' });
     const isTv = (type === 'tv');
 
-    if (isTv){
+    if (isTv) {
       let tv_id = tmdbId;
       let realName = title;
       let realYear = year;
@@ -2237,35 +2254,35 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
           const _d = await getTmdbTvDetails(tv_id);
           if (!realName) realName = (_d && (_d.name || _d.original_name)) || realName;
           if (!realYear) {
-            const fa = _d && _d.first_air_date ? _d.first_air_date.slice(0,4) : null;
+            const fa = _d && _d.first_air_date ? _d.first_air_date.slice(0, 4) : null;
             realYear = fa ? parseInt(fa) : realYear || null;
           }
-        } catch(_e) { /* continuar aunque TMDB falle */ }
+        } catch (_e) { /* continuar aunque TMDB falle */ }
       }
 
 
-      if (!tv_id && title){
+      if (!tv_id && title) {
         const t = await tmdbSearchTv(title, year ? parseInt(year) : undefined);
         if (!t) return res.status(404).json({ error: 'No se encontró la serie en TMDB' });
         tv_id = t.id;
         realName = t.name;
-        realYear = t.first_air_date ? parseInt(t.first_air_date.slice(0,4)) : year || null;
+        realYear = t.first_air_date ? parseInt(t.first_air_date.slice(0, 4)) : year || null;
       }
 
       if (!tv_id) return res.status(400).json({ error: 'Falta tmdbId o title para series' });
 
-      await new Promise((resolve, reject)=>{
+      await new Promise((resolve, reject) => {
         const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, genre_ids) VALUES (?, ?, ?, ?, ?)';
         // attempt to store genres from TMDB (best-effort)
-        db.run(sql, [ tv_id, realName || '', realYear || null, normalizeLink(link), null ], (err)=> err?reject(err):resolve());
+        db.run(sql, [tv_id, realName || '', realYear || null, normalizeLink(link), null], (err) => err ? reject(err) : resolve());
       });
 
       const d = await getTmdbTvDetails(tv_id);
-      try{
+      try {
         const enc = encodeGenreIds(d?.genres || []);
-        db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], ()=>{});
-      }catch(_){ }
-      return res.json({ ok:true, type:'tv', tmdb_id: tv_id, title: d.name, year: realYear });
+        db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], () => { });
+      } catch (_) { }
+      return res.json({ ok: true, type: 'tv', tmdb_id: tv_id, title: d.name, year: realYear });
     }
 
     // Películas
@@ -2285,18 +2302,18 @@ app.post('/api/admin/add', adminGuard, async (req, res) => {
 
     await new Promise((resolve, reject) => {
       const sql = 'INSERT OR REPLACE INTO movies (tmdb_id, title, year, link, genre_ids) VALUES (?, ?, ?, ?, ?)';
-      db.run(sql, [ tmdb_id, realTitle || '', realYear || null, normalizeLink(link), null ], (err) => {
+      db.run(sql, [tmdb_id, realTitle || '', realYear || null, normalizeLink(link), null], (err) => {
         if (err) return reject(err);
         resolve();
       });
     });
 
     const d = await getTmdbMovieDetails(tmdb_id);
-    try{
+    try {
       const enc = encodeGenreIds(d?.genres || []);
-      db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, tmdb_id], ()=>{});
-    }catch(_){ }
-    res.json({ ok: true, type:'movie', tmdb_id, title: d.title, year: realYear });
+      db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, tmdb_id], () => { });
+    } catch (_) { }
+    res.json({ ok: true, type: 'movie', tmdb_id, title: d.title, year: realYear });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'No se pudo añadir' });
@@ -2314,15 +2331,15 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
 
     // TV bulk import format:
     // Titulo (año) | Payload
-    if (isTv){
+    if (isTv) {
       const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       const errors = [];
       const out = [];
 
-      for (const line of lines){
+      for (const line of lines) {
         // Accept: Title (2008) | s1234
         const m = line.match(/^(.+?)\s*\((\d{4})\)\s*\|\s*(\S+)\s*$/);
-        if (!m){
+        if (!m) {
           errors.push({ line, error: 'Formato inválido. Usa: Titulo (año) | Payload' });
           continue;
         }
@@ -2330,33 +2347,33 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
         const year = parseInt(m[2], 10);
         const payload = m[3].trim();
 
-        try{
+        try {
           const t = await tmdbSearchTv(rawTitle, year);
-          if (!t){
+          if (!t) {
             errors.push({ title: rawTitle, year, payload, error: 'No TMDB match' });
             continue;
           }
 
           const tv_id = t.id;
           const realName = t.name;
-          const realYear = t.first_air_date ? parseInt(String(t.first_air_date).slice(0,4), 10) : year || null;
+          const realYear = t.first_air_date ? parseInt(String(t.first_air_date).slice(0, 4), 10) : year || null;
           const tg = buildTelegramForPayload(payload);
           const link = tg?.web || '';
 
-          await new Promise((resolve, reject)=>{
+          await new Promise((resolve, reject) => {
             const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, payload, genre_ids) VALUES (?, ?, ?, ?, ?, ?)';
-            db.run(sql, [ tv_id, realName || rawTitle, realYear, normalizeLink(link), payload, null ], (err)=> err?reject(err):resolve());
+            db.run(sql, [tv_id, realName || rawTitle, realYear, normalizeLink(link), payload, null], (err) => err ? reject(err) : resolve());
           });
 
           // genres best-effort
-          try{
+          try {
             const d = await getTmdbTvDetails(tv_id);
             const enc = encodeGenreIds(d?.genres || []);
-            db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], ()=>{});
-          }catch(_){ }
+            db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], () => { });
+          } catch (_) { }
 
           out.push({ tmdb_id: tv_id, title: realName, year: realYear, payload });
-        }catch(e){
+        } catch (e) {
           console.error('TV import error', line, e.message);
           errors.push({ title: rawTitle, year, payload, error: e.message });
         }
@@ -2397,11 +2414,11 @@ app.post('/api/admin/bulkImport', adminGuard, async (req, res) => {
         });
 
         // Store genres best-effort (so category filter works immediately)
-        try{
+        try {
           const meta = await getMovieMetaFast(m.id);
           const enc = encodeGenreIds(meta.genres);
-          db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, m.id], ()=>{});
-        }catch(_){ }
+          db.run('UPDATE movies SET genre_ids = ? WHERE tmdb_id = ?', [enc, m.id], () => { });
+        } catch (_) { }
         out.push({ tmdb_id: m.id, title: m.title, year: t.year });
       } catch (e) {
         console.error('Import error', t, e.message);
@@ -2428,9 +2445,9 @@ app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
     const errors = [];
     const out = [];
 
-    for (const line of lines){
+    for (const line of lines) {
       const m = line.match(/^(.+?)\s*\((\d{4})\)\s*\|\s*(\S+)\s*$/);
-      if (!m){
+      if (!m) {
         errors.push({ line, error: 'Formato inválido. Usa: Titulo (año) | Payload' });
         continue;
       }
@@ -2438,33 +2455,33 @@ app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
       const year = parseInt(m[2], 10);
       const payload = m[3].trim();
 
-      try{
+      try {
         const t = await tmdbSearchTv(rawTitle, year);
-        if (!t){
+        if (!t) {
           errors.push({ title: rawTitle, year, payload, error: 'No TMDB match' });
           continue;
         }
 
         const tv_id = t.id;
         const realName = t.name;
-        const realYear = t.first_air_date ? parseInt(String(t.first_air_date).slice(0,4), 10) : year || null;
+        const realYear = t.first_air_date ? parseInt(String(t.first_air_date).slice(0, 4), 10) : year || null;
         const tg = buildTelegramForPayload(payload);
         const link = tg?.web || '';
 
-        await new Promise((resolve, reject)=>{
+        await new Promise((resolve, reject) => {
           const sql = 'INSERT OR REPLACE INTO series (tmdb_id, name, first_air_year, link, payload, genre_ids) VALUES (?, ?, ?, ?, ?, ?)';
-          db.run(sql, [ tv_id, realName || rawTitle, realYear, normalizeLink(link), payload, null ], (err)=> err?reject(err):resolve());
+          db.run(sql, [tv_id, realName || rawTitle, realYear, normalizeLink(link), payload, null], (err) => err ? reject(err) : resolve());
         });
 
         // genres best-effort
-        try{
+        try {
           const d = await getTmdbTvDetails(tv_id);
           const enc = encodeGenreIds(d?.genres || []);
-          db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], ()=>{});
-        }catch(_){ }
+          db.run('UPDATE series SET genre_ids = ? WHERE tmdb_id = ?', [enc, tv_id], () => { });
+        } catch (_) { }
 
         out.push({ tmdb_id: tv_id, title: realName, year: realYear, payload });
-      }catch(e){
+      } catch (e) {
         console.error('SAM TV import error', line, e.message);
         errors.push({ title: rawTitle, year, payload, error: e.message });
       }
@@ -2479,23 +2496,23 @@ app.post('/api/sam/bulkImport', samGuard, async (req, res) => {
 
 // SAM: borrar una serie por titulo + año
 app.post('/api/sam/deleteSeries', samGuard, (req, res) => {
-  try{
+  try {
     const title = String(req.body?.title || '').trim();
     const year = parseInt(req.body?.year, 10);
 
-    if (!title || !Number.isFinite(year)){
+    if (!title || !Number.isFinite(year)) {
       return res.status(400).json({ error: 'Falta title o year' });
     }
 
     const sql = 'DELETE FROM series WHERE name = ? COLLATE NOCASE AND first_air_year = ?';
-    db.run(sql, [title, year], function(err){
-      if (err){
+    db.run(sql, [title, year], function (err) {
+      if (err) {
         console.error('SAM deleteSeries error', err);
         return res.status(500).json({ error: 'No se pudo borrar' });
       }
       return res.json({ ok: true, deleted: this.changes || 0 });
     });
-  }catch(e){
+  } catch (e) {
     console.error('SAM deleteSeries exception', e);
     return res.status(500).json({ error: 'No se pudo borrar' });
   }
@@ -2505,7 +2522,7 @@ app.post('/api/sam/deleteSeries', samGuard, (req, res) => {
 
 app.post('/api/admin/delete', adminGuard, async (req, res) => {
   try {
-    const { title, year, type } = req.body; const isTv = (type==='tv');
+    const { title, year, type } = req.body; const isTv = (type === 'tv');
     if (!title) return res.status(400).json({ error: 'Falta título' });
 
     const t = String(title).trim().toLowerCase();
@@ -2517,8 +2534,8 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
         ? 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ? AND first_air_year = ?'
         : 'SELECT tmdb_id, name as title, first_air_year as year FROM series WHERE LOWER(name) = ?')
         : (y
-        ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
-        : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?');
+          ? 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ? AND year = ?'
+          : 'SELECT tmdb_id, title, year FROM movies WHERE LOWER(title) = ?');
       const params = y ? [t, y] : [t];
       db.all(sql, params, (err, rows) => {
         if (err) return reject(err);
@@ -2531,8 +2548,8 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
     // Eliminar todos los matches encontrados
     const ids = rows.map(r => r.tmdb_id);
     await new Promise((resolve, reject) => {
-      const placeholders = ids.map(()=>'?').join(',');
-      db.run(isTv ? `DELETE FROM series WHERE tmdb_id IN (${placeholders})` : `DELETE FROM movies WHERE tmdb_id IN (${placeholders})`, ids, function(err){
+      const placeholders = ids.map(() => '?').join(',');
+      db.run(isTv ? `DELETE FROM series WHERE tmdb_id IN (${placeholders})` : `DELETE FROM movies WHERE tmdb_id IN (${placeholders})`, ids, function (err) {
         if (err) return reject(err);
         resolve();
       });
@@ -2550,7 +2567,7 @@ app.post('/api/admin/delete', adminGuard, async (req, res) => {
 // POST /api/admin/deleteById
 app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
   try {
-    const { tmdb_id, type } = req.body; const isTv = (type==='tv');
+    const { tmdb_id, type } = req.body; const isTv = (type === 'tv');
     const id = Number(tmdb_id);
     if (!id || Number.isNaN(id)) return res.status(400).json({ error: 'tmdb_id inválido' });
 
@@ -2564,7 +2581,7 @@ app.post('/api/admin/deleteById', adminGuard, async (req, res) => {
 
     // Delete
     const deleted = await new Promise((resolve, reject) => {
-      db.run(isTv ? 'DELETE FROM series WHERE tmdb_id = ?' : 'DELETE FROM movies WHERE tmdb_id = ?', [id], function(err){
+      db.run(isTv ? 'DELETE FROM series WHERE tmdb_id = ?' : 'DELETE FROM movies WHERE tmdb_id = ?', [id], function (err) {
         if (err) return reject(err);
         resolve(this.changes || 0);
       });
@@ -2592,6 +2609,29 @@ app.get('/api/admin/export', adminGuard, async (req, res) => {
   }
 });
 
+
+// POST /api/admin/reset-password
+app.post('/api/admin/reset-password', adminGuard, async (req, res) => {
+  try {
+    const { username, newPassword } = req.body;
+    if (!username || !newPassword || newPassword.length < 4) {
+      return res.status(400).json({ error: 'Datos inválidos' });
+    }
+    const newHash = await bcrypt.hash(newPassword, 10);
+    db.run(
+      'UPDATE users SET password_hash = ? WHERE LOWER(username) = LOWER(?)',
+      [newHash, String(username).trim()],
+      function (err) {
+        if (err) return res.status(500).json({ error: 'Error DB' });
+        if (this.changes === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+        res.json({ ok: true, username: username });
+      }
+    );
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error reseteando contraseña' });
+  }
+});
 
 // === Watch page (no real URL exposed) ===
 // (disabled) /watch page removed in favor of direct PixelDrain links
@@ -2668,7 +2708,7 @@ app.get('/api/collections/:id', (req, res) => {
         async (err2, rows) => {
           if (err2) return res.status(500).json({ error: 'DB_ERROR' });
           const base = rows || [];
-          try{
+          try {
             const enriched = await Promise.all(base.map(async (r) => {
               const key = 'tmdb:movie:' + r.tmdb_id;
               const cached = mcGet(key);
@@ -2686,7 +2726,7 @@ app.get('/api/collections/:id', (req, res) => {
               items_count: enriched.length,
               items: enriched.map(x => ({ tmdb_id: x.tmdb_id, title: x.title, year: x.year, poster_path: x.poster_path }))
             });
-          }catch(_){
+          } catch (_) {
             res.json({
               id: col.id,
               name: col.name,
@@ -2712,7 +2752,7 @@ app.post('/api/collections', requireAuth, (req, res) => {
   if (!name || name.length < 2 || name.length > 60) return res.status(400).json({ error: 'NAME_INVALID' });
   if (!items.length) return res.status(400).json({ error: 'ITEMS_INVALID' });
 
-  if (cover){
+  if (cover) {
     const s = String(cover);
     if (!/^data:image\/(webp|png|jpeg);base64,/i.test(s)) return res.status(400).json({ error: 'IMAGE_INVALID' });
     const b64 = s.split(',')[1] || '';
@@ -2723,7 +2763,7 @@ app.post('/api/collections', requireAuth, (req, res) => {
   db.run(
     `INSERT INTO collections (user_id, name, cover_image) VALUES (?, ?, ?)`,
     [u.id, name, cover || null],
-    function(err){
+    function (err) {
       if (err) return res.status(500).json({ error: 'DB_ERROR' });
       const colId = this.lastID;
 
@@ -2747,7 +2787,7 @@ app.put('/api/collections/:id', requireAuth, (req, res) => {
   if (!name || name.length < 2 || name.length > 60) return res.status(400).json({ error: 'NAME_INVALID' });
   if (!items.length) return res.status(400).json({ error: 'ITEMS_INVALID' });
 
-  if (cover){
+  if (cover) {
     const s = String(cover);
     if (!/^data:image\/(webp|png|jpeg);base64,/i.test(s)) return res.status(400).json({ error: 'IMAGE_INVALID' });
     const b64 = s.split(',')[1] || '';
@@ -2791,7 +2831,7 @@ app.delete('/api/collections/:id', requireAuth, (req, res) => {
   db.run(
     `DELETE FROM collections WHERE id = ? AND user_id = ?`,
     [id, u.id],
-    function(err){
+    function (err) {
       if (err) return res.status(500).json({ error: 'DB_ERROR' });
       if (this.changes === 0) return res.status(403).json({ error: 'FORBIDDEN' });
       res.json({ ok: true });
@@ -2801,20 +2841,20 @@ app.delete('/api/collections/:id', requireAuth, (req, res) => {
 
 // Start server after lightweight migrations so older DBs don't crash on startup.
 (async () => {
-  try{
+  try {
     if (__migrationsPromise) await __migrationsPromise;
-  }catch(_){ /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 
   // After migrations, safely create media_type indexes if possible.
-  try{
+  try {
     await createIndexIfColumnExists('pending', 'media_type', `CREATE INDEX IF NOT EXISTS idx_pending_type ON pending(media_type)`);
     await createIndexIfColumnExists('favorites', 'media_type', `CREATE INDEX IF NOT EXISTS idx_favorites_type ON favorites(media_type)`);
-  }catch(_){ /* best-effort */ }
+  } catch (_) { /* best-effort */ }
 
   app.listen(PORT, () => {
     console.log(`Cine Castellano HD listo en http://localhost:${PORT}`);
     // Best-effort background task to populate genre_ids so category filtering works reliably.
     // It runs once on start and keeps the server responsive.
-    backfillGenreIdsInBackground().catch(()=>{});
+    backfillGenreIdsInBackground().catch(() => { });
   });
 })();

@@ -1,12 +1,14 @@
 <!doctype html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cine en Castellano HD</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=2" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
+
 <body>
   <header>
     <div class="container nav">
@@ -20,7 +22,8 @@
           <button id="authBtn" class="ghost" type="button">Login</button>
 
           <div class="user-menu-wrap">
-            <button id="userMenuBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false" style="display:none"></button>
+            <button id="userMenuBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false"
+              style="display:none"></button>
             <div id="userMenu" class="dropdown-menu" role="menu" aria-label="Menú personal"></div>
           </div>
         </div>
@@ -31,20 +34,21 @@
           <input id="q" placeholder="Buscar por título..." />
           <input id="actor" placeholder="Actor/actriz" />
           <div class="genre-wrap">
-            <button id="genreBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Categorías</button>
+            <button id="genreBtn" class="ghost" type="button" aria-haspopup="true"
+              aria-expanded="false">Categorías</button>
             <div id="genreMenu" class="dropdown-menu" role="menu" aria-label="Categorías"></div>
           </div>
           <button id="searchBtn">Buscar</button>
           <button id="resetBtn" class="ghost">Inicio</button>
           <button id="collectionsBtn" class="ghost">Colecciones</button>
-                  </div>
+        </div>
       </div>
     </div>
 
-      <div class="catalog-toggle" id="catalogToggle" aria-label="Cambiar catálogo">
-        <button id="btnMovies" class="cat-btn" type="button">Películas</button>
-        <button id="btnSeries" class="cat-btn" type="button">Series</button>
-      </div>
+    <div class="catalog-toggle" id="catalogToggle" aria-label="Cambiar catálogo">
+      <button id="btnMovies" class="cat-btn" type="button">Películas</button>
+      <button id="btnSeries" class="cat-btn" type="button">Series</button>
+    </div>
   </header>
 
   <main>
@@ -58,7 +62,8 @@
           </div>
         </div>
         <div class="row-scroller top10" id="topRow"></div>
-        <div class="row-empty" id="topEmpty" style="display:none">Aún no hay reproducciones hoy. Pulsa “Reproducir” en alguna ficha y verás aquí el Top 10.</div>
+        <div class="row-empty" id="topEmpty" style="display:none">Aún no hay reproducciones hoy. Pulsa “Reproducir” en
+          alguna ficha y verás aquí el Top 10.</div>
       </section>
 
       <section class="row-section" id="rowBestApp">
@@ -70,10 +75,11 @@
           </div>
         </div>
         <div class="row-scroller" id="bestAppRow"></div>
-        <div class="row-empty" id="bestAppEmpty" style="display:none">Aún no hay valoraciones. ¡Sé el primero en puntuar!</div>
+        <div class="row-empty" id="bestAppEmpty" style="display:none">Aún no hay valoraciones. ¡Sé el primero en
+          puntuar!</div>
       </section>
 
-      
+
       <section class="row-section" id="rowPremieres">
         <div class="row-head">
           <h3><span id="lblPremieres">Estrenos</span></h3>
@@ -102,7 +108,8 @@
           <div class="row-tools">
             <small class="mute" id="pageInfo"></small>
             <div class="filter-wrap">
-              <button id="letterFilterBtn" class="ghost" type="button" aria-haspopup="true" aria-expanded="false">Filtrar letra</button>
+              <button id="letterFilterBtn" class="ghost" type="button" aria-haspopup="true"
+                aria-expanded="false">Filtrar letra</button>
               <div id="letterMenu" class="letter-menu" role="menu" aria-label="Filtrar por letra">
                 <!-- Buttons injected by app.js -->
               </div>
@@ -205,16 +212,18 @@
 
   <footer>
     <div class="container">
-      <small class="mute">® Cine Castellano HD — datos de TMDB. Esta mini app no está afiliada ni respaldada por TMDB.</small>
+      <small class="mute">® Cine Castellano HD — datos de TMDB. Esta mini app no está afiliada ni respaldada por
+        TMDB.</small>
     </div>
   </footer>
 
-  <script src="/app.js"></script>
-  <script src="back-handler.js"></script>
-  <script src="/tvnav.js"></script>
+  <script src="/app.js?v=2"></script>
+  <script src="back-handler.js?v=2"></script>
+  <script src="/tvnav.js?v=2"></script>
 
   <!-- Toast container -->
   <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
   <div class="curtain" aria-hidden="true"></div>
 </body>
+
 </html>

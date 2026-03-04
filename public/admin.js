@@ -1,12 +1,12 @@
-function getToken(){ return localStorage.getItem('cchd_admin_token') || ''; }
-function setToken(v){ localStorage.setItem('cchd_admin_token', v); }
+function getToken() { return localStorage.getItem('cchd_admin_token') || ''; }
+function setToken(v) { localStorage.setItem('cchd_admin_token', v); }
 
-function getContentType(){
+function getContentType() {
   const el = document.querySelector('input[name="contentType"]:checked');
   return el ? el.value : 'movie';
 }
 
-function refreshBulkBoxes(){
+function refreshBulkBoxes() {
   const t = getContentType();
   const tvBox = document.getElementById('bulkTv')?.closest('.box');
   const movieBox = document.getElementById('bulk')?.closest('.box');
@@ -17,14 +17,14 @@ function refreshBulkBoxes(){
 
 const tokenInput = document.getElementById('token');
 tokenInput.value = getToken();
-document.getElementById('saveToken').onclick = ()=>{ setToken(tokenInput.value.trim()); alert('Token guardado'); };
+document.getElementById('saveToken').onclick = () => { setToken(tokenInput.value.trim()); alert('Token guardado'); };
 
 document.querySelectorAll('input[name="contentType"]').forEach(r => {
   r.addEventListener('change', refreshBulkBoxes);
 });
 refreshBulkBoxes();
 
-async function post(url, body){
+async function post(url, body) {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -33,50 +33,50 @@ async function post(url, body){
     },
     body: JSON.stringify(body)
   });
-  if (!res.ok){
-    const e = await res.json().catch(()=>({error:'Error desconocido'}));
-    throw new Error(e.error||('HTTP '+res.status));
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ error: 'Error desconocido' }));
+    throw new Error(e.error || ('HTTP ' + res.status));
   }
   return res.json();
 }
 
-async function getJson(url){
+async function getJson(url) {
   const res = await fetch(url, {
     headers: {
       'Authorization': 'Bearer ' + getToken()
     }
   });
-  if (!res.ok){
-    const e = await res.json().catch(()=>({error:'Error desconocido'}));
-    throw new Error(e.error||('HTTP '+res.status));
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ error: 'Error desconocido' }));
+    throw new Error(e.error || ('HTTP ' + res.status));
   }
   return res.json();
 }
 
 // --- Pixeldrain mode toggle (/u/ <-> /api/file) ---
-(function(){
+(function () {
   const statusEl = document.getElementById('pdModeStatus');
   const btn = document.getElementById('pdModeToggle');
   if (!statusEl || !btn) return;
 
-  async function refresh(){
-    try{
+  async function refresh() {
+    try {
       const r = await getJson('/api/admin/config');
       const mode = (r && r.pixeldrain_mode === 'api') ? 'api' : 'u';
       statusEl.textContent = (mode === 'api') ? '/api/file (activo)' : '/u/ (activo)';
-    }catch(e){
+    } catch (e) {
       statusEl.textContent = '—';
     }
   }
 
-  btn.onclick = async ()=>{
+  btn.onclick = async () => {
     btn.disabled = true;
-    try{
+    try {
       await post('/api/admin/config', { toggle: true });
       await refresh();
-    }catch(e){
+    } catch (e) {
       alert('Error: ' + e.message);
-    }finally{
+    } finally {
       btn.disabled = false;
     }
   };
@@ -84,63 +84,83 @@ async function getJson(url){
   refresh();
 })();
 
-document.getElementById('addOne').onclick = async ()=>{
+document.getElementById('resetPassBtn').onclick = async () => {
+  const username = document.getElementById('resetUsername').value.trim();
+  const newPass = document.getElementById('resetNewPass').value.trim();
+  const out = document.getElementById('resetPassOut');
+  if (!username) return alert('Nombre de usuario requerido');
+  if (!newPass || newPass.length < 4) return alert('La contraseña debe tener al menos 4 caracteres');
+
+  if (!confirm(`¿Seguro que quieres cambiar la contraseña del usuario "${username}"?`)) return;
+
+  out.textContent = 'Cambiando contraseña...';
+  try {
+    const r = await post('/api/admin/reset-password', { username, newPassword: newPass });
+    out.textContent = `OK · Contraseña de ${r.username} actualizada.`;
+    document.getElementById('resetUsername').value = '';
+    document.getElementById('resetNewPass').value = '';
+  } catch (e) {
+    out.textContent = 'Error: ' + e.message;
+  }
+};
+
+document.getElementById('addOne').onclick = async () => {
   const title = document.getElementById('title').value.trim();
   const year = document.getElementById('year').value.trim();
   const link = document.getElementById('link').value.trim();
   const out = document.getElementById('oneOut');
   out.textContent = 'Añadiendo...';
-  try{
-    const r = await post('/api/admin/add', { title, year: year?parseInt(year):undefined, link, type: getContentType() });
+  try {
+    const r = await post('/api/admin/add', { title, year: year ? parseInt(year) : undefined, link, type: getContentType() });
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
 };
 
-document.getElementById('addById').onclick = async ()=>{
+document.getElementById('addById').onclick = async () => {
   const tmdbId = parseInt(document.getElementById('tmdbId').value.trim());
   const link = document.getElementById('link').value.trim();
   const out = document.getElementById('oneOut');
   if (!tmdbId) return alert('TMDB ID requerido');
   if (!link) return alert('Link requerido');
   out.textContent = 'Añadiendo por ID...';
-  try{
+  try {
     const r = await post('/api/admin/add', { tmdbId, link, type: getContentType() });
     out.textContent = `OK · ${r.title} (${r.year}) – TMDB ${r.tmdb_id}`;
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
 };
 
-document.getElementById('doBulk').onclick = async ()=>{
+document.getElementById('doBulk').onclick = async () => {
   const text = document.getElementById('bulk').value;
   const out = document.getElementById('bulkOut');
   out.textContent = 'Importando...';
-  try{
+  try {
     const r = await post('/api/admin/bulkImport', { text, type: getContentType() });
     out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
     console.log(r);
-  }catch(e){ out.textContent = 'Error: ' + e.message; }
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
 };
 
 // Import TV (Titulo (año) | Payload)
-(function(){
+(function () {
   const btn = document.getElementById('doBulkTv');
   if (!btn) return;
-  btn.onclick = async ()=>{
+  btn.onclick = async () => {
     const text = document.getElementById('bulkTv').value;
     const out = document.getElementById('bulkTvOut');
     out.textContent = 'Importando series...';
-    try{
+    try {
       const r = await post('/api/admin/bulkImport', { text, type: 'tv' });
       out.textContent = `Importadas: ${r.imported}. Errores: ${r.errors.length}`;
       console.log(r);
-    }catch(e){
+    } catch (e) {
       out.textContent = 'Error: ' + e.message;
     }
   };
 })();
 
-document.getElementById('exportBtn').onclick = async ()=>{
-  const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer '+getToken() }});
-  if(!res.ok) return alert('Error exportando');
+document.getElementById('exportBtn').onclick = async () => {
+  const res = await fetch('/api/admin/export', { headers: { 'Authorization': 'Bearer ' + getToken() } });
+  if (!res.ok) return alert('Error exportando');
   const data = await res.json();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -150,45 +170,45 @@ document.getElementById('exportBtn').onclick = async ()=>{
 };
 
 
-document.getElementById('deleteBtn').onclick = async ()=>{
+document.getElementById('deleteBtn').onclick = async () => {
   const title = document.getElementById('delTitle').value.trim();
   const year = document.getElementById('delYear').value.trim();
   const out = document.getElementById('deleteOut');
   if (!title) { out.textContent = 'Escribe un título'; return; }
   out.textContent = 'Eliminando...';
-  try{
-    const r = await post('/api/admin/delete', {  title, year: year || null, type: getContentType() });
-    if (r.deleted > 0){
-      out.textContent = `Eliminadas: ${r.deleted}. (${r.matches.map(m=>m.title + (m.year? ' ('+m.year+')':'' )).join(' · ')})`;
-    }else{
+  try {
+    const r = await post('/api/admin/delete', { title, year: year || null, type: getContentType() });
+    if (r.deleted > 0) {
+      out.textContent = `Eliminadas: ${r.deleted}. (${r.matches.map(m => m.title + (m.year ? ' (' + m.year + ')' : '')).join(' · ')})`;
+    } else {
       out.textContent = 'No se encontraron coincidencias';
     }
-  }catch(e){
+  } catch (e) {
     out.textContent = 'Error: ' + e.message;
   }
 };
 
 
 /* Delete by TMDB ID */
-(function(){
+(function () {
   const btn = document.getElementById('deleteByIdBtn');
   if (!btn) return;
-  btn.onclick = async ()=>{
+  btn.onclick = async () => {
     const out = document.getElementById('deleteByIdOut');
     const input = document.getElementById('delIdInput');
     const raw = input ? input.value.trim() : '';
     const id = Number(raw);
-    if (!raw || Number.isNaN(id)){ out.textContent = 'Introduce un TMDB ID válido'; return; }
+    if (!raw || Number.isNaN(id)) { out.textContent = 'Introduce un TMDB ID válido'; return; }
     out.textContent = 'Eliminando...';
-    try{
-      const r = await post('/api/admin/deleteById', {  tmdb_id: id, type: getContentType() });
-      if (r.deleted > 0){
-        const label = r.match ? (r.match.title + (r.match.year ? ' ('+r.match.year+')' : '')) : ('ID ' + id);
+    try {
+      const r = await post('/api/admin/deleteById', { tmdb_id: id, type: getContentType() });
+      if (r.deleted > 0) {
+        const label = r.match ? (r.match.title + (r.match.year ? ' (' + r.match.year + ')' : '')) : ('ID ' + id);
         out.textContent = `Eliminado: ${label}`;
-      }else{
+      } else {
         out.textContent = 'No se encontró ninguna película con ese ID';
       }
-    }catch(e){
+    } catch (e) {
       out.textContent = 'Error: ' + (e?.message || e);
     }
   };

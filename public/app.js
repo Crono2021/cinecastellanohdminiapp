@@ -3,69 +3,69 @@
 // Runtime config (fetched from /api/config)
 let __PIXELDRAIN_USE_API_FILE__ = false; // false => keep original /u/ links
 
-async function fetchAppConfig(){
-  try{
+async function fetchAppConfig() {
+  try {
     const r = await fetch('/api/config');
     if (!r.ok) return;
     const d = await r.json();
     __PIXELDRAIN_USE_API_FILE__ = Boolean(d && d.use_api_file);
-  }catch(_){ /* ignore */ }
+  } catch (_) { /* ignore */ }
 }
 
 // --- Build direct PixelDrain URL using /api for fullscreen (no server-side proxy) ---
-function toWatchUrl(link){
+function toWatchUrl(link) {
   if (!link) return null;
 
   // Default: do NOT convert. Send users to the original link stored in the catalog.
   if (!__PIXELDRAIN_USE_API_FILE__) return link;
 
-  try{
+  try {
     const u = new URL(link);
-    const host = (u.hostname || '').replace(/^www\./,'');
+    const host = (u.hostname || '').replace(/^www\./, '');
     if (!/pixeldrain\.(net|com)$/i.test(host)) return null;
     const segs = (u.pathname || '').split('/').filter(Boolean);
     let id = null;
-    const idx = segs.findIndex(s => s==='u' || s==='d' || s==='file');
-    if (idx >= 0 && segs[idx+1]) id = segs[idx+1];
-    if (!id && segs.length) id = segs[segs.length-1];
+    const idx = segs.findIndex(s => s === 'u' || s === 'd' || s === 'file');
+    if (idx >= 0 && segs[idx + 1]) id = segs[idx + 1];
+    if (!id && segs.length) id = segs[segs.length - 1];
     if (!id) return null;
     return `https://${host}/api/file/${id}`;
-  }catch(_){ return null; }
+  } catch (_) { return null; }
 }
 
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
-function isLocalAssetMode(){
-  try{
+function isLocalAssetMode() {
+  try {
     const proto = (location && location.protocol) ? location.protocol : '';
     const origin = (location && typeof location.origin === 'string') ? location.origin : '';
     const path = (location && location.pathname) ? location.pathname : '';
     return (proto === 'file:' || origin === 'null' || /\.html($|\?)/i.test(path));
-  }catch(_){
+  } catch (_) {
     return false;
   }
 }
 
-function getCatalogType(){
+function getCatalogType() {
   // Normal web: rely on path routing
-  if (!isLocalAssetMode()){
+  if (!isLocalAssetMode()) {
     return (location.pathname && location.pathname.startsWith('/series')) ? 'tv' : 'movie';
   }
   // Local asset / WebView mode: don't depend on localStorage (often disabled in some WebViews).
   // Use URL hash as the source of truth: #series or #movies
-  try{
+  try {
     const h = String(location.hash || '').toLowerCase();
     if (h.includes('series') || h.includes('tv')) return 'tv';
     if (h.includes('movie') || h.includes('peliculas')) return 'movie';
-  }catch(_){ }
+  } catch (_) { }
   // Fallback (legacy) if storage is available
-  try{
+  try {
     const v = localStorage.getItem('catalogType');
     if (v === 'tv' || v === 'movie') return v;
-  }catch(_){ }
+  } catch (_) { }
   return 'movie';
 }
-function isTv(){ return getCatalogType()==='tv'; }
+function isTv() { return getCatalogType() === 'tv'; }
 
 
 // Explore state (grid)
@@ -85,18 +85,18 @@ let auth = { user: null };
 let currentDetail = { id: null, type: 'movie' };
 
 // --- "Más vistas hoy" (global, server-side) ---
-function trackView(id, type){
+function trackView(id, type) {
   // Fire & forget (shared by all users)
-  try{
+  try {
     fetch('/api/view', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tmdb_id: Number(id), type: type || 'movie' })
-    }).catch(()=>{});
-  }catch(_){ }
+    }).catch(() => { });
+  } catch (_) { }
 }
 
-async function fetchTopToday(limit = 10){
+async function fetchTopToday(limit = 10) {
   const p = new URLSearchParams({ limit: String(limit) });
   const r = await fetch('/api/top?' + p.toString());
   if (!r.ok) return [];
@@ -104,7 +104,7 @@ async function fetchTopToday(limit = 10){
   return Array.isArray(data) ? data : [];
 }
 
-async function fetchBestApp(limit = 10){
+async function fetchBestApp(limit = 10) {
   const p = new URLSearchParams({ limit: String(limit) });
   const r = await fetch('/api/app-top-rated?' + p.toString());
   if (!r.ok) return [];
@@ -114,7 +114,7 @@ async function fetchBestApp(limit = 10){
 
 // --- UI helpers ---
 
-function showToast(message, kind = 'success'){
+function showToast(message, kind = 'success') {
   const host = el('toastHost');
   if (!host) return;
   const t = document.createElement('div');
@@ -132,45 +132,45 @@ function showToast(message, kind = 'success'){
   }, 2200);
 }
 
-async function markPendingWatched(tmdbId, mediaType = 'movie'){
-  if (!auth.user){ openAuth(); return; }
-  try{
+async function markPendingWatched(tmdbId, mediaType = 'movie') {
+  if (!auth.user) { openAuth(); return; }
+  try {
     const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
-    await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
+    await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method: 'DELETE' });
     showToast('Marcada como vista');
     if (state.view === 'pending') loadExplore();
-  }catch(_){ }
+  } catch (_) { }
 }
 
-async function removeFavoriteFromList(tmdbId, mediaType = 'movie'){
-  if (!auth.user){ openAuth(); return; }
-  try{
+async function removeFavoriteFromList(tmdbId, mediaType = 'movie') {
+  if (!auth.user) { openAuth(); return; }
+  try {
     const qs = new URLSearchParams({ type: String(mediaType || 'movie') });
-    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method:'DELETE' });
+    await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?' + qs.toString(), { method: 'DELETE' });
     showToast('Quitada de favoritos');
     if (state.view === 'favorites') loadExplore();
-  }catch(_){ }
+  } catch (_) { }
 }
 
-async function removeRatingFromList(tmdbId){
-  if (!auth.user){ openAuth(); return; }
-  try{
-    await apiJson('/api/ratings/' + encodeURIComponent(tmdbId), { method:'DELETE' });
+async function removeRatingFromList(tmdbId) {
+  if (!auth.user) { openAuth(); return; }
+  try {
+    await apiJson('/api/ratings/' + encodeURIComponent(tmdbId), { method: 'DELETE' });
     showToast('Valoración eliminada');
-    if (state.view === 'myratings'){
+    if (state.view === 'myratings') {
       loadExplore();
       // Actualiza también el carrusel global de mejor valoradas
-      try{ loadBestAppRow(); }catch(_){ }
+      try { loadBestAppRow(); } catch (_) { }
     }
-  }catch(_){ }
+  } catch (_) { }
 }
 
-function el(id){ return document.getElementById(id); }
+function el(id) { return document.getElementById(id); }
 
 
-function setCatalogLabels(){
+function setCatalogLabels() {
   const tv = isTv();
-  const set = (id, txt)=>{ const e=el(id); if(e) e.textContent = txt; };
+  const set = (id, txt) => { const e = el(id); if (e) e.textContent = txt; };
   set('lblTop', tv ? 'Series más vistas hoy' : 'Películas más vistas hoy');
   set('lblBest', tv ? 'Series mejor valoradas' : 'Películas mejor valoradas');
   set('lblPremieres', tv ? 'Estrenos (series)' : 'Estrenos');
@@ -178,31 +178,31 @@ function setCatalogLabels(){
   set('lblExplore', tv ? 'Explorar catálogo de series' : 'Explorar catálogo');
 
   // Expose current catalog type to CSS (used to tweak title wrapping)
-  try{
+  try {
     document.body.classList.toggle('is-tv', tv);
     document.body.classList.toggle('is-movie', !tv);
-  }catch(_){ }
+  } catch (_) { }
 }
 
-function curtainNavigate(href){
+function curtainNavigate(href) {
   // Curtain transition removed (it was causing issues on mobile).
   // Keep the helper so callers don't need to change.
   // NOTE: Some Android WebViews load this app from local assets (file:// or appassets).
   // In that case, navigating to absolute paths like "/series" won't resolve.
   // Map known routes to their local html files.
-  if (isLocalAssetMode()){
-    try{
-      if (href === '/series' || href === '/series/' || href === '/series.html') localStorage.setItem('catalogType','tv');
-      if (href === '/' || href === '/index' || href === '/index.html') localStorage.setItem('catalogType','movie');
-    }catch(_){ }
-    try{ window.location.reload(); }catch(_){ location.reload(); }
+  if (isLocalAssetMode()) {
+    try {
+      if (href === '/series' || href === '/series/' || href === '/series.html') localStorage.setItem('catalogType', 'tv');
+      if (href === '/' || href === '/index' || href === '/index.html') localStorage.setItem('catalogType', 'movie');
+    } catch (_) { }
+    try { window.location.reload(); } catch (_) { location.reload(); }
     return;
   }
 
-  try{ window.location.href = href; }catch(_){ location.href = href; }
+  try { window.location.href = href; } catch (_) { location.href = href; }
 }
 
-function setupCatalogToggle(){
+function setupCatalogToggle() {
   const bM = el('btnMovies');
   const bS = el('btnSeries');
   if (!bM || !bS) return;
@@ -213,31 +213,31 @@ function setupCatalogToggle(){
   // Some mobile WebViews can fail to generate "click" reliably.
   // Bind touch/pointer end as well, and guard against double-trigger.
   let justNavigated = false;
-  function guard(fn){
-    return (ev)=>{
+  function guard(fn) {
+    return (ev) => {
       if (justNavigated) return;
-      try{ ev && ev.preventDefault && ev.preventDefault(); }catch(_){ }
+      try { ev && ev.preventDefault && ev.preventDefault(); } catch (_) { }
       justNavigated = true;
-      setTimeout(()=>{ justNavigated = false; }, 350);
+      setTimeout(() => { justNavigated = false; }, 350);
       fn();
     };
   }
 
-  const goMovies = guard(()=>{ if (isTv()) curtainNavigate('/'); });
-  const goSeries = guard(()=>{ if (!isTv()) curtainNavigate('/series'); });
+  const goMovies = guard(() => { if (isTv()) curtainNavigate('/'); });
+  const goSeries = guard(() => { if (!isTv()) curtainNavigate('/series'); });
 
   // Click (desktop)
   bM.addEventListener('click', goMovies);
   bS.addEventListener('click', goSeries);
   // Touch/pointer (mobile WebViews)
-  bM.addEventListener('touchend', goMovies, { passive:false });
-  bS.addEventListener('touchend', goSeries, { passive:false });
-  bM.addEventListener('pointerup', goMovies, { passive:false });
-  bS.addEventListener('pointerup', goSeries, { passive:false });
+  bM.addEventListener('touchend', goMovies, { passive: false });
+  bS.addEventListener('touchend', goSeries, { passive: false });
+  bM.addEventListener('pointerup', goMovies, { passive: false });
+  bS.addEventListener('pointerup', goSeries, { passive: false });
 }
 
 
-function updateExploreHeader(){
+function updateExploreHeader() {
   const row = el('rowExplore');
   if (!row) return;
   const titleEl = row.querySelector('.row-head h3');
@@ -248,7 +248,7 @@ function updateExploreHeader(){
   const next = el('next');
 
   // Defaults
-  if (lbtn){
+  if (lbtn) {
     lbtn.dataset.mode = 'letter';
     lbtn.textContent = 'Filtrar letra';
     lbtn.classList.remove('disabled');
@@ -259,22 +259,22 @@ function updateExploreHeader(){
   if (pageInfo) pageInfo.textContent = pageInfo.textContent || '';
 
   // Switch header per view
-  if (state.view === 'collections' || state.view === 'mycollections'){
+  if (state.view === 'collections' || state.view === 'mycollections') {
     if (titleEl) titleEl.textContent = (state.view === 'mycollections') ? 'Mis colecciones' : 'Colecciones';
-    if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'');
+    if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : '');
 
     // Right-side button becomes "Crear colección"
-    if (lbtn){
+    if (lbtn) {
       lbtn.dataset.mode = 'create';
       lbtn.textContent = 'Crear colección';
       // Only show enabled for logged users; otherwise prompt login
-      if (!auth.user){
+      if (!auth.user) {
         lbtn.classList.add('disabled');
       } else {
         lbtn.classList.remove('disabled');
       }
     }
-    if (lmenu){
+    if (lmenu) {
       lmenu.classList.remove('open');
       lmenu.style.display = 'none';
     }
@@ -283,17 +283,17 @@ function updateExploreHeader(){
     return;
   }
 
-  if (state.view === 'collection'){
+  if (state.view === 'collection') {
     const name = state.collectionMeta?.name || 'Colección';
     if (titleEl) titleEl.textContent = name;
 
     // Right-side button becomes Back
-    if (lbtn){
+    if (lbtn) {
       lbtn.dataset.mode = 'back';
       lbtn.textContent = '← Volver';
       lbtn.classList.remove('disabled');
     }
-    if (lmenu){
+    if (lmenu) {
       lmenu.classList.remove('open');
       lmenu.style.display = 'none';
     }
@@ -307,44 +307,44 @@ function updateExploreHeader(){
   if (prev && prev.parentElement) prev.parentElement.style.display = '';
 }
 
-async function enterCollection(collectionId, backView){
+async function enterCollection(collectionId, backView) {
   state.view = 'collection';
   state.collectionId = collectionId;
   state.collectionBackView = backView || 'collections';
   state.collectionItems = null;
   state.collectionMeta = { id: collectionId, name: 'Colección' };
   updateExploreHeader();
-  try{ el('rowExplore')?.scrollIntoView?.({ behavior:'smooth', block:'start' }); }catch(_){ }
+  try { el('rowExplore')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); } catch (_) { }
   loadExplore();
 }
-function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function esc(s) { return String(s || '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
-async function apiJson(url, opts){
+async function apiJson(url, opts) {
   const r = await fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts || {}));
-  const j = await r.json().catch(()=>({}));
+  const j = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(j?.error || 'API_ERROR'), { status: r.status, payload: j });
   return j;
 }
 
-async function refreshMe(){
-  try{
+async function refreshMe() {
+  try {
     const j = await apiJson('/api/auth/me');
     auth.user = j?.user || null;
-  }catch(_){ auth.user = null; }
+  } catch (_) { auth.user = null; }
   syncAuthUi();
 }
 
-function syncAuthUi(){
+function syncAuthUi() {
   const loginBtn = el('authBtn');
   const menuBtn = el('userMenuBtn');
-  if (auth.user){
+  if (auth.user) {
     if (loginBtn) loginBtn.style.display = 'none';
-    if (menuBtn){
+    if (menuBtn) {
       menuBtn.style.display = '';
       menuBtn.textContent = `Menú personal (${auth.user.username})`;
     }
   } else {
-    if (loginBtn){
+    if (loginBtn) {
       loginBtn.style.display = '';
       loginBtn.textContent = 'Login';
     }
@@ -354,7 +354,7 @@ function syncAuthUi(){
 
 
 // --- User menu (Menú personal) ---
-function buildUserMenu(){
+function buildUserMenu() {
   const menu = el('userMenu');
   if (!menu) return;
   menu.innerHTML = [
@@ -364,18 +364,19 @@ function buildUserMenu(){
     `<button class="menu-item" type="button" data-action="favorites" role="menuitem">Favoritos</button>`,
     `<button class="menu-item" type="button" data-action="pending" role="menuitem">Pendientes</button>`,
     `<div class="menu-divider"></div>`,
+    `<button class="menu-item" type="button" data-action="changepass" role="menuitem">Cambiar contraseña</button>`,
     `<button class="menu-item" type="button" data-action="logout" role="menuitem">Salir</button>`
   ].join('');
 }
 
-function closeUserMenu(){
+function closeUserMenu() {
   const menu = el('userMenu');
   const btn = el('userMenuBtn');
   if (!menu || !btn) return;
   menu.classList.remove('open');
-  btn.setAttribute('aria-expanded','false');
+  btn.setAttribute('aria-expanded', 'false');
 }
-function toggleUserMenu(){
+function toggleUserMenu() {
   const menu = el('userMenu');
   const btn = el('userMenuBtn');
   if (!menu || !btn) return;
@@ -384,7 +385,7 @@ function toggleUserMenu(){
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function renderRow(container, items, { top10 = false } = {}){
+function renderRow(container, items, { top10 = false } = {}) {
   if (!container) return;
 
   // Ensure every horizontal row is drag-scrollable, even if rows are re-rendered.
@@ -400,14 +401,14 @@ function renderRow(container, items, { top10 = false } = {}){
 
   container.innerHTML = filtered.map((it, idx) => {
     const title = esc(it.title || it.name || '');
-    const year = it.year || (it.first_air_date ? String(it.first_air_date).slice(0,4) : (it.release_date ? String(it.release_date).slice(0,4) : ''));
+    const year = it.year || (it.first_air_date ? String(it.first_air_date).slice(0, 4) : (it.release_date ? String(it.release_date).slice(0, 4) : ''));
     const poster = it.poster_path ? `${imgBase}${it.poster_path}` : '';
     const type = (it?.type || (tvMode ? 'tv' : 'movie'));
     const id = it.tmdb_id || it.id;
 
     return `
       <div class="row-card" data-id="${id}" data-type="${type}">
-        ${top10 ? `<div class="rank-num">${idx+1}</div>` : ''}
+        ${top10 ? `<div class="rank-num">${idx + 1}</div>` : ''}
         <img class="row-poster" src="${poster}" alt="${title}" loading="lazy" />
         <div class="row-title">${title}</div>
         ${year ? `<div class="row-year">${year}</div>` : ''}
@@ -427,7 +428,7 @@ function renderRow(container, items, { top10 = false } = {}){
   });
 }
 
-function wireRowButtons(){
+function wireRowButtons() {
   document.querySelectorAll('.row-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const row = btn.dataset.row;
@@ -441,7 +442,7 @@ function wireRowButtons(){
 }
 
 // Drag-to-scroll for horizontal rows (mouse + touch)
-function enableDragScroll(scroller){
+function enableDragScroll(scroller) {
   if (!scroller) return;
   if (scroller.__dragBound) return;
   scroller.__dragBound = true;
@@ -457,7 +458,7 @@ function enableDragScroll(scroller){
   const originalSnapType = scroller.style.scrollSnapType;
   const originalScrollBehavior = scroller.style.scrollBehavior;
 
-  function startDrag(clientX){
+  function startDrag(clientX) {
     isDown = true;
     isDragging = false;
     moved = 0;
@@ -465,7 +466,7 @@ function enableDragScroll(scroller){
     startLeft = scroller.scrollLeft;
   }
 
-  function beginDragging(){
+  function beginDragging() {
     if (isDragging) return;
     isDragging = true;
     scroller.classList.add('dragging');
@@ -478,29 +479,29 @@ function enableDragScroll(scroller){
     scroller.style.scrollBehavior = 'auto';
   }
 
-  function moveDrag(clientX, prevent){
+  function moveDrag(clientX, prevent) {
     if (!isDown) return;
     const dx = clientX - startX;
     moved = Math.max(moved, Math.abs(dx));
 
     // Only start "real" dragging after a small threshold.
     // This keeps cards clickable on tap/click.
-    if (!isDragging && moved >= DRAG_THRESHOLD){
+    if (!isDragging && moved >= DRAG_THRESHOLD) {
       beginDragging();
     }
 
-    if (isDragging){
+    if (isDragging) {
       // Write scrollLeft directly for the lowest latency feel.
       scroller.scrollLeft = startLeft - dx;
       if (prevent) prevent();
     }
   }
 
-  function endDrag(){
+  function endDrag() {
     if (!isDown) return;
     isDown = false;
 
-    if (isDragging){
+    if (isDragging) {
       scroller.classList.remove('dragging');
       document.body.classList.remove('no-select');
 
@@ -510,7 +511,7 @@ function enableDragScroll(scroller){
 
       // If we dragged, avoid accidental clicks right after
       scroller.__justDragged = true;
-      setTimeout(()=>{ scroller.__justDragged = false; }, 220);
+      setTimeout(() => { scroller.__justDragged = false; }, 220);
     }
 
     isDragging = false;
@@ -520,15 +521,15 @@ function enableDragScroll(scroller){
   // NOTE: Some Android WebViews / desktop browsers expose PointerEvent but behave inconsistently for mouse drags.
   // We therefore handle mouse dragging via mousedown/mousemove/mouseup always, and reserve Pointer Events here
   // for touch/pen only.
-  if (window.PointerEvent){
-    function onDown(e){
+  if (window.PointerEvent) {
+    function onDown(e) {
       if (e.pointerType === 'mouse') return; // let mouse fallback handle reliably
       startDrag(e.clientX);
       // Capture pointer so we keep receiving move/up even if it leaves the element
-      try{ scroller.setPointerCapture?.(e.pointerId); }catch(_){/* ignore */}
+      try { scroller.setPointerCapture?.(e.pointerId); } catch (_) {/* ignore */ }
     }
-    function onMove(e){
-      moveDrag(e.clientX, ()=>e.preventDefault?.());
+    function onMove(e) {
+      moveDrag(e.clientX, () => e.preventDefault?.());
     }
     // Use capture so we still receive the event even if inner elements stop propagation.
     scroller.addEventListener('pointerdown', onDown, { passive: false, capture: true });
@@ -540,50 +541,50 @@ function enableDragScroll(scroller){
 
   // Mouse fallback (for environments without Pointer Events)
   let mouseMoveBound = false;
-  scroller.addEventListener('mousedown', (e)=>{
+  scroller.addEventListener('mousedown', (e) => {
     // Always handle mouse here (even if PointerEvent exists) for consistent desktop drag.
     if (e.button !== 0) return;
     startDrag(e.clientX);
     if (mouseMoveBound) return;
     mouseMoveBound = true;
-    const onDocMove = (ev)=> moveDrag(ev.clientX, ()=>{ ev.preventDefault(); });
-    const onDocUp = ()=>{
+    const onDocMove = (ev) => moveDrag(ev.clientX, () => { ev.preventDefault(); });
+    const onDocUp = () => {
       endDrag();
       document.removeEventListener('mousemove', onDocMove);
       document.removeEventListener('mouseup', onDocUp);
       mouseMoveBound = false;
     };
-    document.addEventListener('mousemove', onDocMove, { passive:false });
-    document.addEventListener('mouseup', onDocUp, { passive:true });
-  }, { passive:false, capture:true });
+    document.addEventListener('mousemove', onDocMove, { passive: false });
+    document.addEventListener('mouseup', onDocUp, { passive: true });
+  }, { passive: false, capture: true });
 
   // If we dragged, cancel the click in capture phase so cards remain clickable otherwise.
-  scroller.addEventListener('click', (e)=>{
+  scroller.addEventListener('click', (e) => {
     if (!scroller.__justDragged) return;
-    try{ e.preventDefault(); }catch(_){ }
-    try{ e.stopPropagation(); }catch(_){ }
+    try { e.preventDefault(); } catch (_) { }
+    try { e.stopPropagation(); } catch (_) { }
   }, true);
 
   // Prevent browser "ghost" drag behavior (images/links) from hijacking mouse drags.
-  scroller.addEventListener('dragstart', (e)=>{
-    try{ e.preventDefault(); }catch(_){ }
+  scroller.addEventListener('dragstart', (e) => {
+    try { e.preventDefault(); } catch (_) { }
   });
 
   // Touch fallback (for older iOS Safari without Pointer Events)
-  scroller.addEventListener('touchstart', (e)=>{
+  scroller.addEventListener('touchstart', (e) => {
     if (window.PointerEvent) return;
     const t = e.touches && e.touches[0];
     if (!t) return;
     startDrag(t.clientX);
-  }, { passive:false });
-  scroller.addEventListener('touchmove', (e)=>{
+  }, { passive: false });
+  scroller.addEventListener('touchmove', (e) => {
     if (window.PointerEvent) return;
     const t = e.touches && e.touches[0];
     if (!t) return;
-    moveDrag(t.clientX, ()=>{ e.preventDefault(); });
-  }, { passive:false });
-  scroller.addEventListener('touchend', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
-  scroller.addEventListener('touchcancel', ()=>{ if (!window.PointerEvent) endDrag(); }, { passive:true });
+    moveDrag(t.clientX, () => { e.preventDefault(); });
+  }, { passive: false });
+  scroller.addEventListener('touchend', () => { if (!window.PointerEvent) endDrag(); }, { passive: true });
+  scroller.addEventListener('touchcancel', () => { if (!window.PointerEvent) endDrag(); }, { passive: true });
 
   // Prevent image dragging ghost on desktop
   scroller.querySelectorAll('img').forEach(img => {
@@ -592,19 +593,19 @@ function enableDragScroll(scroller){
 }
 
 // Bind drag-scroll to every carousel on the page (and any that get added later).
-function bindAllCarousels(){
+function bindAllCarousels() {
   document.querySelectorAll('.row-scroller').forEach(s => enableDragScroll(s));
 }
 
 // --- Data fetchers ---
-async function fetchGenres(){
+async function fetchGenres() {
   const res = await fetch('/api/genres');
   const data = await res.json();
   state.genres = Array.isArray(data) ? data : [];
   buildGenreMenu();
 }
 
-function buildGenreMenu(){
+function buildGenreMenu() {
   const menu = el('genreMenu');
   if (!menu) return;
 
@@ -618,7 +619,7 @@ function buildGenreMenu(){
   const itemsWrap = menu.querySelector('#genreItems');
   const search = menu.querySelector('#genreSearch');
 
-  function render(filterText){
+  function render(filterText) {
     const ft = String(filterText || '').trim().toLowerCase();
     const visible = items.filter(g => {
       if (!ft) return true;
@@ -631,73 +632,36 @@ function buildGenreMenu(){
   }
 
   render('');
-  if (search){
-    search.addEventListener('input', ()=> render(search.value));
+  if (search) {
+    search.addEventListener('input', () => render(search.value));
   }
 }
 
-// Aggregate across catalog pages optionally filtering by type on client side
-async function fetchAllPagesWithOptionalFilters({ genreId = '', type = '', maxPages = 200 }){
-  const collected = [];
-  const seen = new Set();
-  let consecutiveEmpty = 0;
+// Aggregation across catalog pages was replaced by server-side SQL matching
 
-  for (let p = 1; p <= maxPages; p++){
-    const params = new URLSearchParams({ page: p, pageSize: state.pageSize });
-    if (genreId) params.set('genre', genreId);
-    if (isTv()) { params.set('type','tv'); } else { if (!state.q) params.set('type','movie'); }
-    const res = await fetch('/api/catalog?' + params.toString());
-    if (!res.ok) break;
-    const data = await res.json();
-    const pageItems = (data.items || []);
-
-    let filtered = pageItems;
-    if (type === 'movie' || type === 'tv'){
-      filtered = pageItems.filter(it => it && it.type === type);
-    }
-
-    for (const it of filtered){
-      const id = (it && (it.tmdb_id ?? it.id)) ?? JSON.stringify(it);
-      if (!seen.has(id)){ seen.add(id); collected.push(it); }
-    }
-
-    if (pageItems.length === 0){
-      consecutiveEmpty++;
-      if (consecutiveEmpty >= 3) break;
-    } else {
-      consecutiveEmpty = 0;
-    }
-
-    if (p % 5 === 0 && filtered.length === 0){
-      break;
-    }
-  }
-  return collected;
-}
-
-async function loadPremieresRow(){
+async function loadPremieresRow() {
   const url = isTv() ? '/api/estrenos-tv' : '/api/estrenos';
   const res = await fetch(url + '?' + new URLSearchParams({ limit: 30 }).toString());
   const data = await res.json();
-  const items = (data.items || []).filter(it => isTv() ? ((it?.type||'tv')==='tv') : ((it?.type||'movie')!=='tv'));
+  const items = (data.items || []).filter(it => isTv() ? ((it?.type || 'tv') === 'tv') : ((it?.type || 'movie') !== 'tv'));
   renderRow(el('premieresRow'), items);
 }
 
-async function loadRecentRow(){
-  if (isTv()){
+async function loadRecentRow() {
+  if (isTv()) {
     const res = await fetch('/api/series?' + new URLSearchParams({ page: 1, pageSize: 30 }).toString());
     const data = await res.json();
-    const items = (data.items || []).map(it => ({ ...it, type:'tv', title: it.title || it.name }));
+    const items = (data.items || []).map(it => ({ ...it, type: 'tv', title: it.title || it.name }));
     renderRow(el('recentRow'), items);
     return;
   }
-  const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30, type:'movie' }).toString());
+  const res = await fetch('/api/catalog?' + new URLSearchParams({ page: 1, pageSize: 30, type: 'movie' }).toString());
   const data = await res.json();
   const movies = (data.items || []).filter(it => (it?.type || 'movie') !== 'tv');
   renderRow(el('recentRow'), movies);
 }
 
-async function loadTopRow(){
+async function loadTopRow() {
   if (isTv()) return loadTopRowTv();
   // Pedimos más y luego filtramos para quedarnos SOLO con películas
   const topRaw = await fetchTopToday(50);
@@ -705,7 +669,7 @@ async function loadTopRow(){
   const empty = el('topEmpty');
   const row = el('topRow');
 
-  if (!top.length){
+  if (!top.length) {
     if (row) row.innerHTML = '';
     if (empty) empty.style.display = 'block';
     return;
@@ -714,7 +678,7 @@ async function loadTopRow(){
 
   // Fetch details for each (10 calls max). Keeps server simple.
   const items = await Promise.all(top.map(async (t) => {
-    try{
+    try {
       const id = t.id || t.tmdb_id;
       const type = 'movie';
       const r = await fetch(`/api/movie/${id}`);
@@ -724,31 +688,31 @@ async function loadTopRow(){
         tmdb_id: d.id,
         type,
         title: d.title,
-        year: (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        year: (d.first_air_date ? String(d.first_air_date).slice(0, 4) : ''),
         poster_path: d.poster_path,
       };
-    }catch(_){
+    } catch (_) {
       const id = t.id || t.tmdb_id;
-      return { tmdb_id: id, id, type: 'movie', title: `#${id}`, poster_path: null, year:'' };
+      return { tmdb_id: id, id, type: 'movie', title: `#${id}`, poster_path: null, year: '' };
     }
   }));
 
   renderRow(row, items, { top10: true });
 }
 
-async function loadTopRowTv(){
+async function loadTopRowTv() {
   const topRaw = await fetchTopToday(50);
   const top = topRaw.filter(t => (t?.type || 'movie') === 'tv').slice(0, 10);
   const empty = el('topEmpty');
   const row = el('topRow');
-  if (!top.length){
+  if (!top.length) {
     if (row) row.innerHTML = '';
     if (empty) empty.style.display = 'block';
     return;
   }
   if (empty) empty.style.display = 'none';
   const items = await Promise.all(top.map(async (t) => {
-    try{
+    try {
       const id = t.id || t.tmdb_id;
       const r = await fetch(`/api/tv/${id}`);
       const d = await r.json();
@@ -757,52 +721,52 @@ async function loadTopRowTv(){
         tmdb_id: d.id,
         type: 'tv',
         title: (d.title || d.name),
-        year: (d.first_air_date ? String(d.first_air_date).slice(0,4) : ''),
+        year: (d.first_air_date ? String(d.first_air_date).slice(0, 4) : ''),
         poster_path: d.poster_path,
       };
-    }catch(_){
+    } catch (_) {
       const id = t.id || t.tmdb_id;
-      return { tmdb_id: id, id, type: 'tv', title: `#${id}`, poster_path: null, year:'' };
+      return { tmdb_id: id, id, type: 'tv', title: `#${id}`, poster_path: null, year: '' };
     }
   }));
   renderRow(row, items, { top10: true });
 }
 
-async function loadBestSeriesRow(){
+async function loadBestSeriesRow() {
   const row = el('bestAppRow');
   const empty = el('bestAppEmpty');
   if (!row) return;
-  try{
+  try {
     const r = await fetch('/api/series/top-rated?' + new URLSearchParams({ limit: 10 }).toString());
     const data = await r.json();
     const items = Array.isArray(data) ? data : (data.items || []);
-    if (!items.length){
+    if (!items.length) {
       row.innerHTML = '';
       if (empty) empty.style.display = '';
       return;
     }
     if (empty) empty.style.display = 'none';
     renderRow(row, items, { top10: false });
-  }catch(_){
+  } catch (_) {
     row.innerHTML = '';
     if (empty) empty.style.display = '';
   }
 }
 
-async function loadBestAppRow(){
+async function loadBestAppRow() {
   const row = el('bestAppRow');
   const empty = el('bestAppEmpty');
   if (!row) return;
-  try{
+  try {
     const items = await fetchBestApp(10);
-    if (!items.length){
+    if (!items.length) {
       row.innerHTML = '';
       if (empty) empty.style.display = '';
       return;
     }
     if (empty) empty.style.display = 'none';
     renderRow(row, items, { top10: false });
-  }catch(_){
+  } catch (_) {
     row.innerHTML = '';
     if (empty) empty.style.display = '';
   }
@@ -810,7 +774,7 @@ async function loadBestAppRow(){
 
 
 // --- Collections ---
-function openCollectionsModal(title, html){
+function openCollectionsModal(title, html) {
   const m = el('collectionsModal');
   const t = el('collectionsTitle');
   const b = el('collectionsBody');
@@ -818,12 +782,12 @@ function openCollectionsModal(title, html){
   if (b) b.innerHTML = html || '';
   if (m) m.classList.add('open');
 }
-function closeCollectionsModal(){
+function closeCollectionsModal() {
   const m = el('collectionsModal');
   if (m) m.classList.remove('open');
 }
 
-async function fileToSmallWebpDataUrl(file){
+async function fileToSmallWebpDataUrl(file) {
   // Requirements: optional image, max 320x180, WEBP, <= 40KB (approx)
   const maxW = 320, maxH = 180;
   const blob = await new Promise((resolve, reject) => {
@@ -845,7 +809,7 @@ async function fileToSmallWebpDataUrl(file){
 
   // Try a couple of qualities to keep small
   const qualities = [0.75, 0.6, 0.5, 0.4];
-  for (const q of qualities){
+  for (const q of qualities) {
     const dataUrl = canvas.toDataURL('image/webp', q);
     // Rough base64 size check
     const b64 = dataUrl.split(',')[1] || '';
@@ -856,7 +820,7 @@ async function fileToSmallWebpDataUrl(file){
   return canvas.toDataURL('image/webp', 0.35);
 }
 
-async function loadCollections(){
+async function loadCollections() {
   const grid = el('grid');
   const pageInfo = el('pageInfo');
   if (!grid) return;
@@ -874,7 +838,7 @@ async function loadCollections(){
         <div class="collection-meta">
           <div class="collection-name">${esc(c.name)}</div>
           <div class="collection-user">por ${esc(c.username || '')}</div>
-          <div class="collection-count">${Number(c.items_count||0)} películas</div>
+          <div class="collection-count">${Number(c.items_count || 0)} películas</div>
         </div>
       </div>
     `;
@@ -882,10 +846,10 @@ async function loadCollections(){
 
   // Only cards (header is handled by the Explore row header)
   grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no hay colecciones.</div>'}</div>`;
-  if (pageInfo) pageInfo.textContent = (state.view==='collections'||state.view==='mycollections')?'': 'Colecciones';
+  if (pageInfo) pageInfo.textContent = (state.view === 'collections' || state.view === 'mycollections') ? '' : 'Colecciones';
 
   grid.querySelectorAll('.collection-card').forEach(card => {
-    card.addEventListener('click', async ()=>{
+    card.addEventListener('click', async () => {
       const id = card.dataset.id;
       enterCollection(id, 'collections');
     });
@@ -893,11 +857,11 @@ async function loadCollections(){
 }
 
 // Private view: user's own collections (manage)
-async function loadMyCollections(){
+async function loadMyCollections() {
   const grid = el('grid');
   const pageInfo = el('pageInfo');
   if (!grid) return;
-  if (!auth.user){
+  if (!auth.user) {
     // If not logged in, fall back to public collections.
     state.view = 'collections';
     updateHomeVisibility();
@@ -919,7 +883,7 @@ async function loadMyCollections(){
         <div class="collection-meta">
           <div class="collection-name">${esc(c.name)}</div>
           <div class="collection-user">por ${esc(c.username || auth.user?.username || '')}</div>
-          <div class="collection-count">${Number(c.items_count||0)} películas</div>
+          <div class="collection-count">${Number(c.items_count || 0)} películas</div>
           <div class="collection-actions">
             <button class="ghost" type="button" data-action="edit" data-id="${c.id}">Editar</button>
             <button class="ghost" type="button" data-action="delete" data-id="${c.id}">Eliminar</button>
@@ -931,23 +895,23 @@ async function loadMyCollections(){
 
   // Only cards (header is handled by the Explore row header)
   grid.innerHTML = `<div class="collections-grid">${cards || '<div class="mute">Aún no has creado colecciones.</div>'}</div>`;
-  if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Mis colecciones');
+  if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Mis colecciones');
 
   // Clicking a card opens the collection like normal catalog
   grid.querySelectorAll('.collection-card').forEach(card => {
-    card.addEventListener('click', ()=> enterCollection(card.dataset.id, 'mycollections'));
+    card.addEventListener('click', () => enterCollection(card.dataset.id, 'mycollections'));
   });
 
   // Edit
   grid.querySelectorAll('button[data-action="edit"]').forEach(b => {
-    b.addEventListener('click', async (e)=>{
+    b.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = b.dataset.id;
-      try{
-        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method:'GET', headers:{} });
+      try {
+        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method: 'GET', headers: {} });
         openEditCollectionFlow(d);
-      }catch(_){
+      } catch (_) {
         showToast('No se pudo cargar la colección', 'error');
       }
     });
@@ -955,24 +919,24 @@ async function loadMyCollections(){
 
   // Delete
   grid.querySelectorAll('button[data-action="delete"]').forEach(b => {
-    b.addEventListener('click', async (e)=>{
+    b.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = b.dataset.id;
       if (!confirm('¿Eliminar esta colección? Esta acción no se puede deshacer.')) return;
-      try{
-        await apiJson('/api/collections/' + encodeURIComponent(id), { method:'DELETE' });
+      try {
+        await apiJson('/api/collections/' + encodeURIComponent(id), { method: 'DELETE' });
         showToast('Colección eliminada');
         loadExplore();
-      }catch(_){
+      } catch (_) {
         showToast('No se pudo eliminar', 'error');
       }
     });
   });
 }
 
-function openCreateCollectionFlow(){
-  if (!auth.user){ openAuth(); return; }
+function openCreateCollectionFlow() {
+  if (!auth.user) { openAuth(); return; }
 
   // Step 1: name + optional image
   const modalHtml = `
@@ -998,26 +962,26 @@ function openCreateCollectionFlow(){
   let imageDataUrl = '';
 
   const fileInput = el('colImageFile');
-  if (fileInput){
-    fileInput.addEventListener('change', async ()=>{
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
       const f = fileInput.files && fileInput.files[0];
       if (!f) return;
-      try{
+      try {
         const dataUrl = await fileToSmallWebpDataUrl(f);
         imageDataUrl = dataUrl;
         const prev = el('colImagePreview');
         if (prev) prev.innerHTML = `<img src="${dataUrl}" alt="preview" />`;
-      }catch(_){
+      } catch (_) {
         showToast('No se pudo procesar la imagen', 'error');
       }
     });
   }
 
-  el('colCancel1')?.addEventListener('click', ()=> closeCollectionsModal());
+  el('colCancel1')?.addEventListener('click', () => closeCollectionsModal());
 
-  el('colNext1')?.addEventListener('click', ()=>{
+  el('colNext1')?.addEventListener('click', () => {
     const name = (el('colNameInput')?.value || '').trim();
-    if (!name || name.length < 2){
+    if (!name || name.length < 2) {
       showToast('Pon un nombre (mín. 2 caracteres)', 'error');
       return;
     }
@@ -1025,7 +989,7 @@ function openCreateCollectionFlow(){
   });
 }
 
-function openPickMoviesStep(colName, coverImage){
+function openPickMoviesStep(colName, coverImage) {
   const html = `
     <div class="form-row">
       <label>Añadir películas</label>
@@ -1044,36 +1008,36 @@ function openPickMoviesStep(colName, coverImage){
   openCollectionsModal('Añadir películas', html);
 
   const selected = new Map(); // tmdb_id -> {title, year}
-  const renderSelected = ()=>{
+  const renderSelected = () => {
     const box = el('colSelectedList');
     if (!box) return;
     const arr = Array.from(selected.values());
-    box.innerHTML = arr.length ? arr.map(it => `<span class="pill">${esc(it.title)}${it.year?` (${it.year})`:''}</span>`).join('') : `<span class="mute">Ninguna</span>`;
+    box.innerHTML = arr.length ? arr.map(it => `<span class="pill">${esc(it.title)}${it.year ? ` (${it.year})` : ''}</span>`).join('') : `<span class="mute">Ninguna</span>`;
   };
   renderSelected();
 
-  el('colBack2')?.addEventListener('click', ()=> openCreateCollectionFlow());
+  el('colBack2')?.addEventListener('click', () => openCreateCollectionFlow());
 
   // Live search (debounced)
   const input = el('colSearchInput');
   const results = el('colSearchResults');
   let t;
-  async function doSearch(){
+  async function doSearch() {
     const q = (input?.value || '').trim();
     if (!results) return;
-    if (!q){
+    if (!q) {
       results.innerHTML = '';
       return;
     }
-    try{
+    try {
       const r = await fetch('/api/movies/search-lite?q=' + encodeURIComponent(q) + '&limit=20');
       const j = await r.json();
       const list = Array.isArray(j) ? j : (j.items || []);
       results.innerHTML = list.map(it => {
         const inSel = selected.has(String(it.tmdb_id));
         return `
-          <div class="result-row" data-id="${it.tmdb_id}" data-title="${esc(it.title)}" data-year="${it.year||''}">
-            <div class="result-text">${esc(it.title)}${it.year?` (${it.year})`:''}</div>
+          <div class="result-row" data-id="${it.tmdb_id}" data-title="${esc(it.title)}" data-year="${it.year || ''}">
+            <div class="result-text">${esc(it.title)}${it.year ? ` (${it.year})` : ''}</div>
             <div class="result-actions">
               <button class="iconbtn" data-action="add" title="Añadir">+</button>
               <button class="iconbtn" data-action="del" title="Eliminar">−</button>
@@ -1081,47 +1045,47 @@ function openPickMoviesStep(colName, coverImage){
           </div>
         `;
       }).join('') || `<div class="mute">Sin resultados</div>`;
-    }catch(_){
+    } catch (_) {
       results.innerHTML = `<div class="mute">Error buscando</div>`;
     }
   }
-  if (input){
-    input.addEventListener('input', ()=>{
+  if (input) {
+    input.addEventListener('input', () => {
       clearTimeout(t);
       t = setTimeout(doSearch, 120);
     });
   }
 
-  if (results){
-    results.addEventListener('click', (e)=>{
+  if (results) {
+    results.addEventListener('click', (e) => {
       const row = e.target?.closest?.('.result-row');
       if (!row) return;
       const id = String(row.dataset.id);
       const title = row.dataset.title || '';
       const year = row.dataset.year || '';
       const act = e.target?.closest?.('button')?.dataset?.action;
-      if (act === 'add'){
+      if (act === 'add') {
         selected.set(id, { tmdb_id: Number(id), title, year });
         renderSelected();
-      } else if (act === 'del'){
+      } else if (act === 'del') {
         selected.delete(id);
         renderSelected();
       }
     });
   }
 
-  el('colFinish2')?.addEventListener('click', async ()=>{
+  el('colFinish2')?.addEventListener('click', async () => {
     const items = Array.from(selected.values()).map(x => Number(x.tmdb_id));
-    try{
+    try {
       await apiJson('/api/collections', {
-        method:'POST',
+        method: 'POST',
         body: JSON.stringify({ name: colName, cover_image: coverImage || null, items })
       });
       closeCollectionsModal();
       showToast('Colección creada');
       state.view = 'collections';
       loadExplore();
-    }catch(err){
+    } catch (err) {
       const code = err?.payload?.error || 'ERROR';
       const map = {
         NAME_INVALID: 'Nombre inválido.',
@@ -1138,13 +1102,13 @@ function openPickMoviesStep(colName, coverImage){
 }
 
 // Edit flow (reuses the same 2-step UX as creation)
-function openEditCollectionFlow(existing){
-  if (!auth.user){ openAuth(); return; }
+function openEditCollectionFlow(existing) {
+  if (!auth.user) { openAuth(); return; }
   const existingName = String(existing?.name || '').trim();
   const existingCover = existing?.cover_image || '';
   const existingItems = Array.isArray(existing?.items)
     ? existing.items.map(x => ({ tmdb_id: Number(x.tmdb_id), title: String(x.title || x.name || '').trim(), year: x.year || x.release_year || '' }))
-        .filter(o => Number.isFinite(o.tmdb_id) && o.tmdb_id > 0)
+      .filter(o => Number.isFinite(o.tmdb_id) && o.tmdb_id > 0)
     : [];
 
   // Step 1
@@ -1170,35 +1134,35 @@ function openEditCollectionFlow(existing){
 
   let imageDataUrl = existingCover || '';
   const preview = el('colImagePreview');
-  if (preview){
+  if (preview) {
     preview.innerHTML = imageDataUrl ? `<img src="${imageDataUrl}" />` : '';
   }
 
   const fileInput = el('colImageFile');
-  if (fileInput){
-    fileInput.addEventListener('change', async ()=>{
+  if (fileInput) {
+    fileInput.addEventListener('change', async () => {
       const f = fileInput.files && fileInput.files[0];
       if (!f) return;
-      try{
+      try {
         imageDataUrl = await fileToSmallWebpDataUrl(f);
         if (preview) preview.innerHTML = `<img src="${imageDataUrl}" />`;
-      }catch(_){
+      } catch (_) {
         showToast('No se pudo procesar la imagen', 'error');
       }
     });
   }
 
-  el('colCancel1')?.addEventListener('click', ()=> closeCollectionsModal());
-  el('colNext1')?.addEventListener('click', ()=>{
+  el('colCancel1')?.addEventListener('click', () => closeCollectionsModal());
+  el('colNext1')?.addEventListener('click', () => {
     const name = String(el('colNameInput')?.value || '').trim();
-    if (!name || name.length < 2){ showToast('Pon un nombre (mín. 2 caracteres)', 'error'); return; }
+    if (!name || name.length < 2) { showToast('Pon un nombre (mín. 2 caracteres)', 'error'); return; }
     // Step 2
     openPickMoviesModal({
       title: 'Editar películas',
       initialItems: existingItems,
       onBack: () => openEditCollectionFlow(existing),
-      onFinish: async (finalItems)=>{
-        try{
+      onFinish: async (finalItems) => {
+        try {
           await apiJson('/api/collections/' + encodeURIComponent(existing.id), {
             method: 'PUT',
             body: JSON.stringify({ name, cover_image: imageDataUrl || null, items: finalItems })
@@ -1206,7 +1170,7 @@ function openEditCollectionFlow(existing){
           closeCollectionsModal();
           showToast('Colección actualizada');
           loadExplore();
-        }catch(_){
+        } catch (_) {
           showToast('No se pudo actualizar', 'error');
         }
       }
@@ -1214,14 +1178,14 @@ function openEditCollectionFlow(existing){
   });
 }
 
-function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
+function openPickMoviesModal({ title, initialItems, onBack, onFinish }) {
   // initialItems can be [number] or [{tmdb_id,title,year}]
   const selected = new Map(); // tmdb_id(string) -> {tmdb_id:number,title,year}
   (Array.isArray(initialItems) ? initialItems : []).forEach(it => {
-    if (typeof it === 'number'){
+    if (typeof it === 'number') {
       const id = String(it);
       selected.set(id, { tmdb_id: Number(it), title: id, year: '' });
-    } else if (it && typeof it === 'object'){
+    } else if (it && typeof it === 'object') {
       const idn = Number(it.tmdb_id);
       if (!Number.isFinite(idn) || idn <= 0) return;
       const id = String(idn);
@@ -1247,7 +1211,7 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
   `;
   openCollectionsModal(title || 'Añadir películas', modalHtml2);
 
-  function renderSelected(){
+  function renderSelected() {
     const box = el('colSelected');
     if (!box) return;
     const arr = Array.from(selected.values());
@@ -1261,11 +1225,11 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
   const results = el('colMovieResults');
   let tmr = null;
 
-  async function doSearch(q){
+  async function doSearch(q) {
     if (!results) return;
     const qq = String(q || '').trim();
-    if (qq.length < 2){ results.innerHTML = ''; return; }
-    try{
+    if (qq.length < 2) { results.innerHTML = ''; return; }
+    try {
 
       const r = await fetch('/api/movies/search-lite?q=' + encodeURIComponent(qq) + '&limit=20');
       const j = await r.json();
@@ -1276,7 +1240,7 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
         const year = it.year ? ` (${it.year})` : '';
         const inSel = selected.has(id);
         return `
-          <div class="result-row" data-id="${esc(id)}" data-title="${esc(it.title || '')}" data-year="${esc(String(it.year||''))}">
+          <div class="result-row" data-id="${esc(id)}" data-title="${esc(it.title || '')}" data-year="${esc(String(it.year || ''))}">
             <div class="result-text">${esc(it.title || '')}${esc(year)}</div>
             <div class="result-actions">
               <button class="iconbtn" data-action="add" title="Añadir" ${inSel ? 'disabled' : ''}>+</button>
@@ -1287,29 +1251,29 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
       }).join('');
 
       results.innerHTML = list || `<div class="mute">Sin resultados.</div>`;
-    }catch(_){
+    } catch (_) {
       results.innerHTML = `<div class="mute">Error buscando.</div>`;
     }
   }
 
-  if (input){
-    input.addEventListener('input', ()=>{
+  if (input) {
+    input.addEventListener('input', () => {
       if (tmr) clearTimeout(tmr);
-      tmr = setTimeout(()=> doSearch(input.value), 120);
+      tmr = setTimeout(() => doSearch(input.value), 120);
     });
   }
 
-  if (results){
-    results.addEventListener('click', (e)=>{
+  if (results) {
+    results.addEventListener('click', (e) => {
       const row = e.target?.closest?.('.result-row');
       if (!row) return;
       const id = String(row.dataset.id || '');
       const act = e.target?.closest?.('button')?.dataset?.action;
       const title = row.dataset.title || id;
       const year = row.dataset.year || '';
-      if (act === 'add'){
+      if (act === 'add') {
         selected.set(id, { tmdb_id: Number(id), title, year });
-      } else if (act === 'del'){
+      } else if (act === 'del') {
         selected.delete(id);
       }
       renderSelected();
@@ -1317,20 +1281,20 @@ function openPickMoviesModal({ title, initialItems, onBack, onFinish }){
     });
   }
 
-  el('colBack2')?.addEventListener('click', ()=>{
+  el('colBack2')?.addEventListener('click', () => {
     if (typeof onBack === 'function') return onBack();
     closeCollectionsModal();
   });
 
-  el('colFinish')?.addEventListener('click', ()=>{
+  el('colFinish')?.addEventListener('click', () => {
     const arr = Array.from(selected.values()).map(x => Number(x.tmdb_id)).filter(n => Number.isFinite(n) && n > 0);
-    if (!arr.length){ showToast('Añade al menos una película', 'error'); return; }
+    if (!arr.length) { showToast('Añade al menos una película', 'error'); return; }
     if (typeof onFinish === 'function') onFinish(arr);
   });
 }
 
 
-async function loadExplore(){
+async function loadExplore() {
   const seq = ++loadSeq;
   const pageInfo = el('pageInfo');
   const grid = el('grid');
@@ -1342,33 +1306,33 @@ async function loadExplore(){
   updateHomeVisibility();
 
   // Immediate feedback so the UI doesn't look "stuck"
-  if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Cargando…');
+  if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Cargando…');
   if (grid) grid.innerHTML = '';
 
 
   // Special view: Collections
-  if (state.view === 'collections'){
+  if (state.view === 'collections') {
     updateHomeVisibility();
-    try{
+    try {
       await loadCollections();
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (state.view==='collections'||state.view==='mycollections')?'': 'Colecciones';
-    }catch(_){
+      if (pageInfo) pageInfo.textContent = (state.view === 'collections' || state.view === 'mycollections') ? '' : 'Colecciones';
+    } catch (_) {
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando colecciones');
+      if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Error cargando colecciones');
     }
     return;
   }
 
   // Special view: A single collection displayed like the normal catalog grid
-  if (state.view === 'collection'){
+  if (state.view === 'collection') {
     updateHomeVisibility();
-    try{
+    try {
       // If we don't have items yet, fetch them
-      if (!state.collectionMeta || !Array.isArray(state.collectionItems)){
+      if (!state.collectionMeta || !Array.isArray(state.collectionItems)) {
         const id = state.collectionMeta?.id || state.collectionId;
         if (!id) throw new Error('NO_COLLECTION_ID');
-        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method:'GET', headers:{} });
+        const d = await apiJson('/api/collections/' + encodeURIComponent(id), { method: 'GET', headers: {} });
         state.collectionMeta = { id: d.id, name: d.name, username: d.username, items_count: d.items_count };
         state.collectionItems = d.items || [];
       }
@@ -1393,35 +1357,35 @@ async function loadExplore(){
       // No pagination in a collection view
       state.totalPages = 1;
       state.page = 1;
-      if (pageInfo){
+      if (pageInfo) {
         const meta = state.collectionMeta || {};
         const user = meta.username ? `por ${meta.username}` : '';
         const cnt = Number(meta.items_count || items.length || 0);
         pageInfo.textContent = [user, `${cnt} películas`].filter(Boolean).join(' · ');
       }
-    }catch(_){
+    } catch (_) {
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando la colección');
+      if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Error cargando la colección');
     }
     return;
   }
 
   // Special view: My Collections (manage)
-  if (state.view === 'mycollections'){
+  if (state.view === 'mycollections') {
     updateHomeVisibility();
-    try{
+    try {
       await loadMyCollections();
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Mis colecciones');
-    }catch(_){
+      if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Mis colecciones');
+    } catch (_) {
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando tus colecciones');
+      if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Error cargando tus colecciones');
     }
     return;
   }
 
   // Special views: Recommended / My Ratings / Pending / Favorites
-  if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending' || state.view === 'favorites'){
+  if (state.view === 'recommended' || state.view === 'myratings' || state.view === 'pending' || state.view === 'favorites') {
     updateHomeVisibility();
     const params = new URLSearchParams({ page: String(state.page), pageSize: String(state.pageSize || 30) });
     const endpoint = state.view === 'recommended'
@@ -1431,8 +1395,8 @@ async function loadExplore(){
         : (state.view === 'pending'
           ? ('/api/pending?' + params.toString())
           : ('/api/favorites?' + params.toString())));
-    try{
-      const data = await apiJson(endpoint, { method:'GET', headers: {} });
+    try {
+      const data = await apiJson(endpoint, { method: 'GET', headers: {} });
       if (seq !== loadSeq) return;
       const items = data?.results || [];
       grid.innerHTML = items.map(item => {
@@ -1451,7 +1415,7 @@ async function loadExplore(){
               ? `<div class="card-actions"><button class="ghost" data-action="delrating" data-id="${item.tmdb_id}">Eliminar</button></div>`
               : '';
         return `
-          <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
+          <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type || (isTv() ? "tv" : "movie"))}">
             <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
             <div class="meta">
               <div class="title">${esc(item.title || item.name || '')}</div>
@@ -1466,21 +1430,21 @@ async function loadExplore(){
       grid.querySelectorAll('.card').forEach(elc => {
         elc.addEventListener('click', (e) => {
           const btn = e.target?.closest?.('button[data-action="watched"]');
-          if (btn){
+          if (btn) {
             e.preventDefault();
             e.stopPropagation();
             markPendingWatched(btn.dataset.id, btn.dataset.type || elc.dataset.type || 'movie');
             return;
           }
           const btn2 = e.target?.closest?.('button[data-action="unfav"]');
-          if (btn2){
+          if (btn2) {
             e.preventDefault();
             e.stopPropagation();
             removeFavoriteFromList(btn2.dataset.id, btn2.dataset.type || elc.dataset.type || 'movie');
             return;
           }
           const btn3 = e.target?.closest?.('button[data-action="delrating"]');
-          if (btn3){
+          if (btn3) {
             e.preventDefault();
             e.stopPropagation();
             removeRatingFromList(btn3.dataset.id);
@@ -1490,9 +1454,9 @@ async function loadExplore(){
         });
       });
       state.totalPages = Math.max(1, Number(data.totalPages) || 1);
-      if (pageInfo){
+      if (pageInfo) {
         // En secciones personales y colecciones no mostramos el subtexto gris (pageInfo)
-        if (['myratings','favorites','pending','mycollections','collections'].includes(state.view)){
+        if (['myratings', 'favorites', 'pending', 'mycollections', 'collections'].includes(state.view)) {
           pageInfo.textContent = '';
         } else {
           const label = state.view === 'recommended'
@@ -1502,18 +1466,18 @@ async function loadExplore(){
               : (state.view === 'pending'
                 ? 'Pendientes'
                 : 'Favoritos'));
-          pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults||0)} resultados`;
+          pageInfo.textContent = `${label} · Página ${state.page} de ${state.totalPages} · ${Number(data.totalResults || 0)} resultados`;
         }
       }
-    }catch(e){
+    } catch (e) {
       if (seq !== loadSeq) return;
-      if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando la lista');
+      if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Error cargando la lista');
     }
     return;
   }
 
   // Letter filter mode (server-side, alphabetic, 30 per page)
-  if (state.letter){
+  if (state.letter) {
     const params = new URLSearchParams({
       letter: state.letter,
       page: String(state.page),
@@ -1524,9 +1488,9 @@ async function loadExplore(){
     const data = await res.json();
 
     const items = (data.items || []);
-const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
+    const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
     grid.innerHTML = filtered.map(item => `
-      <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
+      <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type || (isTv() ? "tv" : "movie"))}">
         <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
         <div class="meta">
           <div class="title">${esc(item.title || item.name || '')}</div>
@@ -1541,9 +1505,9 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
 
     state.totalPages = Math.max(1, Number(data.totalPages) || 1);
     state.page = Math.min(Math.max(1, Number(data.page) || state.page), state.totalPages);
-    if (pageInfo){
+    if (pageInfo) {
       const bucket = (data.letter || state.letter) === '#' ? '#' : (data.letter || state.letter);
-      pageInfo.textContent = `Letra ${bucket} · Página ${state.page} de ${state.totalPages} · ${Number(data.total||0)} resultados`;
+      pageInfo.textContent = `Letra ${bucket} · Página ${state.page} de ${state.totalPages} · ${Number(data.total || 0)} resultados`;
     }
     return;
   }
@@ -1557,43 +1521,43 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
 
   // Home: show random titles by default so the grid always feels fresh.
   const isHomeNoFilters = !state.q && !state.actor && !state.genre && !state.letter;
-  if (isHomeNoFilters && state.random){
+  if (isHomeNoFilters && state.random) {
     params.set('random', '1');
   }
 
   const endpoint = (state.actor && !state.clientGenreItems)
-    ? (function(){
-        const p = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
-        if (state.q) p.set('q', state.q);
-        if (state.genre) p.set('genre', state.genre);
-        // Actor search is separated for movies vs series
-        return (isTv()
-          ? '/api/series/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString()
-          : '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString());
-      })()
+    ? (function () {
+      const p = new URLSearchParams({ page: state.page, pageSize: state.pageSize });
+      if (state.q) p.set('q', state.q);
+      if (state.genre) p.set('genre', state.genre);
+      // Actor search is separated for movies vs series
+      return (isTv()
+        ? '/api/series/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString()
+        : '/api/movies/by-actor?name=' + encodeURIComponent(state.actor) + '&' + p.toString());
+    })()
     : (state.q && state.q.length > 0
-        ? '/api/catalog?' + params.toString()
-        : (isTv() ? '/api/series?' + params.toString() : '/api/movies?' + params.toString()));
+      ? '/api/catalog?' + params.toString()
+      : (isTv() ? '/api/series?' + params.toString() : '/api/movies?' + params.toString()));
 
   let data;
-  try{
+  try {
     const res = await fetch(endpoint);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     data = await res.json();
     if (seq !== loadSeq) return;
-  }catch(e){
+  } catch (e) {
     if (seq !== loadSeq) return;
-    if (pageInfo) pageInfo.textContent = (['collections','mycollections','ratings','favorites','pending'].includes(state.view)?'':'Error cargando el catálogo');
+    if (pageInfo) pageInfo.textContent = (['collections', 'mycollections', 'ratings', 'favorites', 'pending'].includes(state.view) ? '' : 'Error cargando el catálogo');
     console.error(e);
     return;
   }
 
   const items = (data.items || []);
-const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
+  const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : items.filter(item => (item?.type || 'movie') !== 'tv');
   // In the main explore grid we don't show per-card action buttons.
   const actions = '';
   grid.innerHTML = filtered.map(item => `
-    <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type|| (isTv() ? "tv" : "movie"))}">
+    <div class="card" data-id="${item.tmdb_id}" data-type="${(item?.type || (isTv() ? "tv" : "movie"))}">
       <img class="poster" src="${imgBase}${item.poster_path || ''}" onerror="this.src='';this.style.background='#222'" />
       <div class="meta">
         <div class="title">${esc(item.title || item.name || '')}</div>
@@ -1611,9 +1575,9 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
   const totalPages = Math.max(1, Number(data.totalPages) || Math.ceil(total / state.pageSize) || 1);
   state.totalPages = totalPages;
   state.page = Math.min(Math.max(1, Number(data.page) || state.page), totalPages);
-  if (pageInfo){
+  if (pageInfo) {
     const parts = [];
-    if (state.genre){
+    if (state.genre) {
       const g = (state.genres || []).find(x => String(x.id) === String(state.genre));
       parts.push(g ? `Categoría: ${g.name}` : 'Categoría');
     }
@@ -1624,21 +1588,21 @@ const filtered = isTv() ? items.filter(item => (item?.type || 'tv') === 'tv') : 
   }
 }
 
-function buildLetterMenu(){
+function buildLetterMenu() {
   const menu = el('letterMenu');
   if (!menu) return;
   // "Todas" clears the letter filter and returns to the general catalog.
   const letters = [''];
   // # bucket for titles that start with numbers/symbols
   letters.push('#');
-  for (let i=65;i<=90;i++) letters.push(String.fromCharCode(i));
+  for (let i = 65; i <= 90; i++) letters.push(String.fromCharCode(i));
   menu.innerHTML = letters.map(ch => {
     const label = ch === '' ? 'Todas' : ch;
     return `<button class="letter-item" type="button" data-letter="${ch}" role="menuitem">${label}</button>`;
   }).join('');
 }
 
-function setLetterFilter(letter){
+function setLetterFilter(letter) {
   const btn = el('letterFilterBtn');
   state.letter = String(letter || '').trim();
   state.page = 1;
@@ -1656,12 +1620,12 @@ function setLetterFilter(letter){
   if (actor) actor.value = '';
   const gbtn = el('genreBtn');
   if (gbtn) gbtn.textContent = 'Categorías';
-  if (btn){
+  if (btn) {
     btn.textContent = state.letter ? `Filtrar letra: ${state.letter}` : 'Filtrar letra';
   }
   // Visual active state in menu
   const menu = el('letterMenu');
-  if (menu){
+  if (menu) {
     menu.querySelectorAll('.letter-item').forEach(b => {
       b.classList.toggle('active', b.dataset.letter === state.letter);
     });
@@ -1669,7 +1633,7 @@ function setLetterFilter(letter){
   loadExplore();
 }
 
-function updateHomeVisibility(){
+function updateHomeVisibility() {
   const hasFilter = !!(state.genre || state.letter || state.q || state.actor);
   const show = !hasFilter && (state.view === 'home');
   const top = el('rowTop');
@@ -1682,17 +1646,17 @@ function updateHomeVisibility(){
   if (rec) rec.style.display = show ? '' : 'none';
 }
 
-async function refreshPendingInModal(tmdbId, mediaType){
+async function refreshPendingInModal(tmdbId, mediaType) {
   const box = el('pendingBox');
   const btn = el('pendingToggleBtn');
   if (!box || !btn) return;
-  if (!auth.user){
+  if (!auth.user) {
     box.style.display = 'none';
     return;
   }
   box.style.display = '';
-  try{
-    const t = (String(mediaType||'movie') === 'tv') ? 'tv' : 'movie';
+  try {
+    const t = (String(mediaType || 'movie') === 'tv') ? 'tv' : 'movie';
     const j = await apiJson('/api/pending/' + encodeURIComponent(tmdbId) + '?type=' + encodeURIComponent(t));
     const isPending = !!j?.pending;
     btn.dataset.pending = isPending ? '1' : '0';
@@ -1700,7 +1664,7 @@ async function refreshPendingInModal(tmdbId, mediaType){
     // Icon only
     const icon = el('pendingIcon');
     if (icon) icon.textContent = '🕒';
-  }catch(_){
+  } catch (_) {
     btn.dataset.pending = '0';
     btn.classList.remove('active');
     const icon = el('pendingIcon');
@@ -1708,43 +1672,43 @@ async function refreshPendingInModal(tmdbId, mediaType){
   }
 }
 
-async function togglePendingFromModal(){
-  if (!auth.user){ openAuth(); return; }
+async function togglePendingFromModal() {
+  if (!auth.user) { openAuth(); return; }
   const id = currentDetail?.id;
   const type = currentDetail?.type || 'movie';
   if (!id) return;
   const btn = el('pendingToggleBtn');
   const isPending = btn && btn.dataset.pending === '1';
-  try{
-    if (isPending){
-      await apiJson('/api/pending/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method:'DELETE' });
+  try {
+    if (isPending) {
+      await apiJson('/api/pending/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method: 'DELETE' });
       showToast('Quitada de pendientes');
     } else {
-      await apiJson('/api/pending', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
+      await apiJson('/api/pending', { method: 'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
       showToast('Añadida a pendientes');
     }
     await refreshPendingInModal(id, type);
-  }catch(_){ }
+  } catch (_) { }
 }
 
-async function refreshFavoriteInModal(tmdbId, mediaType){
+async function refreshFavoriteInModal(tmdbId, mediaType) {
   const box = el('favoriteBox');
   const btn = el('favoriteToggleBtn');
   if (!box || !btn) return;
-  if (!auth.user){
+  if (!auth.user) {
     box.style.display = 'none';
     return;
   }
   box.style.display = '';
-  try{
-    const t = (String(mediaType||'movie') === 'tv') ? 'tv' : 'movie';
+  try {
+    const t = (String(mediaType || 'movie') === 'tv') ? 'tv' : 'movie';
     const j = await apiJson('/api/favorites/' + encodeURIComponent(tmdbId) + '?type=' + encodeURIComponent(t));
     const isFav = !!j?.favorite;
     btn.dataset.favorite = isFav ? '1' : '0';
     btn.classList.toggle('active', isFav);
     const icon = el('favoriteIcon');
     if (icon) icon.textContent = '❤';
-  }catch(_){
+  } catch (_) {
     btn.dataset.favorite = '0';
     btn.classList.remove('active');
     const icon = el('favoriteIcon');
@@ -1752,32 +1716,32 @@ async function refreshFavoriteInModal(tmdbId, mediaType){
   }
 }
 
-async function toggleFavoriteFromModal(){
-  if (!auth.user){ openAuth(); return; }
+async function toggleFavoriteFromModal() {
+  if (!auth.user) { openAuth(); return; }
   const id = currentDetail?.id;
   const type = currentDetail?.type || 'movie';
   if (!id) return;
   const btn = el('favoriteToggleBtn');
   const isFav = btn && btn.dataset.favorite === '1';
-  try{
-    if (isFav){
-      await apiJson('/api/favorites/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method:'DELETE' });
+  try {
+    if (isFav) {
+      await apiJson('/api/favorites/' + encodeURIComponent(id) + '?type=' + encodeURIComponent(type), { method: 'DELETE' });
       showToast('Quitada de favoritos');
     } else {
-      await apiJson('/api/favorites', { method:'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
+      await apiJson('/api/favorites', { method: 'POST', body: JSON.stringify({ tmdb_id: Number(id), media_type: type }) });
       showToast('Añadida a favoritos');
     }
     await refreshFavoriteInModal(id, type);
-  }catch(_){ }
+  } catch (_) { }
 }
 
-function renderStars(current){
+function renderStars(current) {
   const starRow = el('starRow');
   if (!starRow) return;
   starRow.innerHTML = '';
-  for (let i=1;i<=10;i++){
+  for (let i = 1; i <= 10; i++) {
     const b = document.createElement('button');
-    b.className = 'star' + (i <= (current||0) ? ' active' : '');
+    b.className = 'star' + (i <= (current || 0) ? ' active' : '');
     b.type = 'button';
     b.textContent = '★';
     b.dataset.val = String(i);
@@ -1785,35 +1749,35 @@ function renderStars(current){
   }
 }
 
-async function loadUserRatingIntoModal(tmdbId){
+async function loadUserRatingIntoModal(tmdbId) {
   const box = el('userRatingBox');
   const hint = el('ratingHint');
   if (!box) return;
-  if (!auth.user){
+  if (!auth.user) {
     box.style.display = 'none';
     return;
   }
   box.style.display = '';
   hint.textContent = 'Pulsa una estrella para valorar del 1 al 10.';
   let current = 0;
-  try{
+  try {
     const j = await apiJson(`/api/ratings/${tmdbId}`);
     current = j?.rating || 0;
-  }catch(_){ }
+  } catch (_) { }
   renderStars(current);
   const starRow = el('starRow');
-  if (starRow && !starRow.__bound){
+  if (starRow && !starRow.__bound) {
     starRow.__bound = true;
     starRow.addEventListener('click', async (e) => {
       const btn = e.target?.closest?.('.star');
       if (!btn) return;
       const val = Number(btn.dataset.val);
       if (!Number.isFinite(val)) return;
-      try{
-        await apiJson('/api/ratings', { method:'POST', body: JSON.stringify({ tmdb_id: Number(currentDetail.id), rating: val }) });
+      try {
+        await apiJson('/api/ratings', { method: 'POST', body: JSON.stringify({ tmdb_id: Number(currentDetail.id), rating: val }) });
         renderStars(val);
         if (hint) hint.textContent = `Guardado: ${val}/10`;
-      }catch(err){
+      } catch (err) {
         if (hint) hint.textContent = 'No se pudo guardar. Inicia sesión otra vez.';
       }
     });
@@ -1821,7 +1785,7 @@ async function loadUserRatingIntoModal(tmdbId){
 }
 
 // --- Modal details ---
-async function openDetails(id, type){
+async function openDetails(id, type) {
   // Opening the ficha should NOT count as a view.
   // We only count a view when the user presses "Reproducir".
   const resolvedType = (type || (isTv() ? 'tv' : 'movie'));
@@ -1831,28 +1795,28 @@ async function openDetails(id, type){
   const res = await fetch(apiUrl);
   const d = await res.json();
 
-  const year = (resolvedType==='tv' ? (d.first_air_date ? String(d.first_air_date).slice(0,4) : '') : (d.release_date ? String(d.release_date).slice(0,4) : ''));
-  el('modalTitle').textContent = `${(d.title||d.name||'')} ${year ? '('+year+')' : ''}`;
+  const year = (resolvedType === 'tv' ? (d.first_air_date ? String(d.first_air_date).slice(0, 4) : '') : (d.release_date ? String(d.release_date).slice(0, 4) : ''));
+  el('modalTitle').textContent = `${(d.title || d.name || '')} ${year ? '(' + year + ')' : ''}`;
   const poster = el('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
   el('modalOverview').textContent = d.overview || 'Sin sinopsis disponible.';
-  el('modalMeta').textContent = `${d.runtime ? d.runtime+' min · ':''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
-  el('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${esc(g.name)}</span>`).join('');
-  el('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
+  el('modalMeta').textContent = `${d.runtime ? d.runtime + ' min · ' : ''}Puntuación TMDB: ${d.vote_average ?? '—'}`;
+  el('modalGenres').innerHTML = (d.genres || []).map(g => `<span class="badge">${esc(g.name)}</span>`).join('');
+  el('modalCast').innerHTML = (d.cast || []).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
 
   const link = el('watchLink');
 
-  if (resolvedType === 'tv'){
+  if (resolvedType === 'tv') {
     // Series: abrir Telegram con payload (start=)
     const tgApp = d.telegram?.app || null;
     const tgWeb = d.telegram?.web || null;
 
-    if (tgWeb){
+    if (tgWeb) {
       link.href = tgWeb;
       link.style.display = 'inline-flex';
 
       // Intentar abrir la app de Telegram primero en móvil
-      if (!link.__tgBound){
+      if (!link.__tgBound) {
         link.__tgBound = true;
         link.addEventListener('click', (ev) => {
           if (!currentDetail?.id) return;
@@ -1860,21 +1824,21 @@ async function openDetails(id, type){
           trackView(currentDetail.id, currentDetail.type);
 
           // Si hay esquema tg://, intentamos abrir app y caemos a web
-          if (tgApp){
+          if (tgApp) {
             ev.preventDefault();
-            try{
+            try {
               window.location.href = tgApp;
-              setTimeout(()=>{ window.location.href = tgWeb; }, 650);
-            }catch(_){
+              setTimeout(() => { window.location.href = tgWeb; }, 650);
+            } catch (_) {
               window.location.href = tgWeb;
             }
           }
         });
       }
-    }else{
+    } else {
       link.style.display = 'none';
     }
-  }else{
+  } else {
     // Películas: link normal
     if (d.link) {
       const w = toWatchUrl(d.link);
@@ -1888,31 +1852,31 @@ async function openDetails(id, type){
   el('modal').classList.add('open');
 
   // Load user rating widget (if logged)
-  try{ await loadUserRatingIntoModal(Number(id)); }catch(_){ }
+  try { await loadUserRatingIntoModal(Number(id)); } catch (_) { }
 
   // Load pending button state (if logged)
-  try{ await refreshPendingInModal(Number(id), resolvedType); }catch(_){ }
+  try { await refreshPendingInModal(Number(id), resolvedType); } catch (_) { }
 
   // Load favorite button state (if logged)
-  try{ await refreshFavoriteInModal(Number(id), resolvedType); }catch(_){ }
+  try { await refreshFavoriteInModal(Number(id), resolvedType); } catch (_) { }
 }
 
-function closeModal(){ el('modal').classList.remove('open'); }
+function closeModal() { el('modal').classList.remove('open'); }
 // --- Auth modal ---
 let authMode = 'login';
-function openAuth(){
+function openAuth() {
   const m = el('authModal');
   if (!m) return;
   el('authMsg').textContent = '';
   setAuthMode(authMode);
   m.classList.add('open');
 }
-function closeAuth(){
+function closeAuth() {
   const m = el('authModal');
   if (!m) return;
   m.classList.remove('open');
 }
-function setAuthMode(mode){
+function setAuthMode(mode) {
   authMode = mode === 'register' ? 'register' : 'login';
   const t1 = el('tabLogin');
   const t2 = el('tabRegister');
@@ -1924,52 +1888,93 @@ function setAuthMode(mode){
   if (pass) pass.autocomplete = authMode === 'login' ? 'current-password' : 'new-password';
 }
 
+function openChangePass() {
+  const html = `
+    <div class="form-row">
+      <label>Contraseña actual</label>
+      <input id="cpOld" type="password" placeholder="Tu contraseña actual" autocomplete="current-password" />
+    </div>
+    <div class="form-row">
+      <label>Nueva contraseña</label>
+      <input id="cpNew" type="password" placeholder="Nueva contraseña (mín 4 caracteres)" autocomplete="new-password" />
+    </div>
+    <div id="cpMsg" class="mute" style="color:#ff6b6b; margin-top:0.5rem;"></div>
+    <div class="modal-actions" style="margin-top: 1.5rem;">
+      <button id="cpCancel" class="ghost" type="button">Cancelar</button>
+      <button id="cpSubmit" type="button">Guardar</button>
+    </div>
+  `;
+  openCollectionsModal('Cambiar contraseña', html);
+
+  el('cpCancel')?.addEventListener('click', closeCollectionsModal);
+  el('cpSubmit')?.addEventListener('click', async () => {
+    const oldP = el('cpOld')?.value || '';
+    const newP = el('cpNew')?.value || '';
+    const msg = el('cpMsg');
+    if (!oldP || !newP) { if (msg) msg.textContent = 'Rellena ambos campos.'; return; }
+    if (newP.length < 4) { if (msg) msg.textContent = 'La nueva contraseña es muy corta.'; return; }
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword: oldP, newPassword: newP })
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'SERVER_ERROR');
+      closeCollectionsModal();
+      showToast('Contraseña actualizada con éxito');
+    } catch (err) {
+      if (msg) msg.textContent = err.message === 'INVALID_CREDENTIALS' ? 'La contraseña actual es incorrecta.' : 'Error al cambiar la contraseña.';
+    }
+  });
+}
+
 // --- Events ---
-function wireEvents(){
+function wireEvents() {
   el('closeModal').addEventListener('click', closeModal);
   const pt = el('pendingToggleBtn');
-  if (pt && !pt.__bound){ pt.__bound = true; pt.addEventListener('click', (e)=>{ e.preventDefault(); togglePendingFromModal(); }); }
+  if (pt && !pt.__bound) { pt.__bound = true; pt.addEventListener('click', (e) => { e.preventDefault(); togglePendingFromModal(); }); }
   const ft = el('favoriteToggleBtn');
-  if (ft && !ft.__bound){ ft.__bound = true; ft.addEventListener('click', (e)=>{ e.preventDefault(); toggleFavoriteFromModal(); }); }
-  el('modal').addEventListener('click', (e)=>{ if(e.target.id==='modal') closeModal(); });
+  if (ft && !ft.__bound) { ft.__bound = true; ft.addEventListener('click', (e) => { e.preventDefault(); toggleFavoriteFromModal(); }); }
+  el('modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 
   // Auth modal events
   const closeA = el('closeAuth');
   const authModal = el('authModal');
   if (closeA) closeA.addEventListener('click', closeAuth);
-  if (authModal) authModal.addEventListener('click', (e)=>{ if(e.target.id==='authModal') closeAuth(); });
+  if (authModal) authModal.addEventListener('click', (e) => { if (e.target.id === 'authModal') closeAuth(); });
 
-// Collections modal events
-const closeC = el('closeCollections');
-const colModal = el('collectionsModal');
-if (closeC) closeC.addEventListener('click', closeCollectionsModal);
+  // Collections modal events
+  const closeC = el('closeCollections');
+  const colModal = el('collectionsModal');
+  if (closeC) closeC.addEventListener('click', closeCollectionsModal);
 
-// It was too sensitive on desktop/webview (lost focus / pointer events).
+  // It was too sensitive on desktop/webview (lost focus / pointer events).
 
   const tabLogin = el('tabLogin');
   const tabReg = el('tabRegister');
-  if (tabLogin) tabLogin.addEventListener('click', ()=>setAuthMode('login'));
-  if (tabReg) tabReg.addEventListener('click', ()=>setAuthMode('register'));
+  if (tabLogin) tabLogin.addEventListener('click', () => setAuthMode('login'));
+  if (tabReg) tabReg.addEventListener('click', () => setAuthMode('register'));
   const submit = el('authSubmit');
-  if (submit){
-    submit.addEventListener('click', async ()=>{
+  if (submit) {
+    submit.addEventListener('click', async () => {
       const u = String(el('authUser')?.value || '').trim();
       const p = String(el('authPass')?.value || '');
       const msg = el('authMsg');
-      if (!u || !p){ if(msg) msg.textContent = 'Escribe usuario y contraseña.'; return; }
-      try{
+      if (!u || !p) { if (msg) msg.textContent = 'Escribe usuario y contraseña.'; return; }
+      try {
         const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-        const j = await apiJson(endpoint, { method:'POST', body: JSON.stringify({ username: u, password: p }) });
+        const j = await apiJson(endpoint, { method: 'POST', body: JSON.stringify({ username: u, password: p }) });
         auth.user = j?.user || null;
         syncAuthUi();
         closeAuth();
         // Refresh rating widget if modal open
-        if (el('modal')?.classList?.contains('open') && currentDetail?.id){
-          try{ await loadUserRatingIntoModal(Number(currentDetail.id)); }catch(_){ }
-          try{ await refreshPendingInModal(Number(currentDetail.id)); }catch(_){ }
-          try{ await refreshFavoriteInModal(Number(currentDetail.id)); }catch(_){ }
+        if (el('modal')?.classList?.contains('open') && currentDetail?.id) {
+          try { await loadUserRatingIntoModal(Number(currentDetail.id)); } catch (_) { }
+          try { await refreshPendingInModal(Number(currentDetail.id)); } catch (_) { }
+          try { await refreshFavoriteInModal(Number(currentDetail.id)); } catch (_) { }
         }
-      }catch(err){
+      } catch (err) {
         const code = err?.payload?.error || 'ERROR';
         const map = {
           USERNAME_TAKEN: 'Ese usuario ya existe.',
@@ -1984,13 +1989,13 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
 
   // Count a "view" only when the user clicks "Reproducir"
   const watch = el('watchLink');
-  if (watch && !watch.__trackBound){
+  if (watch && !watch.__trackBound) {
     watch.__trackBound = true;
     watch.addEventListener('click', () => {
       if (!currentDetail?.id) return;
       trackView(currentDetail.id, currentDetail.type || 'movie');
       // Refresh the Top row shortly after the play is recorded
-      setTimeout(() => { try{ loadTopRow(); }catch(_){ } }, 250);
+      setTimeout(() => { try { loadTopRow(); } catch (_) { } }, 250);
     });
   }
 
@@ -1999,7 +2004,7 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   const genreBtn = el('genreBtn');
   const genreMenu = el('genreMenu');
 
-  el('searchBtn').addEventListener('click', ()=>{
+  el('searchBtn').addEventListener('click', () => {
     state.page = 1;
     state.q = q.value.trim();
     state.actor = actor.value.trim();
@@ -2013,15 +2018,15 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
     const lbtn2 = el('letterFilterBtn');
     if (lbtn2) lbtn2.textContent = 'Filtrar letra';
     // Scroll to Explore on search
-    try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+    try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
     loadExplore();
   });
 
-  el('resetBtn').addEventListener('click', ()=>{
+  el('resetBtn').addEventListener('click', () => {
     const keepGenres = state.genres || [];
-    state = { page:1, pageSize:30, q:'', actor:'', genre:'', letter:'', random: true, view:'home', clientGenreItems: null, totalPages: 1 };
+    state = { page: 1, pageSize: 30, q: '', actor: '', genre: '', letter: '', random: true, view: 'home', clientGenreItems: null, totalPages: 1 };
     state.genres = keepGenres;
-    q.value=''; actor.value='';
+    q.value = ''; actor.value = '';
     if (genreBtn) genreBtn.textContent = 'Categorías';
     const lbtn = el('letterFilterBtn');
     if (lbtn) lbtn.textContent = 'Filtrar letra';
@@ -2029,21 +2034,21 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
     loadBestAppRow();
     loadRecentRow();
     loadExplore();
-    try{ window.scrollTo({ top: 0, behavior:'smooth' }); }catch(_){ }
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (_) { }
   });
 
 
   const collectionsBtn = el('collectionsBtn');
-  if (collectionsBtn){
-    collectionsBtn.addEventListener('click', ()=>{
+  if (collectionsBtn) {
+    collectionsBtn.addEventListener('click', () => {
       state.view = 'collections';
       state.page = 1;
       state.pageSize = 30;
-      state.q = ''; state.actor=''; state.genre=''; state.letter='';
+      state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
       state.random = false;
       state.totalPages = 1;
       updateHomeVisibility();
-      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
       loadExplore();
     });
   }
@@ -2054,73 +2059,75 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   const userMenu = el('userMenu');
   buildUserMenu();
 
-  if (authBtn){
-    authBtn.addEventListener('click', (e)=>{
+  if (authBtn) {
+    authBtn.addEventListener('click', (e) => {
       e.preventDefault();
       openAuth();
     });
   }
 
-  if (userMenuBtn){
-    userMenuBtn.addEventListener('click', (e)=>{
+  if (userMenuBtn) {
+    userMenuBtn.addEventListener('click', (e) => {
       e.preventDefault();
       toggleUserMenu();
     });
   }
 
-  if (userMenu){
-    userMenu.addEventListener('click', async (e)=>{
+  if (userMenu) {
+    userMenu.addEventListener('click', async (e) => {
       const item = e.target?.closest?.('.menu-item');
       if (!item) return;
       const act = item.dataset.action;
       closeUserMenu();
-      if (act === 'mycollections'){
-        if (!auth.user){ openAuth(); return; }
+      if (act === 'mycollections') {
+        if (!auth.user) { openAuth(); return; }
         state.view = 'mycollections';
         state.page = 1;
         state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
         state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
         loadExplore();
-      } else if (act === 'myratings'){
-        if (!auth.user){ openAuth(); return; }
+      } else if (act === 'myratings') {
+        if (!auth.user) { openAuth(); return; }
         state.view = 'myratings';
         state.page = 1;
         state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
         state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
         loadExplore();
-      } else if (act === 'recommended'){
-        if (!auth.user){ openAuth(); return; }
+      } else if (act === 'recommended') {
+        if (!auth.user) { openAuth(); return; }
         state.view = 'recommended';
         state.page = 1;
         state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
         state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
         loadExplore();
-      } else if (act === 'pending'){
-        if (!auth.user){ openAuth(); return; }
+      } else if (act === 'pending') {
+        if (!auth.user) { openAuth(); return; }
         state.view = 'pending';
         state.page = 1;
         state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
         state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
         loadExplore();
-      } else if (act === 'favorites'){
-        if (!auth.user){ openAuth(); return; }
+      } else if (act === 'favorites') {
+        if (!auth.user) { openAuth(); return; }
         state.view = 'favorites';
         state.page = 1;
         state.pageSize = 30;
-        state.q = ''; state.actor = ''; state.genre=''; state.letter='';
+        state.q = ''; state.actor = ''; state.genre = ''; state.letter = '';
         state.random = false;
-        try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+        try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
         loadExplore();
-      } else if (act === 'logout'){
-        try{ await apiJson('/api/auth/logout', { method:'POST', body: '{}' }); }catch(_){ }
+      } else if (act === 'changepass') {
+        openChangePass();
+      } else if (act === 'logout') {
+        try { await apiJson('/api/auth/logout', { method: 'POST', body: '{}' }); } catch (_) { }
         auth.user = null;
         syncAuthUi();
         if (state.view !== 'home') el('resetBtn').click();
@@ -2128,15 +2135,15 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
     });
   }
 
-  document.addEventListener('click', (e)=>{
+  document.addEventListener('click', (e) => {
     if (!userMenu || !userMenuBtn) return;
     if (userMenu.classList.contains('open') && !userMenu.contains(e.target) && !userMenuBtn.contains(e.target)) closeUserMenu();
   });
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeUserMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeUserMenu(); });
 
-  el('prev').addEventListener('click', ()=>{ if(state.page>1){ state.page--; loadExplore(); }});
-  el('next').addEventListener('click', ()=>{
-    if (state.totalPages && Number.isFinite(state.totalPages) && state.totalPages !== 9999){
+  el('prev').addEventListener('click', () => { if (state.page > 1) { state.page--; loadExplore(); } });
+  el('next').addEventListener('click', () => {
+    if (state.totalPages && Number.isFinite(state.totalPages) && state.totalPages !== 9999) {
       if (state.page >= state.totalPages) return;
     }
     state.page++;
@@ -2147,28 +2154,28 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   buildLetterMenu();
   const lbtn = el('letterFilterBtn');
   const lmenu = el('letterMenu');
-  function closeLetterMenu(){
+  function closeLetterMenu() {
     if (!lmenu || !lbtn) return;
     lmenu.classList.remove('open');
     lbtn.setAttribute('aria-expanded', 'false');
   }
-  function toggleLetterMenu(){
+  function toggleLetterMenu() {
     if (!lmenu || !lbtn) return;
     const open = !lmenu.classList.contains('open');
     lmenu.classList.toggle('open', open);
     lbtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
-  if (lbtn){
-    lbtn.addEventListener('click', (e)=>{
+  if (lbtn) {
+    lbtn.addEventListener('click', (e) => {
       e.preventDefault();
       const mode = lbtn.dataset.mode || 'letter';
-      if (mode === 'create'){
+      if (mode === 'create') {
         // Create collection (only logged users)
-        if (!auth.user){ openAuth(); return; }
+        if (!auth.user) { openAuth(); return; }
         openCreateCollectionFlow();
         return;
       }
-      if (mode === 'back'){
+      if (mode === 'back') {
         // Back from a single collection to collections list
         const back = state.collectionBackView || 'collections';
         state.view = back;
@@ -2181,42 +2188,42 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
       toggleLetterMenu();
     });
   }
-  if (lmenu){
-    lmenu.addEventListener('click', (e)=>{
+  if (lmenu) {
+    lmenu.addEventListener('click', (e) => {
       const b = e.target?.closest?.('.letter-item');
       if (!b) return;
       setLetterFilter(b.dataset.letter);
       closeLetterMenu();
-      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
     });
   }
-  document.addEventListener('click', (e)=>{
+  document.addEventListener('click', (e) => {
     if (!lmenu || !lbtn) return;
     if (lmenu.classList.contains('open') && !lmenu.contains(e.target) && !lbtn.contains(e.target)) closeLetterMenu();
   });
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeLetterMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLetterMenu(); });
 
   // Categorías dropdown (TMDB genres)
-  function closeGenreMenu(){
+  function closeGenreMenu() {
     if (!genreMenu || !genreBtn) return;
     genreMenu.classList.remove('open');
     genreBtn.setAttribute('aria-expanded', 'false');
   }
-  function toggleGenreMenu(){
+  function toggleGenreMenu() {
     if (!genreMenu || !genreBtn) return;
     const open = !genreMenu.classList.contains('open');
     genreMenu.classList.toggle('open', open);
     genreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open){
+    if (open) {
       const s = genreMenu.querySelector('#genreSearch');
-      setTimeout(()=>{ try{ s && s.focus(); }catch(_){ } }, 0);
+      setTimeout(() => { try { s && s.focus(); } catch (_) { } }, 0);
     }
   }
-  if (genreBtn){
-    genreBtn.addEventListener('click', (e)=>{ e.preventDefault(); toggleGenreMenu(); });
+  if (genreBtn) {
+    genreBtn.addEventListener('click', (e) => { e.preventDefault(); toggleGenreMenu(); });
   }
-  if (genreMenu){
-    genreMenu.addEventListener('click', (e)=>{
+  if (genreMenu) {
+    genreMenu.addEventListener('click', (e) => {
       const b = e.target?.closest?.('.menu-item');
       if (!b) return;
       const val = b.dataset.genre || '';
@@ -2232,31 +2239,31 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
       const lbtn3 = el('letterFilterBtn');
       if (lbtn3) lbtn3.textContent = 'Filtrar letra';
       closeGenreMenu();
-      try{ el('rowExplore').scrollIntoView({ behavior:'smooth', block:'start' }); }catch(_){ }
+      try { el('rowExplore').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { }
       loadExplore();
     });
   }
-  document.addEventListener('click', (e)=>{
+  document.addEventListener('click', (e) => {
     if (!genreMenu || !genreBtn) return;
     if (genreMenu.classList.contains('open') && !genreMenu.contains(e.target) && !genreBtn.contains(e.target)) closeGenreMenu();
   });
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeGenreMenu(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeGenreMenu(); });
 
   // Enter-to-search helper
-  function onEnter(e){
-    if (e.key === 'Enter'){
+  function onEnter(e) {
+    if (e.key === 'Enter') {
       e.preventDefault();
       el('searchBtn').click();
     }
   }
-  q.addEventListener('keydown', onEnter, { passive:false });
-  actor.addEventListener('keydown', onEnter, { passive:false });
+  q.addEventListener('keydown', onEnter, { passive: false });
+  actor.addEventListener('keydown', onEnter, { passive: false });
 
   wireRowButtons();
 }
 
 // --- Boot ---
-(async function init(){
+(async function init() {
   await fetchAppConfig();
   await refreshMe();
   await fetchGenres();
@@ -2266,18 +2273,18 @@ if (closeC) closeC.addEventListener('click', closeCollectionsModal);
   bindAllCarousels();
 
   // Auto-bind for any carousels that get rendered later
-  try{
-    const mo = new MutationObserver((mutations)=>{
-      for (const m of mutations){
-        for (const n of (m.addedNodes || [])){
+  try {
+    const mo = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const n of (m.addedNodes || [])) {
           if (!n || n.nodeType !== 1) continue;
           if (n.classList?.contains('row-scroller')) enableDragScroll(n);
           n.querySelectorAll?.('.row-scroller')?.forEach(s => enableDragScroll(s));
         }
       }
     });
-    mo.observe(document.body, { childList:true, subtree:true });
-  }catch(_){/* ignore */}
+    mo.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {/* ignore */ }
   await Promise.all([
     loadTopRow(),
     (isTv() ? loadBestSeriesRow() : loadBestAppRow()),

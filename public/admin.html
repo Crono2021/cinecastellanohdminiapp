@@ -29,6 +29,17 @@
       <small class="mute">Afecta al botón <b>Reproducir</b> en películas (Pixeldrain).</small>
     </div>
     <div class="box">
+      <h3>🔑 Restablecer Contraseña</h3>
+      <div class="hstack" style="gap:12px">
+        <input id="resetUsername" placeholder="Nombre de usuario" style="flex:1" autocomplete="off" />
+        <input id="resetNewPass" placeholder="Nueva contraseña" type="text" style="flex:1" autocomplete="off" />
+        <button id="resetPassBtn">Aplicar</button>
+      </div>
+      <small class="mute">Cambia la contraseña de cualquier usuario sin conocer la actual.</small>
+      <div id="resetPassOut" class="mute" style="margin-top:8px"></div>
+    </div>
+
+    <div class="box">
       <h3>Tipo de contenido</h3>
       <div class="hstack" style="gap:12px;align-items:center">
         <label><input type="radio" name="contentType" value="movie" checked> Película</label>
