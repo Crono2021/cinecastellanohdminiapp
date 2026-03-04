@@ -24,8 +24,13 @@ function openTelegramDeepLink(tg) {
   }
 
   const start = Date.now();
-  // Attempt to open Telegram app using intent URI
-  window.location.href = appLink;
+  // Attempt to open Telegram app using an anchor click Native Intent
+  const a = document.createElement('a');
+  a.href = appLink;
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   // Fallback to web after a short delay if the app isn't installed
   setTimeout(() => {
     if (document.visibilityState === 'visible' && (Date.now() - start) > 600) {

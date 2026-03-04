@@ -1834,10 +1834,14 @@ async function openDetails(id, type) {
 
             // On Android, use intent deep link, then fallback
             if (isAndroid) {
-              window.location.href = intentUri;
+              const a = document.createElement('a');
+              a.href = intentUri;
+              a.target = '_blank';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
               setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = webUri; }, 800);
             } else {
-              // On PC or iOS, just open the web fallback directly
               window.open(webUri, '_blank', 'noopener');
             }
           }
@@ -1870,7 +1874,12 @@ async function openDetails(id, type) {
 
             const isAndroid = /Android/i.test(navigator.userAgent);
             if (isAndroid) {
-              window.location.href = link.dataset.intentMovie;
+              const a = document.createElement('a');
+              a.href = link.dataset.intentMovie;
+              a.target = '_blank';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
               setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = link.dataset.webMovie; }, 800);
             } else {
               window.open(link.dataset.webMovie, '_blank', 'noopener');
