@@ -1814,27 +1814,31 @@ async function openDetails(id, type) {
 
     if (tgWeb) {
       link.href = tgWeb;
+      link.dataset.intentSeries = tgApp || '';
+      link.dataset.webSeries = tgWeb;
       link.style.display = 'inline-flex';
 
       // Intentar abrir la app de Telegram primero en móvil
       if (!link.__tgBound) {
         link.__tgBound = true;
         link.addEventListener('click', (ev) => {
-          if (!currentDetail?.id) return;
+          if (!currentDetail?.id || currentDetail.type !== 'tv') return;
           // contamos vista en el click (también para series)
           trackView(currentDetail.id, currentDetail.type);
 
-          if (tgApp) {
+          const intentUri = link.dataset.intentSeries;
+          const webUri = link.dataset.webSeries;
+          if (intentUri) {
             ev.preventDefault();
             const isAndroid = /Android/i.test(navigator.userAgent);
 
             // On Android, use intent deep link, then fallback
             if (isAndroid) {
-              window.location.href = tgApp;
-              setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = tgWeb; }, 800);
+              window.location.href = intentUri;
+              setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = webUri; }, 800);
             } else {
               // On PC or iOS, just open the web fallback directly
-              window.open(tgWeb, '_blank', 'noopener');
+              window.open(webUri, '_blank', 'noopener');
             }
           }
         });
@@ -1843,11 +1847,49 @@ async function openDetails(id, type) {
       link.style.display = 'none';
     }
   } else {
-    // Películas: link normal
+    // Películas: link normal o tg
     if (d.link) {
-      const w = toWatchUrl(d.link);
-      link.href = w || d.link;
-      link.style.display = 'inline-flex';
+      if (d.link.startsWith('tg:') || d.link.startsWith('tg://')) {
+        const raw = d.link.replace(/^tg:\/\//, 'tg:');
+        const qIdx = raw.indexOf('?');
+        const qs = new URLSearchParams(qIdx >= 0 ? raw.slice(qIdx + 1) : '');
+        const domain = qs.get('domain') || 'videoclubpacobot';
+        const startParam = qs.get('post') || qs.get('start') || '';
+
+        link.dataset.intentMovie = `intent://resolve?domain=${domain}&start=${startParam}#Intent;package=org.telegram.messenger;scheme=tg;end;`;
+        link.dataset.webMovie = `https://t.me/${domain}?start=${startParam}`;
+        link.href = link.dataset.webMovie;
+        link.style.display = 'inline-flex';
+
+        if (!link.__tgBoundMovie) {
+          link.__tgBoundMovie = true;
+          link.addEventListener('click', (ev) => {
+            if (!currentDetail?.id || currentDetail.type !== 'movie' || !link.dataset.intentMovie) return;
+            trackView(currentDetail.id, currentDetail.type);
+            ev.preventDefault();
+
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            if (isAndroid) {
+              window.location.href = link.dataset.intentMovie;
+              setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = link.dataset.webMovie; }, 800);
+            } else {
+              window.open(link.dataset.webMovie, '_blank', 'noopener');
+            }
+          });
+        }
+      } else {
+        const w = toWatchUrl(d.link);
+        link.href = w || d.link;
+        link.dataset.intentMovie = '';
+        link.style.display = 'inline-flex';
+
+        if (!link.__tgBoundNorm) {
+          link.__tgBoundNorm = true;
+          link.addEventListener('click', () => {
+            if (currentDetail?.id && currentDetail.type === 'movie' && !link.dataset.intentMovie) trackView(currentDetail.id, currentDetail.type);
+          });
+        }
+      }
     } else {
       link.style.display = 'none';
     }
