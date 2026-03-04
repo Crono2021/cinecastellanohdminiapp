@@ -1,34 +1,34 @@
 /* eslint-disable */
 const imgBase = 'https://image.tmdb.org/t/p/w342';
 
-function el(id){ return document.getElementById(id); }
-function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-function isMobile(){
+function isMobile() {
   const ua = navigator.userAgent || '';
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 }
 
-function openTelegramDeepLink(tg){
+function openTelegramDeepLink(tg) {
   // tg: { app, web, cmd }
   if (!tg) return;
   const appLink = tg.app || '';
   const webLink = tg.web || tg.link || '';
 
-  // On desktop, opening tg:// often causes the browser to "load" forever.
-  // So we only try tg:// on mobile, with a quick fallback to https.
-  if (!isMobile() || !appLink){
+  // On desktop, opening intent:// or tg:// often causes the browser to "load" forever.
+  // So we only try the appLink on Android, with a quick fallback to https.
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
+  if (!isAndroid || !appLink) {
     if (webLink) window.open(webLink, '_blank', 'noopener');
     return;
   }
 
   const start = Date.now();
-  // Attempt to open Telegram app
+  // Attempt to open Telegram app using intent URI
   window.location.href = appLink;
-  // Fallback to web after a short delay if the app isn't installed / didn't open
-  setTimeout(()=>{
-    // If the page is still visible shortly after, assume app didn't open
-    if (document.visibilityState === 'visible' && (Date.now() - start) > 600){
+  // Fallback to web after a short delay if the app isn't installed
+  setTimeout(() => {
+    if (document.visibilityState === 'visible' && (Date.now() - start) > 600) {
       if (webLink) window.location.href = webLink;
     }
   }, 800);
@@ -43,7 +43,7 @@ const state = {
   current: { id: null }
 };
 
-async function fetchSeries(){
+async function fetchSeries() {
   const grid = el('grid');
   const pageInfo = el('pageInfo');
   if (pageInfo) pageInfo.textContent = 'Cargando…';
@@ -67,7 +67,7 @@ async function fetchSeries(){
   state.totalPages = Math.max(1, Math.ceil(total / state.pageSize));
   state.page = Math.min(Math.max(1, Number(data.page || state.page)), state.totalPages);
 
-  if (pageInfo){
+  if (pageInfo) {
     pageInfo.textContent = `Página ${state.page} de ${state.totalPages} · ${total} series`;
   }
 
@@ -87,31 +87,31 @@ async function fetchSeries(){
   });
 }
 
-async function trackView(id){
-  try{
+async function trackView(id) {
+  try {
     await fetch('/api/view', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tmdb_id: Number(id), type: 'tv' })
     });
-  }catch(_){ }
+  } catch (_) { }
 }
 
-async function openDetails(id){
+async function openDetails(id) {
   state.current.id = String(id);
 
   const res = await fetch('/api/tv/' + encodeURIComponent(String(id)));
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const d = await res.json();
 
-  const year = d.release_date ? String(d.release_date).slice(0,4) : '';
-  el('modalTitle').textContent = `${(d.title||d.name||'')}${year ? ' ('+year+')' : ''}`;
+  const year = d.release_date ? String(d.release_date).slice(0, 4) : '';
+  el('modalTitle').textContent = `${(d.title || d.name || '')}${year ? ' (' + year + ')' : ''}`;
   const poster = el('modalPoster');
   poster.src = d.poster_path ? (imgBase + d.poster_path) : '';
   el('modalOverview').textContent = d.overview || 'Sin sinopsis disponible.';
   el('modalMeta').textContent = `Puntuación TMDB: ${d.vote_average ?? '—'}`;
-  el('modalGenres').innerHTML = (d.genres||[]).map(g => `<span class="badge">${esc(g.name)}</span>`).join('');
-  el('modalCast').innerHTML = (d.cast||[]).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
+  el('modalGenres').innerHTML = (d.genres || []).map(g => `<span class="badge">${esc(g.name)}</span>`).join('');
+  el('modalCast').innerHTML = (d.cast || []).map(p => `<span class="badge">${esc(p.name)}</span>`).join('');
 
   const link = el('watchLink');
   if (d.link || d.telegram) {
@@ -127,52 +127,52 @@ async function openDetails(id){
   el('modal').classList.add('open');
 }
 
-function closeModal(){ el('modal').classList.remove('open'); }
+function closeModal() { el('modal').classList.remove('open'); }
 
-function wire(){
+function wire() {
   el('closeModal').addEventListener('click', closeModal);
-  el('modal').addEventListener('click', (e)=>{ if(e.target && e.target.id==='modal') closeModal(); });
+  el('modal').addEventListener('click', (e) => { if (e.target && e.target.id === 'modal') closeModal(); });
 
-  el('searchBtn').addEventListener('click', async ()=>{
+  el('searchBtn').addEventListener('click', async () => {
     state.q = String(el('q')?.value || '').trim();
     state.page = 1;
     await safeLoad();
   });
-  el('resetBtn').addEventListener('click', async ()=>{
+  el('resetBtn').addEventListener('click', async () => {
     el('q').value = '';
     state.q = '';
     state.page = 1;
     await safeLoad();
   });
 
-  el('prev').addEventListener('click', async ()=>{
+  el('prev').addEventListener('click', async () => {
     if (state.page <= 1) return;
     state.page -= 1;
     await safeLoad();
   });
-  el('next').addEventListener('click', async ()=>{
+  el('next').addEventListener('click', async () => {
     if (state.page >= state.totalPages) return;
     state.page += 1;
     await safeLoad();
   });
 
   // Track views only when pressing "Reproducir"
-  el('watchLink').addEventListener('click', (e)=>{
+  el('watchLink').addEventListener('click', (e) => {
     if (state.current.id) trackView(state.current.id);
     // Prevent slow in-browser redirect to t.me when possible
-    try{
+    try {
       const tg = JSON.parse(el('watchLink').dataset.telegram || 'null');
-      if (tg && (tg.app || tg.web)){
+      if (tg && (tg.app || tg.web)) {
         e.preventDefault();
         openTelegramDeepLink(tg);
       }
-    }catch(_){ }
+    } catch (_) { }
   });
 }
 
-async function safeLoad(){
-  try{ await fetchSeries(); }
-  catch(e){
+async function safeLoad() {
+  try { await fetchSeries(); }
+  catch (e) {
     console.error(e);
     const pageInfo = el('pageInfo');
     if (pageInfo) pageInfo.textContent = 'Error cargando el catálogo de series';

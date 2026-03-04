@@ -1824,14 +1824,17 @@ async function openDetails(id, type) {
           // contamos vista en el click (también para series)
           trackView(currentDetail.id, currentDetail.type);
 
-          // Si hay esquema tg://, intentamos abrir app y caemos a web
           if (tgApp) {
             ev.preventDefault();
-            try {
+            const isAndroid = /Android/i.test(navigator.userAgent);
+
+            // On Android, use intent deep link, then fallback
+            if (isAndroid) {
               window.location.href = tgApp;
-              setTimeout(() => { window.location.href = tgWeb; }, 650);
-            } catch (_) {
-              window.location.href = tgWeb;
+              setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = tgWeb; }, 800);
+            } else {
+              // On PC or iOS, just open the web fallback directly
+              window.open(tgWeb, '_blank', 'noopener');
             }
           }
         });

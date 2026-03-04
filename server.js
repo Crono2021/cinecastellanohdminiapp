@@ -400,7 +400,7 @@ function buildTelegramForPayload(payload) {
   if (!p) return null;
   const enc = encodeURIComponent(p);
   return {
-    app: `tg://resolve?domain=videoclubpacobot&start=${enc}`,
+    app: `intent://resolve?domain=videoclubpacobot&start=${enc}#Intent;package=org.telegram.messenger;scheme=tg;end;`,
     web: `https://t.me/videoclubpacobot?start=${enc}`
   };
 }

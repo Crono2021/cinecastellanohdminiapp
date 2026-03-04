@@ -1,6 +1,6 @@
 
-const CACHE = 'cine-static-v6';
-const ASSETS = ['/', '/index.html', '/styles.css?v=6', '/app.js?v=6', '/back-handler.js?v=6', '/tvnav.js?v=6'];
+const CACHE = 'cine-static-v7';
+const ASSETS = ['/', '/index.html', '/styles.css?v=7', '/app.js?v=7', '/back-handler.js?v=7', '/tvnav.js?v=7'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
