@@ -1,12 +1,22 @@
 <!doctype html>
 <html lang="es">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CCHD · Admin</title>
   <link rel="stylesheet" href="/styles.css" />
-  <style> .box{background:#14151c;border:1px solid #282a36;border-radius:12px;padding:16px;margin:16px 0} </style>
+  <style>
+    .box {
+      background: #14151c;
+      border: 1px solid #282a36;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 16px 0
+    }
+  </style>
 </head>
+
 <body>
   <div class="container">
     <h2>🔐 Admin – Cine Castellano HD</h2>
@@ -29,17 +39,6 @@
       <small class="mute">Afecta al botón <b>Reproducir</b> en películas (Pixeldrain).</small>
     </div>
     <div class="box">
-      <h3>🔑 Restablecer Contraseña</h3>
-      <div class="hstack" style="gap:12px">
-        <input id="resetUsername" placeholder="Nombre de usuario" style="flex:1" autocomplete="off" />
-        <input id="resetNewPass" placeholder="Nueva contraseña" type="text" style="flex:1" autocomplete="off" />
-        <button id="resetPassBtn">Aplicar</button>
-      </div>
-      <small class="mute">Cambia la contraseña de cualquier usuario sin conocer la actual.</small>
-      <div id="resetPassOut" class="mute" style="margin-top:8px"></div>
-    </div>
-
-    <div class="box">
       <h3>Tipo de contenido</h3>
       <div class="hstack" style="gap:12px;align-items:center">
         <label><input type="radio" name="contentType" value="movie" checked> Película</label>
@@ -49,7 +48,7 @@
     </div>
 
 
-    
+
     <div class="box">
       <h3>🗑️ Eliminar película</h3>
       <div class="hstack">
@@ -57,10 +56,11 @@
         <input id="delYear" placeholder="Año (yyyy)" style="width:140px" />
         <button id="deleteBtn">Eliminar</button>
       </div>
-      <small class="mute">Consejo: si el título tiene acentos, escribe el título tal cual está guardado. El año es opcional para desambiguar.</small>
+      <small class="mute">Consejo: si el título tiene acentos, escribe el título tal cual está guardado. El año es
+        opcional para desambiguar.</small>
       <div id="deleteOut" class="mute" style="margin-top:8px"></div>
     </div>
-    
+
     <div class="box">
       <h3>Alta rápida (1 a 1)</h3>
       <div class="hstack">
@@ -79,33 +79,52 @@
 
     <div class="box">
       <h3>📺 Importar series (oculto)</h3>
-      <small class="mute">Pega una serie por línea en formato: <b>Título (año) | Payload</b>. El payload debe coincidir con el del bot (deep-link /start).</small>
-      <textarea id="bulkTv" rows="8" placeholder="Ejemplo:\nBreaking Bad (2008) | s1234\nThe Boys (2019) | s9876"></textarea>
-      <div class="hstack"><button id="doBulkTv">Importar series</button><div id="bulkTvOut" class="mute"></div></div>
+      <small class="mute">Pega una serie por línea en formato: <b>Título (año) | Payload</b>. El payload debe coincidir
+        con el del bot (deep-link /start).</small>
+      <textarea id="bulkTv" rows="8"
+        placeholder="Ejemplo:\nBreaking Bad (2008) | s1234\nThe Boys (2019) | s9876"></textarea>
+      <div class="hstack"><button id="doBulkTv">Importar series</button>
+        <div id="bulkTvOut" class="mute"></div>
+      </div>
     </div>
 
     <div class="box">
       <h3>🎬 Importar películas pegando tu TXT</h3>
-      <textarea id="bulk" rows="8" placeholder="Pega aquí líneas tipo: [Título (1999)](https://pixeldrain.net/...)\nPuedes pegar todo tu fichero."></textarea>
-      <div class="hstack"><button id="doBulk">Importar películas</button><div id="bulkOut" class="mute"></div></div>
+      <textarea id="bulk" rows="8"
+        placeholder="Pega aquí líneas tipo: [Título (1999)](https://pixeldrain.net/...)\nPuedes pegar todo tu fichero."></textarea>
+      <div class="hstack"><button id="doBulk">Importar películas</button>
+        <div id="bulkOut" class="mute"></div>
+      </div>
     </div>
 
     <div class="box">
       <h3>Exportar catálogo</h3>
       <button id="exportBtn">Descargar JSON</button>
-    
-    <div class="box">
-      <h3>🗑️ Eliminar por TMDB ID</h3>
-      <div class="hstack">
-        <input id="delIdInput" placeholder="TMDB ID (número)" inputmode="numeric" style="flex:1" />
-        <button id="deleteByIdBtn">Eliminar</button>
+
+      <div class="box">
+        <h3>🗑️ Eliminar por TMDB ID</h3>
+        <div class="hstack">
+          <input id="delIdInput" placeholder="TMDB ID (número)" inputmode="numeric" style="flex:1" />
+          <button id="deleteByIdBtn">Eliminar</button>
+        </div>
+        <small class="mute">Elimina directamente por <b>tmdb_id</b>. Requiere token admin.</small>
+        <div id="deleteByIdOut" class="mute" style="margin-top:8px"></div>
       </div>
-      <small class="mute">Elimina directamente por <b>tmdb_id</b>. Requiere token admin.</small>
-      <div id="deleteByIdOut" class="mute" style="margin-top:8px"></div>
+
+      <div class="box">
+        <h3>🔑 Restablecer Contraseña</h3>
+        <div class="hstack" style="gap:12px">
+          <input id="resetUsername" placeholder="Nombre de usuario" style="flex:1" autocomplete="off" />
+          <input id="resetNewPass" placeholder="Nueva contraseña" type="text" style="flex:1" autocomplete="off" />
+          <button id="resetPassBtn">Aplicar</button>
+        </div>
+        <small class="mute">Cambia la contraseña de cualquier usuario sin conocer la actual.</small>
+        <div id="resetPassOut" class="mute" style="margin-top:8px"></div>
+      </div>
+
     </div>
-    
-  </div>
-  <script src="/admin.js"></script>
-<!-- App version 1.1.0 -->
+    <script src="/admin.js"></script>
+    <!-- App version 1.1.0 -->
 </body>
+
 </html>
