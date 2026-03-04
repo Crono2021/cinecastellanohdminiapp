@@ -210,30 +210,15 @@ function setupCatalogToggle() {
   bM.classList.toggle('active', !tv);
   bS.classList.toggle('active', tv);
 
-  // Some mobile WebViews can fail to generate "click" reliably.
-  // Bind touch/pointer end as well, and guard against double-trigger.
-  let justNavigated = false;
-  function guard(fn) {
-    return (ev) => {
-      if (justNavigated) return;
-      try { ev && ev.preventDefault && ev.preventDefault(); } catch (_) { }
-      justNavigated = true;
-      setTimeout(() => { justNavigated = false; }, 350);
-      fn();
-    };
-  }
+  bM.addEventListener('click', (e) => {
+    if (isTv()) curtainNavigate('/');
+    else e.preventDefault();
+  });
 
-  const goMovies = guard(() => { if (isTv()) curtainNavigate('/'); });
-  const goSeries = guard(() => { if (!isTv()) curtainNavigate('/series'); });
-
-  // Click (desktop)
-  bM.addEventListener('click', goMovies);
-  bS.addEventListener('click', goSeries);
-  // Touch/pointer (mobile WebViews)
-  bM.addEventListener('touchend', goMovies, { passive: false });
-  bS.addEventListener('touchend', goSeries, { passive: false });
-  bM.addEventListener('pointerup', goMovies, { passive: false });
-  bS.addEventListener('pointerup', goSeries, { passive: false });
+  bS.addEventListener('click', (e) => {
+    if (!isTv()) curtainNavigate('/series');
+    else e.preventDefault();
+  });
 }
 
 
