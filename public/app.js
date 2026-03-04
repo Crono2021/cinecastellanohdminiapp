@@ -192,8 +192,13 @@ function curtainNavigate(href) {
   // Map known routes to their local html files.
   if (isLocalAssetMode()) {
     try {
-      if (href === '/series' || href === '/series/' || href === '/series.html') localStorage.setItem('catalogType', 'tv');
-      if (href === '/' || href === '/index' || href === '/index.html') localStorage.setItem('catalogType', 'movie');
+      if (href === '/series' || href === '/series/' || href === '/series.html') {
+        localStorage.setItem('catalogType', 'tv');
+        window.location.hash = '#series';
+      } else {
+        localStorage.setItem('catalogType', 'movie');
+        window.location.hash = '#movies';
+      }
     } catch (_) { }
     try { window.location.reload(); } catch (_) { location.reload(); }
     return;
@@ -210,15 +215,28 @@ function setupCatalogToggle() {
   bM.classList.toggle('active', !tv);
   bS.classList.toggle('active', tv);
 
-  bM.addEventListener('click', (e) => {
-    if (isTv()) curtainNavigate('/');
-    else e.preventDefault();
-  });
+  let justNavigated = false;
+  function triggerNav(dest) {
+    if (justNavigated) return;
+    justNavigated = true;
+    setTimeout(() => { justNavigated = false; }, 400);
+    curtainNavigate(dest);
+  }
 
-  bS.addEventListener('click', (e) => {
-    if (!isTv()) curtainNavigate('/series');
-    else e.preventDefault();
-  });
+  function bindBtn(btn, dest) {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      triggerNav(dest);
+    };
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      triggerNav(dest);
+    }, { passive: false });
+  }
+
+  // Only bind the opposite catalog to save on clicks!
+  if (tv) bindBtn(bM, '/');
+  else bindBtn(bS, '/series');
 }
 
 
