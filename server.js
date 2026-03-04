@@ -720,6 +720,16 @@ async function tmdbSearchPersonByName(name) {
 }
 
 // --- API ---
+// Prevent caching for HTML pages to ensure WebView updates
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path === '/series' || req.path.endsWith('.html') || req.path.startsWith('/sam')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'Public')));
 
