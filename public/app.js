@@ -229,20 +229,12 @@ function setupCatalogToggle() {
     curtainNavigate(dest);
   }
 
-  function bindBtn(btn, dest) {
-    btn.onclick = (e) => {
-      e.preventDefault();
-      triggerNav(dest);
-    };
-    btn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      triggerNav(dest);
-    }, { passive: false });
+  // Only bind the opposite catalog directly to click
+  if (tv) {
+    bM.addEventListener('click', () => triggerNav('/'));
+  } else {
+    bS.addEventListener('click', () => triggerNav('/series'));
   }
-
-  // Only bind the opposite catalog to save on clicks!
-  if (tv) bindBtn(bM, '/');
-  else bindBtn(bS, '/series');
 }
 
 
